@@ -20,13 +20,9 @@ function AppContent() {
     return <AdminDashboard />
   }
   
-  // Login screen (full mobile shell but different content)
+  // Login screen (full screen, no mobile shell)
   if (!isAuthenticated) {
-    return (
-      <MobileShell>
-        <LoginScreen />
-      </MobileShell>
-    )
+    return <LoginScreen />
   }
   
   // Main app screens
