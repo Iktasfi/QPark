@@ -1,147 +1,229 @@
 "use client"
 
+import { useState } from "react"
 import { useParking } from "@/lib/parking-context"
-import { Card, CardContent } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { MapPin, Clock, Sparkles, ChevronRight, Car } from "lucide-react"
+import Image from "next/image"
 
 export function HomeScreen() {
-  const { user, spots, setCurrentScreen, activeBooking } = useParking()
-  
-  const freeShortTerm = spots.filter(s => s.type === "short-term" && s.status === "FREE").length
-  const freeLongTerm = spots.filter(s => s.type === "long-term" && s.status === "FREE").length
-  
+  const { setCurrentScreen } = useParking()
+  const [activeTab, setActiveTab] = useState("home")
+
+  const navItems = [
+    { id: "home", icon: "/Home_light.svg", label: "Home", active: true },
+    { id: "map", icon: "/Map_light.svg", label: "Map", active: false },
+    { id: "booking", icon: "/Component.svg", label: "Booking", active: false },
+    { id: "wallet", icon: "/wallet.svg", label: "Wallet", active: false },
+    { id: "profile", icon: "/User_cicrle_light.svg", label: "Profile", active: false },
+  ]
+
   return (
-    <div className="flex flex-col gap-4 p-4">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-sm text-muted-foreground">Welcome back</p>
-          <h1 className="text-xl font-bold text-foreground">{user?.name || "Guest"}</h1>
-        </div>
-        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-primary-foreground">
-          <span className="text-sm font-bold">{user?.name?.charAt(0) || "G"}</span>
-        </div>
-      </div>
-      
-      {/* Balance Card */}
-      <Card className="bg-primary text-primary-foreground">
-        <CardContent className="p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm opacity-80">Wallet Balance</p>
-              <p className="text-3xl font-bold">{user?.balance?.toLocaleString() || 0} &#8376;</p>
-            </div>
-            <Button 
-              variant="secondary" 
-              size="sm"
-              onClick={() => setCurrentScreen("wallet")}
-              className="bg-primary-foreground/20 text-primary-foreground hover:bg-primary-foreground/30"
-            >
-              Top Up
-            </Button>
-          </div>
-          <div className="mt-3 flex items-center gap-2 text-sm opacity-80">
-            <Sparkles className="h-4 w-4" />
-            <span>{user?.bonusPoints || 0} bonus points</span>
-          </div>
-        </CardContent>
-      </Card>
-      
-      {/* Active Booking Alert */}
-      {activeBooking && (
-        <Card 
-          className="cursor-pointer border-accent bg-accent/10"
-          onClick={() => setCurrentScreen("active-booking")}
-        >
-          <CardContent className="flex items-center gap-4 p-4">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-accent text-accent-foreground">
-              <Clock className="h-6 w-6" />
-            </div>
-            <div className="flex-1">
-              <p className="font-semibold text-foreground">Active Booking</p>
-              <p className="text-sm text-muted-foreground">Spot {activeBooking.spotId} - Tap to view</p>
-            </div>
-            <ChevronRight className="h-5 w-5 text-muted-foreground" />
-          </CardContent>
-        </Card>
-      )}
-      
-      {/* Quick Stats */}
-      <div className="grid grid-cols-2 gap-3">
-        <Card className="cursor-pointer transition-shadow hover:shadow-md" onClick={() => setCurrentScreen("map")}>
-          <CardContent className="p-4">
-            <div className="mb-2 flex h-10 w-10 items-center justify-center rounded-lg bg-[oklch(var(--status-free)/0.15)]">
-              <MapPin className="h-5 w-5 text-[oklch(var(--status-free))]" />
-            </div>
-            <p className="text-2xl font-bold text-foreground">{freeShortTerm}</p>
-            <p className="text-sm text-muted-foreground">Short-term spots</p>
-          </CardContent>
-        </Card>
-        
-        <Card className="cursor-pointer transition-shadow hover:shadow-md" onClick={() => setCurrentScreen("map")}>
-          <CardContent className="p-4">
-            <div className="mb-2 flex h-10 w-10 items-center justify-center rounded-lg bg-[oklch(var(--status-reserved)/0.15)]">
-              <Clock className="h-5 w-5 text-[oklch(var(--status-reserved))]" />
-            </div>
-            <p className="text-2xl font-bold text-foreground">{freeLongTerm}</p>
-            <p className="text-sm text-muted-foreground">Long-term spots</p>
-          </CardContent>
-        </Card>
-      </div>
-      
-      {/* Quick Actions */}
-      <div className="mt-2">
-        <h2 className="mb-3 text-lg font-semibold text-foreground">Quick Actions</h2>
-        <div className="space-y-2">
-          <Card 
-            className="cursor-pointer transition-shadow hover:shadow-md"
-            onClick={() => setCurrentScreen("map")}
-          >
-            <CardContent className="flex items-center gap-4 p-4">
-              <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10">
-                <MapPin className="h-6 w-6 text-primary" />
-              </div>
-              <div className="flex-1">
-                <p className="font-medium text-foreground">Book Now</p>
-                <p className="text-sm text-muted-foreground">Find available parking</p>
-              </div>
-              <ChevronRight className="h-5 w-5 text-muted-foreground" />
-            </CardContent>
-          </Card>
-          
-          <Card 
-            className="cursor-pointer transition-shadow hover:shadow-md"
-            onClick={() => setCurrentScreen("profile")}
-          >
-            <CardContent className="flex items-center gap-4 p-4">
-              <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-secondary">
-                <Car className="h-6 w-6 text-secondary-foreground" />
-              </div>
-              <div className="flex-1">
-                <p className="font-medium text-foreground">My Vehicles</p>
-                <p className="text-sm text-muted-foreground">{user?.cars.length || 0} registered</p>
-              </div>
-              <ChevronRight className="h-5 w-5 text-muted-foreground" />
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-      
-      {/* Promo Banner */}
-      {user?.promoCode && (
-        <Card className="mt-2 bg-accent/10 border-accent/30">
-          <CardContent className="p-4">
+    <div className="min-h-screen bg-gray-50">
+      {/* Main content */}
+      <div className="px-6 py-4 pb-24">
+        {/* Blue Header Card */}
+        <div className="bg-[#495E8E] rounded-b-[20px] p-4 pb-6 mb-6 shadow-md flex flex-col">
+          <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-3">
-              <Sparkles className="h-5 w-5 text-accent" />
+              <div className="w-14 h-14 bg-white rounded-full flex items-center justify-center overflow-hidden">
+                <Image 
+                  src="/icon_light.svg" 
+                  alt="Logo" 
+                  width={80}
+                  height={80}
+                  className="object-contain"
+                  style={{ transform: 'scale(1.3) translateY(4px) translateX(4px)' }}
+                />
+              </div>
               <div>
-                <p className="font-medium text-foreground">First Parking Free!</p>
-                <p className="text-sm text-muted-foreground">Use code FIRST for 150&#8376; off</p>
+                <p className="text-gray-200 text-sm">Welcome back,</p>
+                <p className="text-white text-xl font-extrabold">User Name</p>
               </div>
             </div>
-          </CardContent>
-        </Card>
-      )}
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center">
+                <Image 
+                  src="/bell.svg" 
+                  alt="Notifications" 
+                  width={32}
+                  height={32}
+                  className="object-contain"
+                />
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center justify-between bg-[#354469] rounded-xl p-3">
+            <div>
+              <p className="text-gray-300 text-sm">Bonus points</p>
+              <p className="text-white text-lg font-bold">50</p>
+            </div>
+            <Image 
+              src="/gift.svg" 
+              alt="Gift" 
+              width={24}
+              height={24}
+              className="object-contain"
+            />
+          </div>
+        </div>
+
+        {/* Active Booking Card */}
+        <div className="bg-[#F0EDED] rounded-[20px] p-5 mb-8" style={{boxShadow: '0 10px 20px rgba(0,0,0,0.08)'}}>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <Image 
+                src="/clock.svg" 
+                alt="Clock" 
+                width={48}
+                height={48}
+                className="object-contain"
+              />
+              <div>
+                <h3 className="text-[#333333] font-extrabold text-lg drop-shadow-md">Active Booking</h3>
+                <p className="text-gray-600 text-sm">Spot A-24 • 2h remaining</p>
+              </div>
+            </div>
+            <button 
+              onClick={() => setCurrentScreen("booking")}
+              className="p-2 rounded-lg hover:bg-gray-200 transition-colors"
+            >
+              <Image 
+                src="/Arrow_right.svg" 
+                alt="Arrow" 
+                width={32}
+                height={32}
+                className="object-contain"
+              />
+            </button>
+          </div>
+        </div>
+
+        {/* Parking Spots */}
+        <div className="mb-8">
+          <div className="grid grid-cols-2 gap-6">
+            <div className="bg-[#F0EDED] rounded-[20px] p-5" style={{boxShadow: '0 10px 20px rgba(0,0,0,0.08)'}}>
+              <h4 className="text-[#333333] font-extrabold text-lg mb-3">Short-term</h4>
+              <p className="text-gray-600 text-sm mb-4">12 spots available</p>
+              <div className="flex gap-2">
+                {[1,2,3].map(i => (
+                  <div key={i} className="w-3 h-3 bg-green-500 rounded-full"></div>
+                ))}
+              </div>
+            </div>
+            
+            <div className="bg-[#F0EDED] rounded-[20px] p-5" style={{boxShadow: '0 10px 20px rgba(0,0,0,0.08)'}}>
+              <h4 className="text-[#333333] font-extrabold text-lg mb-3">Long-term</h4>
+              <p className="text-gray-600 text-sm mb-4">8 spots available</p>
+              <div className="flex gap-2">
+                {[1,2].map(i => (
+                  <div key={i} className="w-3 h-3 bg-green-500 rounded-full"></div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Quick Actions */}
+        <div className="mb-8">
+          <h3 className="text-[#333333] font-extrabold text-lg mb-6">Quick Actions</h3>
+          <div className="space-y-6">
+            <button 
+              onClick={() => setCurrentScreen("map")}
+              className="w-full bg-[#4A5E8E] rounded-[20px] p-5" style={{boxShadow: '0 10px 20px rgba(0,0,0,0.08)'}}>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <Image 
+                    src="/location.svg" 
+                    alt="Location" 
+                    width={40}
+                    height={40}
+                    className="object-contain filter brightness-0 invert"
+                  />
+                  <div className="text-left">
+                    <span className="text-white font-bold text-xl drop-shadow-md">Book now</span>
+                    <p className="text-white/70 text-sm">Find available parking</p>
+                  </div>
+                </div>
+                <Image 
+                  src="/Arrow_right.svg" 
+                  alt="Arrow" 
+                  width={36}
+                  height={36}
+                  className="object-contain filter brightness-0 invert"
+                />
+              </div>
+            </button>
+            
+            <button className="w-full bg-[#9A56AD] rounded-[20px] p-5" style={{boxShadow: '0 10px 20px rgba(0,0,0,0.08)'}}>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <Image 
+                    src="/car.svg" 
+                    alt="Car" 
+                    width={40}
+                    height={40}
+                    className="object-contain filter brightness-0 invert"
+                  />
+                  <div className="text-left">
+                    <span className="text-white font-bold text-xl drop-shadow-md">My vehicles</span>
+                    <p className="text-white/70 text-sm">1 registered</p>
+                  </div>
+                </div>
+                <Image 
+                  src="/Arrow_right.svg" 
+                  alt="Arrow" 
+                  width={36}
+                  height={36}
+                  className="object-contain filter brightness-0 invert"
+                />
+              </div>
+            </button>
+          </div>
+        </div>
+
+        {/* Orange Banner */}
+        <div className="bg-[#FFB380] rounded-[20px] p-5 mb-24" style={{boxShadow: '0 10px 20px rgba(0,0,0,0.08)'}}>
+          <div className="flex items-center gap-4">
+            <div className="w-14 h-14 bg-white/20 rounded-xl flex items-center justify-center">
+              <Image 
+                src="/gift.svg" 
+                alt="Gift" 
+                width={32}
+                height={32}
+                className="object-contain filter brightness-0 invert"
+              />
+            </div>
+            <div>
+              <h3 className="text-white font-extrabold text-lg">Special Offer!</h3>
+              <p className="text-orange-100 text-sm">Get 50% off your first booking</p>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      {/* Bottom Navigation */}
+      <div className="absolute bottom-0 left-0 right-0 h-20 bg-white border-t border-gray-200 px-2 pb-4">
+        <div className="flex justify-around items-center h-full">
+          {navItems.map((item) => (
+            <button
+              key={item.id}
+              onClick={() => setActiveTab(item.id)}
+              className="flex flex-col items-center gap-1 rounded-xl px-4 py-2 transition-colors"
+            >
+              <Image 
+                src={`${item.icon}?t=${Date.now()}`} 
+                alt={item.label} 
+                width={28}
+                height={28}
+                className={`object-contain ${item.active ? 'opacity-100' : 'opacity-60'}`}
+                unoptimized
+              />
+              <span className={`text-xs font-medium ${item.active ? 'text-[#495E8E]' : 'text-gray-500'}`}>
+                {item.label}
+              </span>
+            </button>
+          ))}
+        </div>
+      </div>
     </div>
   )
 }
