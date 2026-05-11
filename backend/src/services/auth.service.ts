@@ -1,6 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcrypt';
-import jwt from 'jsonwebtoken';
+import jwt, { SignOptions } from 'jsonwebtoken';
 import { logger } from '../server';
 
 const prisma = new PrismaClient();
@@ -76,7 +76,7 @@ export class AuthService {
     return jwt.sign(
       { userId },
       this.JWT_SECRET,
-      { expiresIn: this.JWT_EXPIRE }
+      { expiresIn: this.JWT_EXPIRE } as SignOptions
     );
   }
 

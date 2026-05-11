@@ -11,152 +11,181 @@ datasource db {
 }
 
 model User {
-  id              String      @id @default(cuid())
-  phone           String      @unique
-  name            String?
-  balance         Float       @default(0)
-  inAllowCount    Int         @default(0) // in_allow_count
-  isBanned        Boolean     @default(false) // is_banned
-  banUntil        DateTime?   // ban_until
-  createdAt       DateTime    @default(now()) // created_at
-  updatedAt       DateTime    @updatedAt // updated_at
+  id                    String      @id @default(cuid())
+  phoneNumber           String      @unique
+  firstName             String?
+  lastName              String?
+  email                 String?     @unique
+  carPlate              String?     @unique
+  walletBalance         Float       @default(0)
+  noShowCount           Int         @default(0)
+  isBanned              Boolean     @default(false)
+  bannedUntil           DateTime?
+  createdAt             DateTime    @default(now())
+  updatedAt             DateTime    @updatedAt
   
   // Relations
-  bookings        Booking[]
-  vehicles        Vehicle[]
-  walletTransactions WalletTransaction[]
+  bookings              Booking[]
+  transactions          Transaction[]
+  payments              Payment[]
+  renewalNotifications  RenewalNotification[]
+  longTermRentals       LongTermRental[]
 
   @@map("users")
 }
 
-model Vehicle {
-  id        String  @id @default(cuid())
-  userId    String  // user_id
-  plate     String  // plate
-  brand     String? // brand
-  model     String? // model
-  isDefault Boolean @default(false) // is_default
-  createdAt DateTime @default(now())
+model ParkingSpot {
+  id                    String      @id @default(cuid())
+  spotNumber            String      @unique
+  type                  SpotType    @default(SHORT_TERM)
+  status                SpotStatus  @default(FREE)
+  currentUserPlate      String?
+  currentUserId         String?     @db.Uuid
+  createdAt             DateTime    @default(now())
+  updatedAt             DateTime    @updatedAt
   
   // Relations
-  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  bookings  Booking[]
+  bookings              Booking[]
+  longTermRentals       LongTermRental[]
 
-  @@unique([userId, plate])
-  @@map("vehicles")
-}
-
-model PromoCode {
-  id            String    @id @default(cuid())
-  code          String    @unique
-  promoType     PromoType // promo_type
-  discountValue Float     // discount_value
-  minSum        Float?    // min_sum
-  usedCount     Int       @default(0) // used_count
-  maxCount      Int?      // max_count
-  expiresAt     DateTime? // expires_at
-  createdAt     DateTime  @default(now())
-  
-  // Relations
-  bookings      Booking[]
-
-  @@map("promo_codes")
+  @@map("parking_spots")
 }
 
 model Booking {
-  id              String        @id @default(cuid())
-  userId          String        // user_id
-  vehicleId       String        // vehicle_id
-  promoCodeId     String?       // promo_code_id
-  type            BookingType   // type
-  bookingStatus   BookingStatus // booking_status
-  plate           String        // plate
-  amount          Float         // amount
-  isPaid         Boolean       @default(false) // is_paid
-  arrivedAt       DateTime?     // arrived_at
-  collectedAt     DateTime?     // collected_at
-  completedAt     DateTime?     // completed_at
-  createdAt       DateTime      @default(now()) // created_at
+  id                    String      @id @default(cuid())
+  userId                String
+  spotId                String
+  startTime             DateTime
+  estimatedEndTime      DateTime
+  actualEndTime         DateTime?
+  status                BookingStatus @default(PENDING)
+  isPaid                Boolean     @default(false)
+  totalCost             Float       @default(0)
+  minutesExtended       Int         @default(0)
+  createdAt             DateTime    @default(now())
+  updatedAt             DateTime    @updatedAt
   
   // Relations
-  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  vehicle         Vehicle       @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
-  promoCode       PromoCode?    @relation(fields: [promoCodeId], references: [id], onDelete: SetNull)
-  longTermDetails LongTermDetails?
-  shortTermDetails ShortTermDetails?
-  walletTransactions WalletTransaction[]
+  user                  User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  spot                  ParkingSpot @relation(fields: [spotId], references: [id], onDelete: Cascade)
+  payment               Payment?
 
   @@map("bookings")
 }
 
-model LongTermDetails {
-  id        String   @id @default(cuid())
-  bookingId String   @unique // booking_id
-  duration  Int      // duration in days
-  startsAt  DateTime // starts_at
-  endsAt    DateTime // ends_at
-  amount    Float    // amount
+model LongTermRental {
+  id                    String      @id @default(cuid())
+  userId                String
+  spotId                String
+  rentalDays            Int         // 1, 3, 5, 7, 14
+  totalCost             Float
+  startDate             DateTime
+  endDate               DateTime
+  isPaid                Boolean     @default(false)
+  status                RentalStatus @default(ACTIVE)
+  createdAt             DateTime    @default(now())
+  updatedAt             DateTime    @updatedAt
   
   // Relations
-  booking   Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  user                  User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  spot                  ParkingSpot @relation(fields: [spotId], references: [id], onDelete: Cascade)
+  payment               Payment?
+  renewalNotification   RenewalNotification?
 
-  @@map("long_term_details")
+  @@map("long_term_rentals")
 }
 
-model ShortTermDetails {
-  id                       String    @id @default(cuid())
-  bookingId                String    @unique // booking_id
-  arrivedAt                DateTime? // arrived_at
-  collectedAt              DateTime? // collected_at
-  waitingFreePaidMinutes   Int?      // waiting_free_paid_minutes
-  minDueMinutes            Int?      // min_due_minutes
+model Payment {
+  id                    String      @id @default(cuid())
+  userId                String
+  bookingId             String?    @unique
+  rentalId              String?    @unique
+  amount                Float
+  status                PaymentStatus @default(PENDING)
+  stripePaymentIntentId String?
+  paymentMethod         PaymentMethod @default(WALLET)
+  transactionId         String?
+  createdAt             DateTime    @default(now())
+  updatedAt             DateTime    @updatedAt
   
   // Relations
-  booking                  Booking   @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  user                  User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  booking               Booking?    @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  rental                LongTermRental? @relation(fields: [rentalId], references: [id], onDelete: Cascade)
 
-  @@map("short_term_details")
+  @@map("payments")
 }
 
-model WalletTransaction {
-  id                    String              @id @default(cuid())
-  userId                String              // user_id
-  bookingId             String?             // booking_id
-  type                  TransactionType     // type
-  amount                Float               // amount
-  balanceAfter          Float               // balance_after
-  description           String?             // description
-  stripePaymentIntentId String?             // stripe_payment_intent_id
-  createdAt             DateTime            @default(now()) // created_at
+model Transaction {
+  id                    String      @id @default(cuid())
+  userId                String
+  amount                Float
+  type                  TransactionType
+  description           String?
+  balanceBefore         Float
+  balanceAfter          Float
+  createdAt             DateTime    @default(now())
   
   // Relations
-  user                  User                @relation(fields: [userId], references: [id], onDelete: Cascade)
-  booking               Booking?            @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+  user                  User        @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@map("wallet_transactions")
+  @@map("transactions")
 }
 
-model ParkingPoint {
-  id            String      @id @default(cuid())
-  name          String      // name
-  code          String      @unique // code
-  type          String      // type
-  status        String      @default("active") // status
-  currentPlace  String?     // current_place
-  updatedAt     DateTime    @updatedAt // updated_at
+model RenewalNotification {
+  id                    String      @id @default(cuid())
+  userId                String
+  rentalId              String
+  notificationTime      DateTime
+  isSent                Boolean     @default(false)
+  createdAt             DateTime    @default(now())
   
-  @@map("parking_points")
+  // Relations
+  user                  User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  rental                LongTermRental @relation(fields: [rentalId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([rentalId])
+  @@map("renewal_notifications")
+}
+
+model PromoCode {
+  id                    String      @id @default(cuid())
+  code                  String      @unique
+  discount              Float       // в тенге
+  type                  PromoType
+  maxUses               Int?
+  usedCount             Int         @default(0)
+  isActive              Boolean     @default(true)
+  expiresAt             DateTime?
+  createdAt             DateTime    @default(now())
+
+  @@map("promo_codes")
+}
+
+model LPREvent {
+  id                    String      @id @default(cuid())
+  carPlate              String
+  eventType             LPREventType
+  timestamp             DateTime    @default(now())
+  spotNumber            String?
+  imageUrl              String?
+  confidence            Float?
+  
+  @@map("lpr_events")
 }
 
 // Enums
-enum PromoType {
-  PERCENTAGE
-  FIXED
-  FIRST_RIDE
-}
-
-enum BookingType {
+enum SpotType {
   SHORT_TERM
   LONG_TERM
+}
+
+enum SpotStatus {
+  FREE
+  BOOKED
+  OCCUPIED
+  RESERVED
+  REPAIR
 }
 
 enum BookingStatus {
@@ -167,6 +196,25 @@ enum BookingStatus {
   NO_SHOW
 }
 
+enum RentalStatus {
+  ACTIVE
+  EXPIRED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+enum PaymentMethod {
+  WALLET
+  STRIPE
+  CARD
+}
+
 enum TransactionType {
   DEPOSIT
   WITHDRAWAL
@@ -174,4 +222,15 @@ enum TransactionType {
   REFUND
   CASHBACK
   PROMO
+}
+
+enum PromoType {
+  PERCENTAGE
+  FIXED
+  FIRST_RIDE
+}
+
+enum LPREventType {
+  ENTRY
+  EXIT
 }

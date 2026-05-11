@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import { PrismaClient } from '@prisma/client';
 import bookingService from '../services/booking.service';
 import paymentService from '../services/payment.service';
 import { verifyToken } from '../middleware/auth';
@@ -8,6 +9,7 @@ import { getExtendBookingCost } from '../utils/pricing';
 import { logger } from '../server';
 
 const router = Router();
+const prisma = new PrismaClient();
 
 // Все маршруты требуют авторизации
 router.use(verifyToken);
@@ -63,7 +65,7 @@ router.post('/:id/complete', async (req: Request, res: Response) => {
     const userId = req.userId!;
 
     // Получить бронирование для проверки
-    const booking = await (await import('@prisma/client')).PrismaClient.prototype.booking.findUnique({
+    const booking = await prisma.booking.findUnique({
       where: { id },
     });
 
@@ -102,7 +104,7 @@ router.post('/:id/cancel', async (req: Request, res: Response) => {
     const userId = req.userId!;
 
     // Проверить, принадлежит ли бронирование пользователю
-    const booking = await (await import('@prisma/client')).PrismaClient.prototype.booking.findUnique({
+    const booking = await prisma.booking.findUnique({
       where: { id },
     });
 
@@ -140,7 +142,7 @@ router.post('/:id/pay', checkBalance(0), async (req: Request, res: Response) => 
     const userId = req.userId!;
 
     // Получить бронирование для проверки стоимости
-    const booking = await (await import('@prisma/client')).PrismaClient.prototype.booking.findUnique({
+    const booking = await prisma.booking.findUnique({
       where: { id },
     });
 
@@ -188,7 +190,7 @@ router.post('/:id/extend', checkBalance(getExtendBookingCost()), async (req: Req
     const userId = req.userId!;
 
     // Проверить, принадлежит ли бронирование пользователю
-    const booking = await (await import('@prisma/client')).PrismaClient.prototype.booking.findUnique({
+    const booking = await prisma.booking.findUnique({
       where: { id },
     });
 
@@ -209,7 +211,7 @@ router.post('/:id/extend', checkBalance(getExtendBookingCost()), async (req: Req
     );
 
     // Обновить время окончания
-    const updatedBooking = await (await import('@prisma/client')).PrismaClient.prototype.booking.update({
+    const updatedBooking = await prisma.booking.update({
       where: { id },
       data: {
         estimatedEndTime: new Date(

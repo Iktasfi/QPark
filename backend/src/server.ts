@@ -93,13 +93,60 @@ io.on('connection', (socket) => {
 // Export for use in other files
 export { app, httpServer, io, logger };
 
+// Initialize parking spots on startup
+async function initializeParkingSpots() {
+  try {
+    const { PrismaClient } = await import('@prisma/client');
+    const prisma = new PrismaClient();
+    
+    // Проверить, есть ли уже места
+    const count = await prisma.parkingSpot.count();
+    if (count > 0) {
+      logger.info(`ℹ️  Parking spots already initialized: ${count} spots`);
+      return;
+    }
+
+    // Создать 30 мест (15 коротких, 15 долгих)
+    const spotsData = [];
+
+    // Короткие места (SP-01 до SP-15)
+    for (let i = 1; i <= 15; i++) {
+      spotsData.push({
+        spotNumber: `SP-${String(i).padStart(2, '0')}`,
+        type: 'SHORT_TERM' as const,
+        status: 'FREE' as const,
+      });
+    }
+
+    // Длинные места (SP-16 до SP-30)
+    for (let i = 16; i <= 30; i++) {
+      spotsData.push({
+        spotNumber: `SP-${String(i).padStart(2, '0')}`,
+        type: 'LONG_TERM' as const,
+        status: 'FREE' as const,
+      });
+    }
+
+    await prisma.parkingSpot.createMany({
+      data: spotsData,
+    });
+
+    logger.info(`✅ Parking spots initialized: 30 spots created`);
+  } catch (error) {
+    logger.error('❌ Error initializing parking spots:', error);
+  }
+}
+
 // Start server
 const PORT = process.env.PORT || 3001;
 
-httpServer.listen(PORT, () => {
+httpServer.listen(PORT, async () => {
   logger.info(`🚀 Server running on port ${PORT}`);
   logger.info(`📍 Environment: ${process.env.NODE_ENV || 'development'}`);
   logger.info(`📡 Socket.io listening for connections`);
+  
+  // Initialize parking spots
+  await initializeParkingSpots();
 });
 
 // Graceful shutdown

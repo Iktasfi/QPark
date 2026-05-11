@@ -17,7 +17,7 @@ router.get('/db', async (req: Request, res: Response) => {
     const userCount = await prisma.user.count();
     
     // Получить количество парковочных мест
-    const parkingPointCount = await prisma.parkingPoint.count();
+    const parkingPointCount = await prisma.parkingSpot.count();
     
     res.json({
       status: 'connected',
@@ -46,7 +46,6 @@ router.get('/users', async (req: Request, res: Response) => {
     const users = await prisma.user.findMany({
       take: 5,
       include: {
-        vehicles: true,
         _count: {
           select: {
             bookings: true,
