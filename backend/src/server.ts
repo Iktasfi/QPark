@@ -8,6 +8,12 @@ import pinoHttp from 'pino-http';
 
 // Import routes
 import authRoutes from './routes/auth.routes';
+import parkingRoutes from './routes/parking.routes';
+import bookingRoutes from './routes/booking.routes';
+import paymentRoutes from './routes/payment.routes';
+import rentalRoutes from './routes/rental.routes';
+import adminRoutes from './routes/admin.routes';
+import testRoutes from './routes/test.routes';
 
 // Load environment variables
 dotenv.config();
@@ -39,6 +45,12 @@ app.use(express.urlencoded({ extended: true }));
 
 // Routes
 app.use('/auth', authRoutes);
+app.use('/parking', parkingRoutes);
+app.use('/bookings', bookingRoutes);
+app.use('/payments', paymentRoutes);
+app.use('/rentals', rentalRoutes);
+app.use('/admin', adminRoutes);
+app.use('/test', testRoutes);
 
 // Health check endpoint
 app.get('/health', (req: Request, res: Response) => {

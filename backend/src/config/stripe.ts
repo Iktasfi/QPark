@@ -1,5 +1,9 @@
 import Stripe from 'stripe';
-import { logger } from '../server';
+import pino from 'pino';
+
+const logger = pino({
+  level: process.env.LOG_LEVEL || 'info',
+});
 
 if (!process.env.STRIPE_SECRET_KEY) {
   logger.error('❌ STRIPE_SECRET_KEY is not defined');
