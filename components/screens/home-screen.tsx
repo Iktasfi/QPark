@@ -100,7 +100,11 @@ export function HomeScreen() {
         {/* Parking Spots */}
         <div className="mb-8">
           <div className="grid grid-cols-2 gap-6">
-            <div className="bg-[#F0EDED] rounded-[20px] p-5" style={{boxShadow: '0 10px 20px rgba(0,0,0,0.08)'}}>
+            <button 
+              onClick={() => setCurrentScreen("map")}
+              className="bg-[#F0EDED] rounded-[20px] p-5 text-left hover:bg-[#E5DCDC] transition-colors" 
+              style={{boxShadow: '0 10px 20px rgba(0,0,0,0.08)'}}
+            >
               <h4 className="text-[#333333] font-extrabold text-lg mb-3">Short-term</h4>
               <p className="text-gray-600 text-sm mb-4">12 spots available</p>
               <div className="flex gap-2">
@@ -108,9 +112,13 @@ export function HomeScreen() {
                   <div key={i} className="w-3 h-3 bg-green-500 rounded-full"></div>
                 ))}
               </div>
-            </div>
+            </button>
             
-            <div className="bg-[#F0EDED] rounded-[20px] p-5" style={{boxShadow: '0 10px 20px rgba(0,0,0,0.08)'}}>
+            <button 
+              onClick={() => setCurrentScreen("map")}
+              className="bg-[#F0EDED] rounded-[20px] p-5 text-left hover:bg-[#E5DCDC] transition-colors" 
+              style={{boxShadow: '0 10px 20px rgba(0,0,0,0.08)'}}
+            >
               <h4 className="text-[#333333] font-extrabold text-lg mb-3">Long-term</h4>
               <p className="text-gray-600 text-sm mb-4">8 spots available</p>
               <div className="flex gap-2">
@@ -118,7 +126,7 @@ export function HomeScreen() {
                   <div key={i} className="w-3 h-3 bg-green-500 rounded-full"></div>
                 ))}
               </div>
-            </div>
+            </button>
           </div>
         </div>
 
@@ -168,13 +176,18 @@ export function HomeScreen() {
                     <p className="text-white/70 text-sm">1 registered</p>
                   </div>
                 </div>
-                <Image 
-                  src="/Arrow_right.svg" 
-                  alt="Arrow" 
-                  width={36}
-                  height={36}
-                  className="object-contain filter brightness-0 invert"
-                />
+                <button 
+                  onClick={() => setCurrentScreen("profile")}
+                  className="p-2 rounded-lg hover:bg-white/10 transition-colors"
+                >
+                  <Image 
+                    src="/Arrow_right.svg" 
+                    alt="Arrow" 
+                    width={36}
+                    height={36}
+                    className="object-contain filter brightness-0 invert"
+                  />
+                </button>
               </div>
             </button>
           </div>
