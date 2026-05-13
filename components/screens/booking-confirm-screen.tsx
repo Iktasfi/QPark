@@ -12,7 +12,7 @@ export function BookingConfirmScreen() {
   const isLongTerm = selectedSpot?.type === "long-term"
   
   return (
-    <div className="flex flex-col items-center gap-6 p-4 pt-8">
+    <div className="flex flex-col items-center gap-6 p-4 pt-8 pb-24">
       {/* Success Icon */}
       <div className="flex h-20 w-20 items-center justify-center rounded-full bg-[oklch(var(--status-free)/0.15)]">
         <CheckCircle2 className="h-12 w-12 text-[oklch(var(--status-free))]" />
@@ -35,8 +35,8 @@ export function BookingConfirmScreen() {
       <Card className="w-full">
         <CardContent className="p-4 space-y-4">
           <div className="flex items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10">
-              <MapPin className="h-6 w-6 text-primary" />
+            <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-[#354469]/10">
+              <MapPin className="h-6 w-6 text-[#354469]" />
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Parking Spot</p>
@@ -45,8 +45,8 @@ export function BookingConfirmScreen() {
           </div>
           
           <div className="flex items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10">
-              <Car className="h-6 w-6 text-primary" />
+            <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-[#354469]/10">
+              <Car className="h-6 w-6 text-[#354469]" />
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Vehicle</p>
@@ -59,8 +59,8 @@ export function BookingConfirmScreen() {
           
           {!isLongTerm && (
             <div className="flex items-center gap-3">
-              <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-accent/10">
-                <Clock className="h-6 w-6 text-accent" />
+              <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-red-100">
+                <Clock className="h-6 w-6 text-red-600" />
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Arrival Deadline</p>
@@ -89,7 +89,7 @@ export function BookingConfirmScreen() {
       <Card className="w-full bg-secondary/50">
         <CardContent className="p-4">
           <div className="flex items-center gap-3">
-            <Camera className="h-6 w-6 text-primary" />
+            <Camera className="h-6 w-6 text-[#354469]" />
             <div>
               <p className="font-medium text-foreground">LPR Entry</p>
               <p className="text-sm text-muted-foreground">
@@ -103,7 +103,7 @@ export function BookingConfirmScreen() {
       {/* Actions */}
       <div className="w-full space-y-2">
         <Button 
-          className="w-full" 
+          className="w-full bg-[#354469] hover:bg-[#354469]/90" 
           size="lg"
           onClick={() => setCurrentScreen("active-booking")}
         >
@@ -111,12 +111,44 @@ export function BookingConfirmScreen() {
         </Button>
         <Button 
           variant="outline" 
-          className="w-full" 
+          className="w-full hover:bg-[#354469]/10 hover:border-[#354469] hover:text-[#354469]" 
           size="lg"
           onClick={() => setCurrentScreen("home")}
         >
           Back to Home
         </Button>
+      </div>
+      
+      {/* Bottom Navigation */}
+      <div className="absolute bottom-0 left-0 right-0 h-20 bg-white border-t border-gray-300 z-50 shadow-lg" style={{ borderTop: '1px solid #D1D5DB' }}>
+        <div className="flex justify-around items-center h-full px-4">
+          {[
+            { id: "home", icon: "/Home_light.svg", activeIcon: "/Home_light_active.svg", label: "Home", active: false },
+            { id: "map", icon: "/Map_light.svg", activeIcon: "/Map_light_active.svg", label: "Map", active: true },
+            { id: "booking", icon: "/Component.svg", activeIcon: "/Component_active.svg", label: "Booking", active: false },
+            { id: "wallet", icon: "/wallet.svg", activeIcon: "/wallet_active.svg", label: "Wallet", active: false },
+            { id: "profile", icon: "/User_cicrle_light.svg", activeIcon: "/User_cicrle_light_active.svg", label: "Profile", active: false },
+          ].map((item) => (
+            <button
+              key={item.id}
+              onClick={() => setCurrentScreen(item.id)}
+              className="flex flex-col items-center justify-center gap-0.5 p-3 transition-all hover:bg-gray-100 rounded-xl active:scale-95"
+            >
+              <div className="w-8 h-8 flex items-center justify-center">
+                <img 
+                  src={item.active ? item.activeIcon : item.icon} 
+                  alt={item.label} 
+                  width={28}
+                  height={28}
+                  className={item.active ? "opacity-100" : "opacity-80"}
+                />
+              </div>
+              <span className={`text-xs font-medium ${item.active ? "text-[#36549B] drop-shadow-sm" : "text-gray-900 drop-shadow-sm"}`}>
+                {item.label}
+              </span>
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   )

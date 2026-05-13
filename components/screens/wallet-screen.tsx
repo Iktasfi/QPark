@@ -12,7 +12,7 @@ import { cn } from "@/lib/utils"
 const topUpAmounts = [500, 1000, 2000, 5000]
 
 export function WalletScreen() {
-  const { user, setUser } = useParking()
+  const { user, setUser, setCurrentScreen } = useParking()
   const [isTopUpOpen, setIsTopUpOpen] = useState(false)
   const [selectedAmount, setSelectedAmount] = useState<number | null>(null)
   const [isProcessing, setIsProcessing] = useState(false)
@@ -204,6 +204,38 @@ export function WalletScreen() {
           )}
         </CardContent>
       </Card>
+    
+    {/* Bottom Navigation */}
+    <div className="absolute bottom-0 left-0 right-0 h-20 bg-white border-t border-gray-300 z-50 shadow-lg" style={{ borderTop: '1px solid #D1D5DB' }}>
+      <div className="flex justify-around items-center h-full px-4">
+        {[
+          { id: "home", icon: "/Home_light.svg", activeIcon: "/Home_light_active.svg", label: "Home", active: false },
+          { id: "map", icon: "/Map_light.svg", activeIcon: "/Map_light_active.svg", label: "Map", active: false },
+          { id: "booking", icon: "/Component.svg", activeIcon: "/Component_active.svg", label: "Booking", active: false },
+          { id: "wallet", icon: "/wallet.svg", activeIcon: "/wallet_active.svg", label: "Wallet", active: true },
+          { id: "profile", icon: "/User_cicrle_light.svg", activeIcon: "/User_cicrle_light_active.svg", label: "Profile", active: false },
+        ].map((item) => (
+          <button
+            key={item.id}
+            onClick={() => setCurrentScreen(item.id)}
+            className="flex flex-col items-center justify-center gap-0.5 p-3 transition-all hover:bg-gray-100 rounded-xl active:scale-95"
+          >
+            <div className="w-8 h-8 flex items-center justify-center">
+              <img 
+                src={item.active ? item.activeIcon : item.icon} 
+                alt={item.label} 
+                width={28}
+                height={28}
+                className={item.active ? "opacity-100" : "opacity-80"}
+              />
+            </div>
+            <span className={`text-xs font-medium ${item.active ? "text-[#36549B] drop-shadow-sm" : "text-gray-900 drop-shadow-sm"}`}>
+              {item.label}
+            </span>
+          </button>
+        ))}
+      </div>
     </div>
+  </div>
   )
 }

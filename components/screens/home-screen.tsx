@@ -9,11 +9,11 @@ export function HomeScreen() {
   const [activeTab, setActiveTab] = useState("home")
 
   const navItems = [
-    { id: "home", icon: "/Home_light.svg", label: "Home", active: true },
-    { id: "map", icon: "/Map_light.svg", label: "Map", active: false },
-    { id: "booking", icon: "/Component.svg", label: "Booking", active: false },
-    { id: "wallet", icon: "/wallet.svg", label: "Wallet", active: false },
-    { id: "profile", icon: "/User_cicrle_light.svg", label: "Profile", active: false },
+    { id: "home", icon: "/Home_light.svg", activeIcon: "/Home_light_active.svg", label: "Home", active: true },
+    { id: "map", icon: "/Map_light.svg", activeIcon: "/Map_light_active.svg", label: "Map", active: false },
+    { id: "booking", icon: "/Component.svg", activeIcon: "/Component_active.svg", label: "Booking", active: false },
+    { id: "wallet", icon: "/wallet.svg", activeIcon: "/wallet_active.svg", label: "Wallet", active: false },
+    { id: "profile", icon: "/User_cicrle_light.svg", activeIcon: "/User_cicrle_light_active.svg", label: "Profile", active: false },
   ]
 
   return (
@@ -39,7 +39,10 @@ export function HomeScreen() {
                 <p className="text-white text-xl font-extrabold">User Name</p>
               </div>
             </div>
-            <div className="flex items-center gap-4">
+            <button 
+              onClick={() => setCurrentScreen("profile")}
+              className="flex items-center gap-4 hover:bg-white/10 rounded-lg p-2 transition-colors"
+            >
               <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center">
                 <Image 
                   src="/bell.svg" 
@@ -49,20 +52,25 @@ export function HomeScreen() {
                   className="object-contain"
                 />
               </div>
-            </div>
+            </button>
           </div>
           <div className="flex items-center justify-between bg-[#354469] rounded-xl p-3">
             <div>
               <p className="text-gray-300 text-sm">Bonus points</p>
               <p className="text-white text-lg font-bold">50</p>
             </div>
-            <Image 
-              src="/gift.svg" 
-              alt="Gift" 
-              width={24}
-              height={24}
-              className="object-contain"
-            />
+            <button 
+              onClick={() => setCurrentScreen("wallet")}
+              className="hover:bg-white/10 rounded-lg p-2 transition-colors"
+            >
+              <Image 
+                src="/gift.svg" 
+                alt="Gift" 
+                width={24}
+                height={24}
+                className="object-contain"
+              />
+            </button>
           </div>
         </div>
 
@@ -134,9 +142,11 @@ export function HomeScreen() {
         <div className="mb-8">
           <h3 className="text-[#333333] font-extrabold text-lg mb-6">Quick Actions</h3>
           <div className="space-y-6">
-            <button 
+            <div 
               onClick={() => setCurrentScreen("map")}
-              className="w-full bg-[#4A5E8E] rounded-[20px] p-5" style={{boxShadow: '0 10px 20px rgba(0,0,0,0.08)'}}>
+              className="w-full bg-[#4A5E8E] rounded-[20px] p-5 cursor-pointer hover:bg-[#3A4D7C] transition-colors" 
+              style={{boxShadow: '0 10px 20px rgba(0,0,0,0.08)'}}
+            >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">
                   <Image 
@@ -159,9 +169,12 @@ export function HomeScreen() {
                   className="object-contain filter brightness-0 invert"
                 />
               </div>
-            </button>
-            
-            <button className="w-full bg-[#9A56AD] rounded-[20px] p-5" style={{boxShadow: '0 10px 20px rgba(0,0,0,0.08)'}}>
+            </div>
+            <div 
+              onClick={() => setCurrentScreen("profile")}
+              className="w-full bg-[#9A56AD] rounded-[20px] p-5 cursor-pointer hover:bg-[#8A4D9D] transition-colors" 
+              style={{boxShadow: '0 10px 20px rgba(0,0,0,0.08)'}}
+            >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">
                   <Image 
@@ -176,25 +189,24 @@ export function HomeScreen() {
                     <p className="text-white/70 text-sm">1 registered</p>
                   </div>
                 </div>
-                <button 
-                  onClick={() => setCurrentScreen("profile")}
-                  className="p-2 rounded-lg hover:bg-white/10 transition-colors"
-                >
-                  <Image 
-                    src="/Arrow_right.svg" 
-                    alt="Arrow" 
-                    width={36}
-                    height={36}
-                    className="object-contain filter brightness-0 invert"
-                  />
-                </button>
+                <Image 
+                  src="/Arrow_right.svg" 
+                  alt="Arrow" 
+                  width={36}
+                  height={36}
+                  className="object-contain filter brightness-0 invert"
+                />
               </div>
-            </button>
+            </div>
           </div>
         </div>
 
         {/* Orange Banner */}
-        <div className="bg-[#FFB380] rounded-[20px] p-5 mb-24" style={{boxShadow: '0 10px 20px rgba(0,0,0,0.08)'}}>
+        <div 
+          onClick={() => setCurrentScreen("wallet")}
+          className="w-full bg-[#FFB380] rounded-[20px] p-5 mb-24 cursor-pointer hover:bg-[#FFA34D] transition-colors" 
+          style={{boxShadow: '0 10px 20px rgba(0,0,0,0.08)'}}
+        >
           <div className="flex items-center gap-4">
             <div className="w-14 h-14 bg-white/20 rounded-xl flex items-center justify-center">
               <Image 
@@ -205,7 +217,7 @@ export function HomeScreen() {
                 className="object-contain filter brightness-0 invert"
               />
             </div>
-            <div>
+            <div className="text-left">
               <h3 className="text-white font-extrabold text-lg">Special Offer!</h3>
               <p className="text-orange-100 text-sm">Get 50% off your first booking</p>
             </div>
@@ -214,23 +226,24 @@ export function HomeScreen() {
       </div>
       
       {/* Bottom Navigation */}
-      <div className="absolute bottom-0 left-0 right-0 h-20 bg-white border-t border-gray-200 px-2 pb-4">
-        <div className="flex justify-around items-center h-full">
+      <div className="absolute bottom-0 left-0 right-0 h-20 bg-white border-t border-gray-300 z-50 shadow-lg" style={{ borderTop: '1px solid #D1D5DB' }}>
+        <div className="flex justify-around items-center h-full px-4">
           {navItems.map((item) => (
             <button
               key={item.id}
-              onClick={() => setActiveTab(item.id)}
-              className="flex flex-col items-center gap-1 rounded-xl px-4 py-2 transition-colors"
+              onClick={() => setCurrentScreen(item.id)}
+              className="flex flex-col items-center justify-center gap-0.5 p-3 transition-all hover:bg-gray-100 rounded-xl active:scale-95"
             >
-              <Image 
-                src={`${item.icon}?t=${Date.now()}`} 
-                alt={item.label} 
-                width={28}
-                height={28}
-                className={`object-contain ${item.active ? 'opacity-100' : 'opacity-60'}`}
-                unoptimized
-              />
-              <span className={`text-xs font-medium ${item.active ? 'text-[#495E8E]' : 'text-gray-500'}`}>
+              <div className="w-8 h-8 flex items-center justify-center">
+                <img 
+                  src={item.active ? item.activeIcon : item.icon} 
+                  alt={item.label} 
+                  width={28}
+                  height={28}
+                  className={item.active ? "opacity-100" : "opacity-80"}
+                />
+              </div>
+              <span className={`text-xs font-medium ${item.active ? "text-[#36549B] drop-shadow-sm" : "text-gray-900 drop-shadow-sm"}`}>
                 {item.label}
               </span>
             </button>

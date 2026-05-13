@@ -33,35 +33,8 @@ export function MobileShell({ children }: MobileShellProps) {
       </div>
       
       {/* Main content */}
-      <div className="h-[calc(100%-48px-80px)] overflow-y-auto bg-background">
+      <div className="h-[calc(100%-48px)] overflow-y-auto bg-background">
         {children}
-      </div>
-      
-      {/* Bottom navigation */}
-      <div className="absolute bottom-0 left-0 right-0 flex h-20 items-center justify-around border-t border-border bg-card px-2 pb-4">
-        {navItems.map((item) => {
-          const Icon = item.icon
-          const isActive = currentScreen === item.id || 
-            (item.id === "map" && (currentScreen === "spot-details" || currentScreen === "booking-confirm")) ||
-            (item.id === "booking" && currentScreen === "active-booking")
-          
-          return (
-            <button
-              key={item.id}
-              onClick={() => setCurrentScreen(item.id)}
-              className={cn(
-                "relative flex flex-col items-center gap-1 rounded-xl px-4 py-2 transition-colors",
-                isActive ? "text-primary" : "text-muted-foreground"
-              )}
-            >
-              <Icon className="h-6 w-6" />
-              <span className="text-xs font-medium">{item.label}</span>
-              {item.badge && (
-                <span className="absolute right-2 top-1 h-2 w-2 rounded-full bg-accent" />
-              )}
-            </button>
-          )
-        })}
       </div>
     </div>
   )
