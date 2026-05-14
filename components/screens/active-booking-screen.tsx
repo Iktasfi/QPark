@@ -6,7 +6,16 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
-import { MapPin, Car, Clock, AlertTriangle, CreditCard, Camera } from "lucide-react"
+import { MapPin, Car, Clock, AlertTriangle, CreditCard, Camera, Calendar, Check, X } from "lucide-react"
+import { cn } from "@/lib/utils"
+
+const extendOptions = [
+  { days: 1, price: 700, perDay: 700 },
+  { days: 3, price: 1800, perDay: 600 },
+  { days: 5, price: 2700, perDay: 540 },
+  { days: 7, price: 3500, perDay: 500 },
+  { days: 14, price: 6000, perDay: 429 },
+]
 
 export function ActiveBookingScreen() {
   const { activeBooking, selectedSpot, user, setCurrentScreen, setActiveBooking, updateSpot, setUser } = useParking()
@@ -14,6 +23,9 @@ export function ActiveBookingScreen() {
   const [isArrived, setIsArrived] = useState(false)
   const [parkingDuration, setParkingDuration] = useState(0)
   const [isPaying, setIsPaying] = useState(false)
+  const [showExtend, setShowExtend] = useState(false)
+  const [selectedExtendDays, setSelectedExtendDays] = useState<number | null>(null)
+  const [isExtending, setIsExtending] = useState(false)
   
   const selectedCar = user?.cars.find(c => c.plateNumber === activeBooking?.plateNumber)
   const isLongTerm = selectedSpot?.type === "long-term"
@@ -56,45 +68,88 @@ export function ActiveBookingScreen() {
     setIsArrived(true)
     if (selectedSpot) {
       updateSpot(selectedSpot.id, { status: "OCCUPIED" })
+      // Tell backend: car entered
+      fetch("/backend/parking/simulate-entry", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ spotNumber: selectedSpot.id, carPlate: activeBooking?.plateNumber ?? "" }),
+      }).catch(() => {})
     }
   }
-  
+
   const handlePayAndExit = () => {
     if (!user) return
-    
+
     setIsPaying(true)
     const cost = calculateCost()
-    
+
     setTimeout(() => {
-      // Update user balance
       setUser({
         ...user,
         balance: user.balance - cost,
         transactions: [
-          { 
-            id: `t-${Date.now()}`, 
-            type: "parking_charge", 
-            amount: -cost, 
-            description: `Parking ${activeBooking?.spotId}`, 
-            date: new Date() 
+          {
+            id: `t-${Date.now()}`,
+            type: "parking_charge",
+            amount: -cost,
+            description: `Parking ${activeBooking?.spotId}`,
+            date: new Date(),
           },
-          ...user.transactions
-        ]
+          ...user.transactions,
+        ],
       })
-      
-      // Clear booking
+
       if (selectedSpot) {
         updateSpot(selectedSpot.id, { status: "FREE", bookedBy: undefined, plateNumber: undefined })
+        // Tell backend: car exited
+        fetch("/backend/parking/simulate-exit", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ spotNumber: selectedSpot.id, carPlate: activeBooking?.plateNumber ?? "" }),
+        }).catch(() => {})
       }
+
       setActiveBooking(null)
       setCurrentScreen("home")
       setIsPaying(false)
     }, 1500)
   }
-  
+
+  const handleExtendRental = () => {
+    if (!selectedExtendDays || !activeBooking || !user) return
+    setIsExtending(true)
+    const option = extendOptions.find(o => o.days === selectedExtendDays)!
+    setTimeout(() => {
+      setActiveBooking({ ...activeBooking, rentalDays: (activeBooking.rentalDays ?? 0) + selectedExtendDays })
+      setUser({
+        ...user,
+        balance: user.balance - option.price,
+        transactions: [
+          {
+            id: `t-${Date.now()}`,
+            type: "longterm_charge",
+            amount: -option.price,
+            description: `Extended rental ${activeBooking.spotId} by ${selectedExtendDays} day${selectedExtendDays > 1 ? "s" : ""}`,
+            date: new Date(),
+          },
+          ...user.transactions,
+        ],
+      })
+      setIsExtending(false)
+      setShowExtend(false)
+      setSelectedExtendDays(null)
+    }, 800)
+  }
+
   const handleCancelBooking = () => {
     if (selectedSpot) {
       updateSpot(selectedSpot.id, { status: "FREE", bookedBy: undefined, plateNumber: undefined })
+      // Tell backend: booking cancelled
+      fetch("/backend/parking/set-status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ spotNumber: selectedSpot.id, status: "FREE" }),
+      }).catch(() => {})
     }
     setActiveBooking(null)
     setCurrentScreen("home")
@@ -292,12 +347,103 @@ export function ActiveBookingScreen() {
         )}
         
         {isLongTerm && (
-          <Button variant="outline" size="lg" className="w-full hover:bg-[#36549B]/10 hover:border-[#36549B] hover:text-[#36549B]">
+          <Button
+            variant="outline"
+            size="lg"
+            className="w-full hover:bg-[#36549B]/10 hover:border-[#36549B] hover:text-[#36549B]"
+            onClick={() => setShowExtend(true)}
+          >
+            <Calendar className="h-5 w-5 mr-2" />
             Extend Rental
           </Button>
         )}
       </div>
       
+      {/* Extend Rental Bottom Sheet */}
+      {showExtend && (
+        <div className="absolute inset-0 z-50 flex flex-col justify-end">
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0 bg-black/40"
+            onClick={() => { setShowExtend(false); setSelectedExtendDays(null) }}
+          />
+          {/* Sheet */}
+          <div className="relative bg-white rounded-t-3xl px-5 pt-5 pb-28">
+            {/* Handle bar */}
+            <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-gray-200" />
+
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <Calendar className="h-5 w-5 text-[#36549B]" />
+                <h2 className="text-lg font-bold text-gray-900">Extend Rental</h2>
+              </div>
+              <button
+                onClick={() => { setShowExtend(false); setSelectedExtendDays(null) }}
+                className="p-1 rounded-full hover:bg-gray-100"
+              >
+                <X className="h-5 w-5 text-gray-500" />
+              </button>
+            </div>
+
+            <p className="text-sm text-gray-500 mb-4">
+              Current: <span className="font-semibold text-gray-800">{activeBooking?.rentalDays ?? 0} day{(activeBooking?.rentalDays ?? 0) !== 1 ? "s" : ""}</span> · Add more days below
+            </p>
+
+            <div className="space-y-2 mb-5">
+              {extendOptions.map((option) => (
+                <button
+                  key={option.days}
+                  onClick={() => setSelectedExtendDays(option.days)}
+                  className={cn(
+                    "flex w-full items-center justify-between rounded-xl border-2 p-3 transition-all",
+                    selectedExtendDays === option.days
+                      ? "border-[#354469] bg-[#354469]/5"
+                      : "border-gray-200 hover:border-[#354469]/40"
+                  )}
+                >
+                  <div className="text-left">
+                    <p className="font-semibold text-gray-900">
+                      +{option.days} {option.days === 1 ? "day" : "days"}
+                    </p>
+                    <p className="text-xs text-gray-500">{option.perDay} ₸/day</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <p className="font-bold text-[#36549B]">{option.price.toLocaleString()} ₸</p>
+                    {selectedExtendDays === option.days && (
+                      <div className="flex h-5 w-5 items-center justify-center rounded-full bg-[#354469]">
+                        <Check className="h-3 w-3 text-white" />
+                      </div>
+                    )}
+                  </div>
+                </button>
+              ))}
+            </div>
+
+            {selectedExtendDays && (
+              <div className="flex justify-between text-sm mb-4 px-1">
+                <span className="text-gray-500">New total period</span>
+                <span className="font-semibold text-gray-900">
+                  {(activeBooking?.rentalDays ?? 0) + selectedExtendDays} days
+                </span>
+              </div>
+            )}
+
+            <Button
+              size="lg"
+              className="w-full bg-[#354469] hover:bg-[#354469]/90"
+              disabled={!selectedExtendDays || isExtending}
+              onClick={handleExtendRental}
+            >
+              {isExtending
+                ? "Processing..."
+                : selectedExtendDays
+                  ? `Confirm +${selectedExtendDays} day${selectedExtendDays > 1 ? "s" : ""} · ${extendOptions.find(o => o.days === selectedExtendDays)!.price.toLocaleString()} ₸`
+                  : "Select a period"}
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Bottom Navigation */}
       <div className="absolute bottom-0 left-0 right-0 h-20 bg-white border-t border-gray-300 z-50 shadow-lg" style={{ borderTop: '1px solid #D1D5DB' }}>
         <div className="flex justify-around items-center h-full px-4">

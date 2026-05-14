@@ -141,31 +141,67 @@ router.post('/lpr/entry', async (req: Request, res: Response) => {
 
 /**
  * POST /parking/simulate-entry
- * Удобный endpoint для симуляции въезда
+ * Симуляция въезда — напрямую ставит OCCUPIED в БД
  */
 router.post('/simulate-entry', async (req: Request, res: Response) => {
   try {
     const { spotNumber, carPlate } = req.body;
-    
+
     if (!spotNumber || !carPlate) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         error: 'spotNumber and carPlate are required',
-        example: {
-          spotNumber: "SP-02",
-          carPlate: "KZ777ABC01"
-        }
+        example: { spotNumber: "SP-02", carPlate: "KZ777ABC01" }
       });
     }
-    
-    const result = await parkingService.handleLPREntry(carPlate, spotNumber);
-    res.json({
-      success: true,
-      message: `Car ${carPlate} entered spot ${spotNumber}`,
-      data: result
+
+    const { PrismaClient } = await import('@prisma/client');
+    const prisma = new PrismaClient();
+
+    await prisma.parkingSpot.update({
+      where: { spotNumber },
+      data: { status: 'OCCUPIED', currentUserPlate: carPlate },
     });
+
+    const { io } = await import('../server');
+    io.emit('spot-status-changed', { spotNumber, status: 'OCCUPIED', carPlate });
+
+    res.json({ success: true, message: `Car ${carPlate} entered spot ${spotNumber}` });
   } catch (error) {
     logger.error('❌ Error simulating entry:', error);
     res.status(500).json({ error: 'Failed to simulate entry' });
+  }
+});
+
+/**
+ * POST /parking/simulate-exit
+ * Симуляция выезда — напрямую ставит FREE в БД
+ */
+router.post('/simulate-exit', async (req: Request, res: Response) => {
+  try {
+    const { spotNumber, carPlate } = req.body;
+
+    if (!spotNumber || !carPlate) {
+      return res.status(400).json({
+        error: 'spotNumber and carPlate are required',
+        example: { spotNumber: "SP-02", carPlate: "KZ777ABC01" }
+      });
+    }
+
+    const { PrismaClient } = await import('@prisma/client');
+    const prisma = new PrismaClient();
+
+    await prisma.parkingSpot.update({
+      where: { spotNumber },
+      data: { status: 'FREE', currentUserPlate: null, currentUserId: null },
+    });
+
+    const { io } = await import('../server');
+    io.emit('spot-status-changed', { spotNumber, status: 'FREE', carPlate: null });
+
+    res.json({ success: true, message: `Car ${carPlate} exited spot ${spotNumber}` });
+  } catch (error) {
+    logger.error('❌ Error simulating exit:', error);
+    res.status(500).json({ error: 'Failed to simulate exit' });
   }
 });
 
@@ -201,13 +237,20 @@ router.post('/set-status', async (req: Request, res: Response) => {
     
     const updatedSpot = await prisma.parkingSpot.update({
       where: { spotNumber },
-      data: { 
+      data: {
         status,
         currentUserPlate: status === 'FREE' ? null : undefined,
         currentUserId: status === 'FREE' ? null : undefined
       }
     });
-    
+
+    const { io } = await import('../server');
+    io.emit('spot-status-changed', {
+      spotNumber,
+      status,
+      carPlate: updatedSpot.currentUserPlate ?? null
+    });
+
     res.json({
       success: true,
       message: `Spot ${spotNumber} status set to ${status}`,

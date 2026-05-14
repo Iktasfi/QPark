@@ -34,37 +34,43 @@ export function SpotDetailsScreen() {
   const isLongTerm = selectedSpot.type === "long-term"
   const selectedCarData = user?.cars.find(c => c.id === selectedCar)
   
-  const handleBookNow = () => {
+  const handleBookNow = async () => {
     if (!selectedCarData || !user) return
-    
+
     setIsBooking(true)
-    
-    // Simulate booking
-    setTimeout(() => {
-      const booking = {
-        id: `booking-${Date.now()}`,
-        spotId: selectedSpot.id,
-        userId: user.id,
-        plateNumber: selectedCarData.plateNumber,
-        type: selectedSpot.type,
-        status: "active" as const,
-        startTime: new Date(),
-        isPaid: false,
-        waitingFee: 0,
-        rentalDays: selectedRentalDays || undefined,
-      }
-      
-      setActiveBooking(booking)
-      updateSpot(selectedSpot.id, { 
-        status: isLongTerm ? "RESERVED" : "BOOKED",
-        bookedBy: user.id,
-        plateNumber: selectedCarData.plateNumber,
-        bookedAt: new Date(),
-      })
-      
-      setIsBooking(false)
-      setCurrentScreen("booking-confirm")
-    }, 1500)
+
+    const newStatus = isLongTerm ? "RESERVED" : "BOOKED"
+    const booking = {
+      id: `booking-${Date.now()}`,
+      spotId: selectedSpot.id,
+      userId: user.id,
+      plateNumber: selectedCarData.plateNumber,
+      type: selectedSpot.type,
+      status: "active" as const,
+      startTime: new Date(),
+      isPaid: false,
+      waitingFee: 0,
+      rentalDays: selectedRentalDays || undefined,
+    }
+
+    // Update local state immediately
+    setActiveBooking(booking)
+    updateSpot(selectedSpot.id, {
+      status: newStatus,
+      bookedBy: user.id,
+      plateNumber: selectedCarData.plateNumber,
+      bookedAt: new Date(),
+    })
+
+    // Sync with backend (fire-and-forget — works even without auth)
+    fetch("/backend/parking/set-status", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ spotNumber: selectedSpot.id, status: newStatus }),
+    }).catch(() => {/* backend offline — local state is still correct */})
+
+    setIsBooking(false)
+    setCurrentScreen("booking-confirm")
   }
   
   const getRentalPrice = () => {

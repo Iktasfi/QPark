@@ -2,240 +2,237 @@
 
 import { useState } from "react"
 import { useParking } from "@/lib/parking-context"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { Separator } from "@/components/ui/separator"
-import { Wallet, Plus, Sparkles, ArrowUpRight, ArrowDownRight, CreditCard } from "lucide-react"
-import { cn } from "@/lib/utils"
-
-const topUpAmounts = [500, 1000, 2000, 5000]
+import { Wallet, ArrowDownLeft, ArrowUpRight, Sparkles, CreditCard } from "lucide-react"
 
 export function WalletScreen() {
-  const { user, setUser, setCurrentScreen } = useParking()
-  const [isTopUpOpen, setIsTopUpOpen] = useState(false)
+  const { user, setCurrentScreen, darkMode, t } = useParking()
+  const [view, setView] = useState<"main" | "topup">("main")
   const [selectedAmount, setSelectedAmount] = useState<number | null>(null)
-  const [isProcessing, setIsProcessing] = useState(false)
-  
-  const handleTopUp = () => {
-    if (!selectedAmount || !user) return
-    
-    setIsProcessing(true)
-    
-    // Simulate Stripe payment
-    setTimeout(() => {
-      setUser({
-        ...user,
-        balance: user.balance + selectedAmount,
-        transactions: [
-          { 
-            id: `t-${Date.now()}`, 
-            type: "topup_stripe", 
-            amount: selectedAmount, 
-            description: "Wallet top-up via Stripe", 
-            date: new Date() 
-          },
-          ...user.transactions
-        ]
-      })
-      
-      setIsProcessing(false)
-      setIsTopUpOpen(false)
-      setSelectedAmount(null)
-    }, 1500)
+
+  const transactions = [
+    { id: "1", type: "topup", title: t.walletTopUp, subtitle: "Stripe", date: "Mar 27, 10:51 PM", amount: 500 },
+    { id: "2", type: "parking", title: "Parking SP-07, 2 hours", subtitle: "", date: "Mar 26, 10:48 PM", amount: -330 },
+  ]
+
+  const topUpAmounts = [500, 1000, 2000, 5000]
+
+  const navItems = [
+    { id: "home", icon: "/Home_light.svg", activeIcon: "/Home_light_active.svg", labelKey: "home" as const, active: false },
+    { id: "map", icon: "/Map_light.svg", activeIcon: "/Map_light_active.svg", labelKey: "map" as const, active: false },
+    { id: "booking", icon: "/Component.svg", activeIcon: "/Component_active.svg", labelKey: "booking" as const, active: false },
+    { id: "wallet", icon: "/wallet.svg", activeIcon: "/wallet_active.svg", labelKey: "wallet" as const, active: true },
+    { id: "profile", icon: "/User_cicrle_light.svg", activeIcon: "/User_cicrle_light_active.svg", labelKey: "profile" as const, active: false },
+  ]
+
+  const handlePayWithStripe = () => {
+    if (selectedAmount) {
+      alert(`Processing payment of ${selectedAmount}₸ via Stripe (Test Mode)`)
+    }
   }
-  
-  const getTransactionIcon = (type: string) => {
-    if (type === "topup_stripe") return <ArrowDownRight className="h-4 w-4 text-[oklch(var(--status-free))]" />
-    if (type === "bonus_credit") return <Sparkles className="h-4 w-4 text-accent" />
-    return <ArrowUpRight className="h-4 w-4 text-destructive" />
-  }
-  
-  const formatDate = (date: Date) => {
-    return new Intl.DateTimeFormat("en-US", { 
-      month: "short", 
-      day: "numeric", 
-      hour: "2-digit", 
-      minute: "2-digit" 
-    }).format(date)
-  }
-  
-  return (
-    <div className="flex flex-col gap-4 p-4">
-      {/* Header */}
-      <div>
-        <h1 className="text-xl font-bold text-foreground">Wallet</h1>
-        <p className="text-sm text-muted-foreground">Manage your balance</p>
-      </div>
-      
-      {/* Balance Card */}
-      <Card className="bg-primary text-primary-foreground">
-        <CardContent className="p-6">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-sm opacity-80">Current Balance</p>
-              <p className="text-4xl font-bold mt-1">
-                {user?.balance?.toLocaleString() || 0} &#8376;
+
+  // Top Up View
+  if (view === "topup") {
+    return (
+      <div className={`relative flex flex-col h-full ${darkMode ? "bg-gray-900" : "bg-[#F8F9FC]"} overflow-hidden`}>
+        <div className="text-center pt-6 pb-4">
+          <h1 className={`text-2xl font-bold ${darkMode ? "text-white" : "text-[#1a1a2e]"}`}>{t.wallet}</h1>
+        </div>
+
+        <div className="flex-1 px-4 space-y-5 overflow-y-auto pb-24">
+          {/* Balance Card */}
+          <div className={`relative ${darkMode ? "bg-[#2a3654]" : "bg-[#495E8E]"} rounded-3xl p-5 overflow-hidden`}>
+            <div className="relative z-10">
+              <p className="text-white/80 text-sm font-medium">{t.currentBalance}</p>
+              <p className="text-white text-4xl font-bold mt-1 tracking-tight">
+                {user?.balance ?? 1500}<span className="text-3xl">₸</span>
               </p>
-              <div className="mt-3 flex items-center gap-2 text-sm opacity-80">
-                <Sparkles className="h-4 w-4" />
-                <span>{user?.bonusPoints || 0} bonus points</span>
+            </div>
+            <div className="absolute top-5 right-5">
+              <div className="w-12 h-12 rounded-xl bg-white/20 flex items-center justify-center">
+                <Wallet className="w-6 h-6 text-white" />
               </div>
             </div>
-            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary-foreground/20">
-              <Wallet className="h-7 w-7" />
-            </div>
           </div>
-        </CardContent>
-      </Card>
-      
-      {/* Top Up Section */}
-      {!isTopUpOpen ? (
-        <Button 
-          size="lg" 
-          className="w-full gap-2"
-          onClick={() => setIsTopUpOpen(true)}
-        >
-          <Plus className="h-5 w-5" />
-          Top Up Balance
-        </Button>
-      ) : (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-base">
-              <CreditCard className="h-5 w-5" />
-              Select Amount
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="grid grid-cols-2 gap-2">
+
+          {/* Select Amount */}
+          <div>
+            <div className="flex items-center gap-2 mb-4">
+              <CreditCard className={`w-5 h-5 ${darkMode ? "text-blue-400" : "text-[#495E8E]"}`} />
+              <h2 className={`text-lg font-bold ${darkMode ? "text-white" : "text-[#1a1a2e]"}`}>{t.selectAmount}</h2>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
               {topUpAmounts.map((amount) => (
                 <button
                   key={amount}
                   onClick={() => setSelectedAmount(amount)}
-                  className={cn(
-                    "rounded-lg border-2 p-3 text-center transition-all",
-                    selectedAmount === amount 
-                      ? "border-primary bg-primary/5" 
-                      : "border-border hover:border-primary/50"
-                  )}
+                  className={`py-5 rounded-2xl border-2 text-xl font-bold transition-all ${
+                    selectedAmount === amount
+                      ? "bg-[#495E8E] text-white border-[#495E8E]"
+                      : darkMode
+                      ? "bg-gray-800 text-white border-gray-700 hover:border-[#495E8E]"
+                      : "bg-white text-[#1a1a2e] border-gray-200 hover:border-[#495E8E]"
+                  }`}
                 >
-                  <p className="text-lg font-bold text-foreground">{amount.toLocaleString()} &#8376;</p>
+                  {amount}₸
                 </button>
               ))}
             </div>
-            
-            <div className="flex gap-2">
-              <Button 
-                variant="outline" 
-                className="flex-1"
-                onClick={() => {
-                  setIsTopUpOpen(false)
-                  setSelectedAmount(null)
-                }}
+          </div>
+
+          {/* Actions */}
+          <div className="flex gap-3 pt-2">
+            <button
+              onClick={() => { setView("main"); setSelectedAmount(null) }}
+              className={`flex-1 py-4 rounded-2xl ${darkMode ? "bg-gray-700 text-gray-300" : "bg-gray-200 text-gray-700"} font-semibold text-base hover:opacity-90 transition-colors`}
+            >
+              {t.cancel}
+            </button>
+            <button
+              onClick={handlePayWithStripe}
+              disabled={!selectedAmount}
+              className={`flex-1 py-4 rounded-2xl font-semibold text-base transition-colors ${
+                selectedAmount ? "bg-[#354469] text-white hover:bg-[#2a3654]" : "bg-[#354469]/50 text-white/70 cursor-not-allowed"
+              }`}
+            >
+              {t.payWithStripe}
+            </button>
+          </div>
+
+          <p className={`text-center text-xs ${darkMode ? "text-gray-500" : "text-gray-400"}`}>{t.poweredByStripe}</p>
+        </div>
+
+        {/* Bottom Navigation */}
+        <div className={`absolute bottom-0 left-0 right-0 h-20 ${darkMode ? "bg-gray-800 border-gray-700" : "bg-white border-gray-200"} border-t z-10`}>
+          <div className="flex justify-around items-center h-full px-4">
+            {navItems.map((item) => (
+              <button
+                key={item.id}
+                onClick={() => setCurrentScreen(item.id)}
+                className={`flex flex-col items-center justify-center gap-0.5 p-3 transition-all ${darkMode ? "hover:bg-gray-700" : "hover:bg-gray-100"} rounded-xl active:scale-95`}
               >
-                Cancel
-              </Button>
-              <Button 
-                className="flex-1"
-                disabled={!selectedAmount || isProcessing}
-                onClick={handleTopUp}
-              >
-                {isProcessing ? "Processing..." : "Pay with Stripe"}
-              </Button>
-            </div>
-            
-            <p className="text-center text-xs text-muted-foreground">
-              Powered by Stripe (Test Mode)
-            </p>
-          </CardContent>
-        </Card>
-      )}
-      
-      {/* Promo Code */}
-      {user?.promoCode && (
-        <Card className="bg-accent/10 border-accent/30">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <Sparkles className="h-5 w-5 text-accent" />
-                <div>
-                  <p className="font-medium text-foreground">Promo Code Available</p>
-                  <p className="text-sm text-muted-foreground">FIRST - 150&#8376; off your first parking</p>
+                <div className="w-8 h-8 flex items-center justify-center">
+                  <img
+                    src={item.active ? item.activeIcon : item.icon}
+                    alt={t[item.labelKey]}
+                    width={28}
+                    height={28}
+                    className={`${item.active ? "opacity-100" : "opacity-80"} ${darkMode && !item.active ? "brightness-0 invert opacity-70" : ""}`}
+                  />
                 </div>
-              </div>
-              <Badge variant="outline">Active</Badge>
+                <span className={`text-xs font-medium ${item.active ? (darkMode ? "text-blue-400" : "text-[#36549B]") : darkMode ? "text-gray-300" : "text-gray-900"}`}>
+                  {t[item.labelKey]}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Main Wallet View
+  return (
+    <div className={`relative flex flex-col h-full ${darkMode ? "bg-gray-900" : "bg-[#F8F9FC]"} overflow-hidden`}>
+      <div className="text-center pt-6 pb-4">
+        <h1 className={`text-2xl font-bold ${darkMode ? "text-white" : "text-[#1a1a2e]"}`}>{t.wallet}</h1>
+        <p className={`text-sm ${darkMode ? "text-gray-400" : "text-gray-400"} mt-1`}>{t.manageBalance}</p>
+      </div>
+
+      <div className="flex-1 px-4 space-y-4 overflow-y-auto pb-24">
+        {/* Balance Card */}
+        <div className={`relative ${darkMode ? "bg-[#2a3654]" : "bg-[#495E8E]"} rounded-3xl p-5 overflow-hidden`}>
+          <div className="relative z-10">
+            <p className="text-white/80 text-sm font-medium">{t.currentBalance}</p>
+            <p className="text-white text-4xl font-bold mt-1 tracking-tight">
+              {user?.balance ?? 1500}<span className="text-3xl">₸</span>
+            </p>
+            <p className="text-white/70 text-sm mt-2">{user?.bonusPoints ?? 50} {t.bonusPoints.toLowerCase()}</p>
+          </div>
+          <div className="absolute top-5 right-5">
+            <div className="w-12 h-12 rounded-xl bg-white/20 flex items-center justify-center">
+              <Wallet className="w-6 h-6 text-white" />
             </div>
-          </CardContent>
-        </Card>
-      )}
-      
-      {/* Transaction History */}
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base">Transaction History</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-1">
-          {user?.transactions.map((transaction, index) => (
-            <div key={transaction.id}>
-              <div className="flex items-center justify-between py-3">
+          </div>
+        </div>
+
+        {/* Top Up Button */}
+        <button
+          onClick={() => setView("topup")}
+          className={`w-full ${darkMode ? "bg-[#2a3654]" : "bg-[#495E8E]"} text-white font-semibold py-4 rounded-3xl text-base hover:opacity-90 transition-colors`}
+        >
+          {t.topUpBalance}
+        </button>
+
+        {/* Promo Code */}
+        <div className={`${darkMode ? "bg-amber-900/30" : "bg-[#F5EBE0]"} rounded-3xl p-4 flex items-center justify-between`}>
+          <div className="flex items-start gap-3">
+            <Sparkles className="w-5 h-5 text-amber-500 mt-0.5 flex-shrink-0" />
+            <div>
+              <p className={`font-semibold ${darkMode ? "text-white" : "text-[#1a1a2e]"} text-sm`}>{t.promoCodeAvailable}</p>
+              <p className={`${darkMode ? "text-gray-400" : "text-gray-500"} text-xs mt-0.5`}>{t.promoDescription}</p>
+            </div>
+          </div>
+          <span className={`${darkMode ? "bg-gray-700 text-gray-300 border-gray-600" : "bg-white text-gray-600 border-gray-200"} text-xs font-medium px-3 py-1 rounded-full border`}>
+            {t.active}
+          </span>
+        </div>
+
+        {/* Transaction History */}
+        <div className="mt-2">
+          <h2 className={`text-lg font-bold ${darkMode ? "text-white" : "text-[#1a1a2e]"} mb-4`}>{t.transactionHistory}</h2>
+          <div className="space-y-3">
+            {transactions.map((transaction) => (
+              <div key={transaction.id} className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-secondary">
-                    {getTransactionIcon(transaction.type)}
+                  <div className={`w-10 h-10 rounded-full ${darkMode ? "bg-gray-800" : "bg-gray-100"} flex items-center justify-center`}>
+                    {transaction.type === "topup" ? (
+                      <ArrowDownLeft className={`w-4 h-4 ${darkMode ? "text-blue-400" : "text-[#495E8E]"}`} />
+                    ) : (
+                      <ArrowUpRight className="w-4 h-4 text-orange-500" />
+                    )}
                   </div>
                   <div>
-                    <p className="font-medium text-foreground">{transaction.description}</p>
-                    <p className="text-xs text-muted-foreground">{formatDate(transaction.date)}</p>
+                    <p className={`${darkMode ? "text-white" : "text-[#1a1a2e]"} text-sm font-medium`}>
+                      {transaction.title}
+                      {transaction.subtitle && <><br /><span>{transaction.subtitle}</span></>}
+                    </p>
+                    <p className={`${darkMode ? "text-gray-500" : "text-gray-400"} text-xs`}>{transaction.date}</p>
                   </div>
                 </div>
-                <p className={cn(
-                  "font-semibold",
-                  transaction.amount > 0 ? "text-[oklch(var(--status-free))]" : "text-foreground"
-                )}>
-                  {transaction.amount > 0 ? "+" : ""}{transaction.amount.toLocaleString()} &#8376;
+                <p className={`text-sm font-bold ${transaction.amount > 0 ? (darkMode ? "text-blue-400" : "text-[#495E8E]") : darkMode ? "text-white" : "text-[#1a1a2e]"}`}>
+                  {transaction.amount > 0 ? "+" : ""}{Math.abs(transaction.amount)}₸
                 </p>
               </div>
-              {index < user.transactions.length - 1 && <Separator />}
-            </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Bottom Navigation */}
+      <div className={`absolute bottom-0 left-0 right-0 h-20 ${darkMode ? "bg-gray-800 border-gray-700" : "bg-white border-gray-200"} border-t z-10`}>
+        <div className="flex justify-around items-center h-full px-4">
+          {navItems.map((item) => (
+            <button
+              key={item.id}
+              onClick={() => setCurrentScreen(item.id)}
+              className={`flex flex-col items-center justify-center gap-0.5 p-3 transition-all ${darkMode ? "hover:bg-gray-700" : "hover:bg-gray-100"} rounded-xl active:scale-95`}
+            >
+              <div className="w-8 h-8 flex items-center justify-center">
+                <img
+                  src={item.active ? item.activeIcon : item.icon}
+                  alt={t[item.labelKey]}
+                  width={28}
+                  height={28}
+                  className={`${item.active ? "opacity-100" : "opacity-80"} ${darkMode && !item.active ? "brightness-0 invert opacity-70" : ""}`}
+                />
+              </div>
+              <span className={`text-xs font-medium ${item.active ? (darkMode ? "text-blue-400" : "text-[#36549B]") : darkMode ? "text-gray-300" : "text-gray-900"}`}>
+                {t[item.labelKey]}
+              </span>
+            </button>
           ))}
-          
-          {(!user?.transactions || user.transactions.length === 0) && (
-            <p className="py-4 text-center text-muted-foreground">No transactions yet</p>
-          )}
-        </CardContent>
-      </Card>
-    
-    {/* Bottom Navigation */}
-    <div className="absolute bottom-0 left-0 right-0 h-20 bg-white border-t border-gray-300 z-50 shadow-lg" style={{ borderTop: '1px solid #D1D5DB' }}>
-      <div className="flex justify-around items-center h-full px-4">
-        {[
-          { id: "home", icon: "/Home_light.svg", activeIcon: "/Home_light_active.svg", label: "Home", active: false },
-          { id: "map", icon: "/Map_light.svg", activeIcon: "/Map_light_active.svg", label: "Map", active: false },
-          { id: "booking", icon: "/Component.svg", activeIcon: "/Component_active.svg", label: "Booking", active: false },
-          { id: "wallet", icon: "/wallet.svg", activeIcon: "/wallet_active.svg", label: "Wallet", active: true },
-          { id: "profile", icon: "/User_cicrle_light.svg", activeIcon: "/User_cicrle_light_active.svg", label: "Profile", active: false },
-        ].map((item) => (
-          <button
-            key={item.id}
-            onClick={() => setCurrentScreen(item.id)}
-            className="flex flex-col items-center justify-center gap-0.5 p-3 transition-all hover:bg-gray-100 rounded-xl active:scale-95"
-          >
-            <div className="w-8 h-8 flex items-center justify-center">
-              <img 
-                src={item.active ? item.activeIcon : item.icon} 
-                alt={item.label} 
-                width={28}
-                height={28}
-                className={item.active ? "opacity-100" : "opacity-80"}
-              />
-            </div>
-            <span className={`text-xs font-medium ${item.active ? "text-[#36549B] drop-shadow-sm" : "text-gray-900 drop-shadow-sm"}`}>
-              {item.label}
-            </span>
-          </button>
-        ))}
+        </div>
       </div>
     </div>
-  </div>
   )
 }
