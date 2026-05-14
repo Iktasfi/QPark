@@ -18,7 +18,13 @@ const extendOptions = [
 ]
 
 export function ActiveBookingScreen() {
-  const { activeBooking, selectedSpot, user, setCurrentScreen, setActiveBooking, updateSpot, setUser } = useParking()
+  const { activeBooking, selectedSpot: _selectedSpot, spots, user, setCurrentScreen, setActiveBooking, updateSpot, setUser } = useParking()
+
+  // Use live spot from spots array (updated via socket) instead of snapshot
+  const selectedSpot = activeBooking
+    ? (spots.find(s => s.id === activeBooking.spotId) ?? _selectedSpot)
+    : _selectedSpot
+
   const [timer, setTimer] = useState(15 * 60) // 15 minutes in seconds
   const [isArrived, setIsArrived] = useState(false)
   const [parkingDuration, setParkingDuration] = useState(0)
@@ -64,18 +70,12 @@ export function ActiveBookingScreen() {
     return 150 + (extraMinutes * 3)
   }
   
-  const simulateArrival = () => {
-    setIsArrived(true)
-    if (selectedSpot) {
-      updateSpot(selectedSpot.id, { status: "OCCUPIED" })
-      // Tell backend: car entered
-      fetch("/backend/parking/simulate-entry", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ spotNumber: selectedSpot.id, carPlate: activeBooking?.plateNumber ?? "" }),
-      }).catch(() => {})
+  // Auto-detect arrival: when LPR opens barrier → socket updates spot to OCCUPIED
+  useEffect(() => {
+    if (!isArrived && selectedSpot?.status === "OCCUPIED") {
+      setIsArrived(true)
     }
-  }
+  }, [selectedSpot?.status])
 
   const handlePayAndExit = () => {
     if (!user) return
@@ -188,25 +188,25 @@ export function ActiveBookingScreen() {
         </div>
       </div>
       
-      {/* Timer Card */}
+      {/* Timer Card — countdown until car must arrive via LPR */}
       {!isLongTerm && !isArrived && (
         <Card className={timer < 300 ? "border-destructive bg-destructive/5" : "border-red-200 bg-red-50"}>
           <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                {timer < 300 ? (
-                  <AlertTriangle className="h-8 w-8 text-destructive" />
-                ) : (
-                  <Clock className="h-8 w-8 text-red-600" />
-                )}
-                <div>
-                  <p className="text-sm text-muted-foreground">Time to arrive</p>
-                  <p className="text-3xl font-bold text-foreground">{formatTime(timer)}</p>
-                </div>
+            <div className="flex items-center gap-3">
+              {timer < 300 ? (
+                <AlertTriangle className="h-8 w-8 text-destructive" />
+              ) : (
+                <Clock className="h-8 w-8 text-red-600" />
+              )}
+              <div className="flex-1">
+                <p className="text-sm text-muted-foreground">Time to arrive</p>
+                <p className="text-3xl font-bold text-foreground">{formatTime(timer)}</p>
               </div>
-              <Button variant="outline" size="sm" className="hover:bg-[#36549B]/10 hover:border-[#36549B] hover:text-[#36549B]" onClick={simulateArrival}>
-                Simulate Arrival
-              </Button>
+              <div className="text-right">
+                <p className="text-xs text-muted-foreground">Drive up to</p>
+                <p className="text-sm font-semibold text-foreground">{activeBooking?.spotId}</p>
+                <p className="text-xs text-muted-foreground">LPR will detect you</p>
+              </div>
             </div>
             {timer < 300 && (
               <p className="mt-2 text-sm text-destructive">
@@ -240,20 +240,47 @@ export function ActiveBookingScreen() {
       
       {/* Long-term Rental Info */}
       {isLongTerm && (
-        <Card className="border-[oklch(var(--status-reserved))] bg-[oklch(var(--status-reserved)/0.05)]">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <Clock className="h-8 w-8 text-[oklch(var(--status-reserved))]" />
-                <div>
-                  <p className="text-sm text-muted-foreground">Rental Period</p>
-                  <p className="text-xl font-bold text-foreground">{activeBooking.rentalDays} days remaining</p>
+        <>
+          <Card className="border-[oklch(var(--status-reserved))] bg-[oklch(var(--status-reserved)/0.05)]">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <Clock className="h-8 w-8 text-[oklch(var(--status-reserved))]" />
+                  <div>
+                    <p className="text-sm text-muted-foreground">Rental Period</p>
+                    <p className="text-xl font-bold text-foreground">{activeBooking.rentalDays} days remaining</p>
+                  </div>
                 </div>
+                <Badge variant="outline">Paid</Badge>
               </div>
-              <Badge variant="outline">Paid</Badge>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+
+          {/* Car status — in/out indicator driven by live spot status */}
+          <Card className={selectedSpot?.status === "OCCUPIED"
+            ? "border-green-300 bg-green-50"
+            : "border-purple-200 bg-purple-50"
+          }>
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className={`h-3 w-3 rounded-full ${selectedSpot?.status === "OCCUPIED" ? "bg-green-500" : "bg-purple-400"}`} />
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">
+                      {selectedSpot?.status === "OCCUPIED" ? "Car is parked" : "Spot reserved — car outside"}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {selectedSpot?.status === "OCCUPIED"
+                        ? "Drive to exit — LPR will open the barrier"
+                        : "Drive in — LPR will detect your plate"}
+                    </p>
+                  </div>
+                </div>
+                <Car className={`h-6 w-6 ${selectedSpot?.status === "OCCUPIED" ? "text-green-600" : "text-purple-400"}`} />
+              </div>
+            </CardContent>
+          </Card>
+        </>
       )}
       
       {/* Booking Details */}

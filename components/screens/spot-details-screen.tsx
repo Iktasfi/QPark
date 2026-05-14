@@ -62,11 +62,11 @@ export function SpotDetailsScreen() {
       bookedAt: new Date(),
     })
 
-    // Sync with backend (fire-and-forget — works even without auth)
+    // Sync with backend — send carPlate so LPR can verify it on entry
     fetch("/backend/parking/set-status", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ spotNumber: selectedSpot.id, status: newStatus }),
+      body: JSON.stringify({ spotNumber: selectedSpot.id, status: newStatus, carPlate: selectedCarData.plateNumber }),
     }).catch(() => {/* backend offline — local state is still correct */})
 
     setIsBooking(false)

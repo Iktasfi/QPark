@@ -121,21 +121,130 @@ router.get('/spots/available', async (req: Request, res: Response) => {
 
 /**
  * POST /parking/lpr/entry
- * Обработка LPR события - въезд
+ * Обработка LPR события - въезд (вызывается Python LPR скриптом)
+ * Логика:
+ *  1. SHORT_TERM (BOOKED): проверяем что номер совпадает → OCCUPIED
+ *  2. LONG_TERM  (RESERVED): любой въезд зарегистрированного номера → OCCUPIED
+ *  3. Всё остальное → отказ
  */
 router.post('/lpr/entry', async (req: Request, res: Response) => {
   try {
     const { carPlate, spotNumber } = req.body;
-    
     if (!carPlate || !spotNumber) {
       return res.status(400).json({ error: 'carPlate and spotNumber are required' });
     }
-    
-    const result = await parkingService.handleLPREntry(carPlate, spotNumber);
-    res.json(result);
+
+    const { PrismaClient } = await import('@prisma/client');
+    const prisma = new PrismaClient();
+    const { io } = await import('../server');
+
+    const spot = await prisma.parkingSpot.findUnique({ where: { spotNumber } });
+
+    if (!spot) {
+      io.emit('lpr-gate-denied', { carPlate, spotNumber, reason: 'Место не найдено' });
+      return res.status(404).json({ success: false, message: 'Spot not found' });
+    }
+
+    // Нормализуем номер из БД для сравнения (убираем пробелы)
+    const normalize = (p: string) => p.replace(/\s/g, '').toUpperCase();
+    const plateMatches = spot.currentUserPlate
+      ? normalize(spot.currentUserPlate) === normalize(carPlate)
+      : true; // если номер ещё не записан — пропускаем (первый въезд)
+
+    let success = false;
+    let newStatus: 'OCCUPIED' | null = null;
+
+    if (spot.status === 'BOOKED') {
+      // Краткосрочное — проверяем номер
+      if (plateMatches) {
+        newStatus = 'OCCUPIED';
+        success = true;
+      } else {
+        io.emit('lpr-gate-denied', { carPlate, spotNumber, reason: `Номер не совпадает с бронью` });
+        return res.json({ success: false, message: 'Plate does not match booking' });
+      }
+    } else if (spot.status === 'RESERVED' || spot.status === 'OCCUPIED') {
+      // Долгосрочное — проверяем номер, въезд/выезд без ограничений
+      if (plateMatches) {
+        newStatus = 'OCCUPIED';
+        success = true;
+      } else {
+        io.emit('lpr-gate-denied', { carPlate, spotNumber, reason: 'Номер не совпадает с арендой' });
+        return res.json({ success: false, message: 'Plate does not match rental' });
+      }
+    } else {
+      io.emit('lpr-gate-denied', { carPlate, spotNumber, reason: `Место ${spot.status} — бронь не найдена` });
+      return res.json({ success: false, message: `Spot is ${spot.status}` });
+    }
+
+    if (success && newStatus) {
+      await prisma.parkingSpot.update({
+        where: { spotNumber },
+        data: { status: newStatus, currentUserPlate: carPlate },
+      });
+      io.emit('lpr-gate-open', { carPlate, spotNumber, type: 'entry' });
+      io.emit('spot-status-changed', { spotNumber, status: newStatus, carPlate });
+      logger.info(`✅ LPR entry: ${carPlate} → ${spotNumber} (${spot.type})`);
+      return res.json({ success: true, message: 'Gate opened' });
+    }
+
+    res.json({ success: false, message: 'Access denied' });
   } catch (error) {
     logger.error('❌ Error handling LPR entry:', error);
     res.status(500).json({ error: 'Failed to process entry' });
+  }
+});
+
+/**
+ * POST /parking/lpr/exit-lpr
+ * Обработка LPR события - выезд (вызывается Python LPR скриптом)
+ * SHORT_TERM → FREE (оплата уже прошла в приложении)
+ * LONG_TERM  → RESERVED (аренда ещё действует, машина может вернуться)
+ */
+router.post('/lpr/exit-lpr', async (req: Request, res: Response) => {
+  try {
+    const { carPlate, spotNumber } = req.body;
+    if (!carPlate || !spotNumber) {
+      return res.status(400).json({ error: 'carPlate and spotNumber are required' });
+    }
+
+    const { PrismaClient } = await import('@prisma/client');
+    const prisma = new PrismaClient();
+    const { io } = await import('../server');
+
+    const spot = await prisma.parkingSpot.findUnique({ where: { spotNumber } });
+    if (!spot) {
+      return res.status(404).json({ success: false, message: 'Spot not found' });
+    }
+
+    const normalize = (p: string) => p.replace(/\s/g, '').toUpperCase();
+    if (spot.currentUserPlate && normalize(spot.currentUserPlate) !== normalize(carPlate)) {
+      io.emit('lpr-gate-denied', { carPlate, spotNumber, reason: 'Номер не совпадает' });
+      return res.json({ success: false, message: 'Plate does not match' });
+    }
+
+    // Long-term → RESERVED (место остаётся за пользователем)
+    // Short-term → FREE
+    const exitStatus = spot.type === 'LONG_TERM' ? 'RESERVED' : 'FREE';
+    const clearPlate  = spot.type === 'LONG_TERM';  // сохраняем номер для следующего въезда
+
+    await prisma.parkingSpot.update({
+      where: { spotNumber },
+      data: {
+        status: exitStatus,
+        currentUserPlate: clearPlate ? spot.currentUserPlate : null,
+        currentUserId:    clearPlate ? spot.currentUserId    : null,
+      },
+    });
+
+    io.emit('lpr-gate-open', { carPlate, spotNumber, type: 'exit' });
+    io.emit('spot-status-changed', { spotNumber, status: exitStatus, carPlate: clearPlate ? carPlate : null });
+
+    logger.info(`✅ LPR exit: ${carPlate} from ${spotNumber} → ${exitStatus}`);
+    res.json({ success: true, message: 'Gate opened for exit', newStatus: exitStatus });
+  } catch (error) {
+    logger.error('❌ Error handling LPR exit:', error);
+    res.status(500).json({ error: 'Failed to process exit' });
   }
 });
 
@@ -232,14 +341,15 @@ router.post('/set-status', async (req: Request, res: Response) => {
       });
     }
     
+    const carPlate: string | undefined = req.body.carPlate;
     const { PrismaClient } = await import('@prisma/client');
     const prisma = new PrismaClient();
-    
+
     const updatedSpot = await prisma.parkingSpot.update({
       where: { spotNumber },
       data: {
         status,
-        currentUserPlate: status === 'FREE' ? null : undefined,
+        currentUserPlate: status === 'FREE' ? null : (carPlate ?? undefined),
         currentUserId: status === 'FREE' ? null : undefined
       }
     });
@@ -379,25 +489,6 @@ router.get('/spots/text', async (req: Request, res: Response) => {
   }
 });
 
-/**
- * POST /parking/lpr/exit
- * Обработка LPR события - выезд
- */
-router.post('/lpr/exit', async (req: Request, res: Response) => {
-  try {
-    const { carPlate, spotNumber } = req.body;
-    
-    if (!carPlate || !spotNumber) {
-      return res.status(400).json({ error: 'carPlate and spotNumber are required' });
-    }
-    
-    const result = await parkingService.handleLPRExit(carPlate, spotNumber);
-    res.json(result);
-  } catch (error) {
-    logger.error('❌ Error handling LPR exit:', error);
-    res.status(500).json({ error: 'Failed to process exit' });
-  }
-});
 
 /**
  * GET /parking/stats
