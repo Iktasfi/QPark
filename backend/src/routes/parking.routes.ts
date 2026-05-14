@@ -164,14 +164,31 @@ router.post('/lpr/entry', async (req: Request, res: Response) => {
         return res.json({ success: false, message: 'Plate does not match booking' });
       }
     } else if (spot.status === 'RESERVED' || spot.status === 'OCCUPIED') {
-      // Долгосрочное — проверяем номер, въезд/выезд без ограничений
-      if (plateMatches) {
-        newStatus = 'OCCUPIED';
-        success = true;
-      } else {
+      // Долгосрочное — одна камера, toggle: RESERVED↔OCCUPIED
+      if (!plateMatches) {
         io.emit('lpr-gate-denied', { carPlate, spotNumber, reason: 'Номер не совпадает с арендой' });
         return res.json({ success: false, message: 'Plate does not match rental' });
       }
+
+      // TOGGLE: если машина внутри (OCCUPIED) — выпускаем → RESERVED
+      //         если машина снаружи (RESERVED)  — впускаем  → OCCUPIED
+      const isExiting = spot.status === 'OCCUPIED';
+      const toggledStatus = isExiting ? 'RESERVED' : 'OCCUPIED';
+      const eventType = isExiting ? 'exit' : 'entry';
+
+      await prisma.parkingSpot.update({
+        where: { spotNumber },
+        data: {
+          status: toggledStatus,
+          currentUserPlate: carPlate, // сохраняем номер всегда (нужен для следующего раза)
+        },
+      });
+
+      io.emit('lpr-gate-open', { carPlate, spotNumber, type: eventType });
+      io.emit('spot-status-changed', { spotNumber, status: toggledStatus, carPlate });
+      logger.info(`✅ LPR long-term ${eventType}: ${carPlate} → ${spotNumber} → ${toggledStatus}`);
+      return res.json({ success: true, message: `Gate opened (${eventType})`, newStatus: toggledStatus });
+
     } else {
       io.emit('lpr-gate-denied', { carPlate, spotNumber, reason: `Место ${spot.status} — бронь не найдена` });
       return res.json({ success: false, message: `Spot is ${spot.status}` });
