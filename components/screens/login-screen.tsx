@@ -13,7 +13,7 @@ declare global {
 }
 
 export function LoginScreen() {
-  const { setIsAuthenticated, setUser, setCurrentScreen } = useParking()
+  const { setIsAuthenticated, setUser, setCurrentScreen, setIsNewUser } = useParking()
   const [step, setStep] = useState<"phone" | "otp">("phone")
   const [phone, setPhone] = useState("+7")
   const [otp, setOtp] = useState(["", "", "", "", "", ""])
@@ -74,21 +74,67 @@ export function LoginScreen() {
     setError("")
     setIsVerifying(true)
     try {
+      // Step 1: Firebase verification
       const credential = await confirmationResult.confirm(code)
       const firebaseUser = credential.user
+
+      // Step 2: Sync with backend DB — upsert user, get JWT + real data
+      let dbUser = null
+      let jwtToken = null
+      let isNew = false
+      try {
+        const res = await fetch("/backend/auth/firebase-login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            phoneNumber: firebaseUser.phoneNumber ?? phone,
+            firebaseUid: firebaseUser.uid,
+          }),
+        })
+        if (res.ok) {
+          const data = await res.json()
+          dbUser = data.user
+          jwtToken = data.token
+          isNew = data.isNew ?? false
+          if (jwtToken) localStorage.setItem("qpark_token", jwtToken)
+        }
+      } catch {
+        // backend offline — continue with Firebase data only
+      }
+
+      // Step 3: Set user in context (real DB data if available, fallback to Firebase)
       setUser({
-        id: firebaseUser.uid,
-        phone: firebaseUser.phoneNumber ?? phone,
-        name: firebaseUser.displayName ?? "User",
-        balance: 0,
-        bonusPoints: 0,
-        noShowCount: 0,
-        isBanned: false,
-        cars: [],
-        transactions: [],
+        id: dbUser?.id ?? firebaseUser.uid,
+        phone: dbUser?.phoneNumber ?? firebaseUser.phoneNumber ?? phone,
+        name: dbUser?.firstName
+          ? `${dbUser.firstName}${dbUser.lastName ? " " + dbUser.lastName : ""}`
+          : "User",
+        balance: dbUser?.walletBalance ?? 0,
+        bonusPoints: dbUser?.bonusPoints ?? 0,
+        noShowCount: dbUser?.noShowCount ?? 0,
+        isBanned: dbUser?.isBanned ?? false,
+        bannedUntil: dbUser?.bannedUntil ? new Date(dbUser.bannedUntil) : undefined,
+        cars: dbUser?.cars?.map((c: { id: string; brand: string; model: string; plateNumber: string }) => ({
+          id: c.id,
+          brand: c.brand,
+          model: c.model,
+          plateNumber: c.plateNumber,
+        })) ?? [],
+        transactions: dbUser?.transactions?.map((t: { id: string; type: string; amount: number; description: string; createdAt: string }) => ({
+          id: t.id,
+          type: t.type.toLowerCase() as "topup_stripe",
+          amount: t.amount,
+          description: t.description ?? "",
+          date: new Date(t.createdAt),
+        })) ?? [],
       })
       setIsAuthenticated(true)
-      setCurrentScreen("home")
+      if (isNew) {
+        setIsNewUser(true)
+        setCurrentScreen("onboarding")
+      } else {
+        setCurrentScreen("home")
+      }
     } catch (err: unknown) {
       const e = err as { code?: string; message?: string }
       if (e.code === "auth/invalid-verification-code") {

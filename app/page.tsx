@@ -11,6 +11,7 @@ import { ActiveBookingScreen } from "@/components/screens/active-booking-screen"
 import { WalletScreen } from "@/components/screens/wallet-screen"
 import { ProfileScreen } from "@/components/screens/profile-screen"
 import { AdminDashboard } from "@/components/admin/admin-dashboard"
+import { OnboardingScreen } from "@/components/screens/onboarding-screen"
 
 function AppContent() {
   const { currentScreen, isAuthenticated, isAdminMode } = useParking()
@@ -36,6 +37,8 @@ function AppContent() {
         return <SpotDetailsScreen />
       case "booking-confirm":
         return <BookingConfirmScreen />
+      case "onboarding":
+        return <OnboardingScreen />
       case "booking":
       case "active-booking":
         return <ActiveBookingScreen />

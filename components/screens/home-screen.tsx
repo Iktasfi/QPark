@@ -5,7 +5,7 @@ import { useParking } from "@/lib/parking-context"
 import Image from "next/image"
 
 export function HomeScreen() {
-  const { setCurrentScreen } = useParking()
+  const { setCurrentScreen, user } = useParking()
   const [activeTab, setActiveTab] = useState("home")
 
   const navItems = [
@@ -36,7 +36,7 @@ export function HomeScreen() {
               </div>
               <div>
                 <p className="text-gray-200 text-sm">Welcome back,</p>
-                <p className="text-white text-xl font-extrabold">User Name</p>
+                <p className="text-white text-xl font-extrabold">{user?.name || "User"}</p>
               </div>
             </div>
             <button 
@@ -57,7 +57,7 @@ export function HomeScreen() {
           <div className="flex items-center justify-between bg-[#354469] rounded-xl p-3">
             <div>
               <p className="text-gray-300 text-sm">Bonus points</p>
-              <p className="text-white text-lg font-bold">50</p>
+              <p className="text-white text-lg font-bold">{user?.bonusPoints ?? 0}</p>
             </div>
             <button 
               onClick={() => setCurrentScreen("wallet")}
@@ -185,8 +185,8 @@ export function HomeScreen() {
                     className="object-contain filter brightness-0 invert"
                   />
                   <div className="text-left">
-                    <span className="text-white font-bold text-xl drop-shadow-md">My vehicles</span>
-                    <p className="text-white/70 text-sm">1 registered</p>
+                    <span className="text-white font-bold text-xl drop-shadow-md">My Cars</span>
+                    <p className="text-white/70 text-sm">{user?.cars.length ?? 0} registered</p>
                   </div>
                 </div>
                 <Image 

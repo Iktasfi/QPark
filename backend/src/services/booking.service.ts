@@ -161,9 +161,10 @@ export class BookingService {
    */
   async getBookingByCarPlate(carPlate: string) {
     try {
+      // Look up via Car model since User no longer has a single carPlate field
       const booking = await prisma.booking.findFirst({
         where: {
-          user: { carPlate },
+          spot: { currentUserPlate: carPlate },
           status: { in: ['PENDING', 'CONFIRMED'] },
         },
         include: { spot: true, user: true },

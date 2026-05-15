@@ -333,32 +333,21 @@ router.post('/simulate-exit', async (req: Request, res: Response) => {
 
 /**
  * POST /parking/set-status
- * Установить статус места (для тестирования)
+ * Бронирование места — обновляет статус и создаёт запись в bookings / long_term_rentals
  */
 router.post('/set-status', async (req: Request, res: Response) => {
   try {
-    const { spotNumber, status } = req.body;
-    
+    const { spotNumber, status, carPlate, userId, rentalDays } = req.body;
+
     if (!spotNumber || !status) {
-      return res.status(400).json({ 
-        error: 'spotNumber and status are required',
-        example: {
-          spotNumber: "SP-03",
-          status: "REPAIR"
-        },
-        availableStatuses: ['FREE', 'BOOKED', 'OCCUPIED', 'RESERVED', 'REPAIR']
-      });
+      return res.status(400).json({ error: 'spotNumber and status are required' });
     }
-    
+
     const validStatuses = ['FREE', 'BOOKED', 'OCCUPIED', 'RESERVED', 'REPAIR'];
     if (!validStatuses.includes(status)) {
-      return res.status(400).json({ 
-        error: 'Invalid status',
-        availableStatuses: validStatuses
-      });
+      return res.status(400).json({ error: 'Invalid status' });
     }
-    
-    const carPlate: string | undefined = req.body.carPlate;
+
     const { PrismaClient } = await import('@prisma/client');
     const prisma = new PrismaClient();
 
@@ -367,26 +356,78 @@ router.post('/set-status', async (req: Request, res: Response) => {
       data: {
         status,
         currentUserPlate: status === 'FREE' ? null : (carPlate ?? undefined),
-        currentUserId: status === 'FREE' ? null : undefined
-      }
+        currentUserId: status === 'FREE' ? null : (userId ?? undefined),
+      },
     });
+
+    // ── Создать запись в bookings (краткосрочное) ──
+    if (status === 'BOOKED' && userId && carPlate) {
+      try {
+        const spot = await prisma.parkingSpot.findUnique({ where: { spotNumber } });
+        if (spot) {
+          const now = new Date();
+          const estimated = new Date(now.getTime() + 2 * 60 * 60 * 1000); // +2 часа по умолчанию
+          await prisma.booking.create({
+            data: {
+              userId,
+              spotId: spot.id,
+              plateNumber: carPlate,
+              startTime: now,
+              estimatedEndTime: estimated,
+              status: 'CONFIRMED',
+              isPaid: false,
+              totalCost: 0,
+            },
+          });
+        }
+      } catch (e) {
+        logger.warn('⚠️ Could not create booking record:', e);
+      }
+    }
+
+    // ── Создать запись в long_term_rentals (долгосрочное) ──
+    if (status === 'RESERVED' && userId && carPlate && rentalDays) {
+      try {
+        const spot = await prisma.parkingSpot.findUnique({ where: { spotNumber } });
+        const priceMap: Record<number, number> = { 1: 700, 3: 1800, 5: 2700, 7: 3500, 14: 6000 };
+        const totalCost = priceMap[rentalDays] ?? rentalDays * 700;
+        if (spot) {
+          const now = new Date();
+          const endDate = new Date(now.getTime() + rentalDays * 24 * 60 * 60 * 1000);
+          await prisma.longTermRental.create({
+            data: {
+              userId,
+              spotId: spot.id,
+              plateNumber: carPlate,
+              rentalDays,
+              totalCost,
+              startDate: now,
+              endDate,
+              isPaid: false,
+              status: 'ACTIVE',
+            },
+          });
+          // Транзакция на списание
+          await prisma.transaction.create({
+            data: {
+              userId,
+              amount: -totalCost,
+              type: 'PAYMENT',
+              description: `Long-term rental ${spotNumber} — ${rentalDays} days`,
+              balanceBefore: 0,
+              balanceAfter: 0,
+            },
+          });
+        }
+      } catch (e) {
+        logger.warn('⚠️ Could not create rental record:', e);
+      }
+    }
 
     const { io } = await import('../server');
-    io.emit('spot-status-changed', {
-      spotNumber,
-      status,
-      carPlate: updatedSpot.currentUserPlate ?? null
-    });
+    io.emit('spot-status-changed', { spotNumber, status, carPlate: updatedSpot.currentUserPlate ?? null });
 
-    res.json({
-      success: true,
-      message: `Spot ${spotNumber} status set to ${status}`,
-      spot: {
-        spotNumber: updatedSpot.spotNumber,
-        status: updatedSpot.status,
-        currentUserPlate: updatedSpot.currentUserPlate
-      }
-    });
+    res.json({ success: true, spot: { spotNumber: updatedSpot.spotNumber, status: updatedSpot.status } });
   } catch (error) {
     logger.error('❌ Error setting spot status:', error);
     res.status(500).json({ error: 'Failed to set spot status' });

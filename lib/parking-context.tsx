@@ -127,6 +127,8 @@ interface ParkingContextType {
   setCurrentScreen: (screen: string) => void
   isAuthenticated: boolean
   setIsAuthenticated: (auth: boolean) => void
+  isNewUser: boolean
+  setIsNewUser: (v: boolean) => void
 
   // User
   user: User | null
@@ -234,6 +236,7 @@ function mapBackendSpot(s: { spotNumber: string; type: string; status: string; c
 export function ParkingProvider({ children }: { children: ReactNode }) {
   const [currentScreen, setCurrentScreen] = useState("home")
   const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [isNewUser, setIsNewUser] = useState(false)
   const [user, setUser] = useState<User | null>(demoUser)
   const [spots, setSpots] = useState<ParkingSpot[]>(generateInitialSpots())
   const [activeBooking, setActiveBooking] = useState<Booking | null>(null)
@@ -324,6 +327,8 @@ export function ParkingProvider({ children }: { children: ReactNode }) {
       setCurrentScreen,
       isAuthenticated,
       setIsAuthenticated,
+      isNewUser,
+      setIsNewUser,
       user,
       setUser,
       spots,

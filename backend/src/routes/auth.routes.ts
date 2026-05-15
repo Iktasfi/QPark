@@ -1,10 +1,41 @@
 import { Router, Request, Response } from 'express';
 import { body, validationResult } from 'express-validator';
+import { PrismaClient } from '@prisma/client';
 import authService from '../services/auth.service';
 import { verifyToken } from '../middleware/auth';
 import { logger } from '../server';
 
+const prisma = new PrismaClient();
+
 const router = Router();
+
+/**
+ * POST /auth/firebase-login
+ * Вход через Firebase Phone Auth — upsert пользователя в БД
+ */
+router.post(
+  '/firebase-login',
+  [
+    body('phoneNumber').isString().trim().notEmpty().withMessage('Phone number required'),
+    body('firebaseUid').isString().trim().notEmpty().withMessage('Firebase UID required'),
+  ],
+  async (req: Request, res: Response) => {
+    try {
+      const errors = validationResult(req)
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() })
+      }
+
+      const { phoneNumber, firebaseUid } = req.body
+      const { user, token, isNew } = await authService.firebaseLogin(phoneNumber, firebaseUid)
+
+      res.json({ user, token, isNew })
+    } catch (error) {
+      logger.error('❌ Firebase login error:', error)
+      res.status(500).json({ error: 'Login failed' })
+    }
+  }
+)
 
 /**
  * POST /auth/register
@@ -133,7 +164,6 @@ router.put(
     body('firstName').optional().isString().trim(),
     body('lastName').optional().isString().trim(),
     body('email').optional().isEmail(),
-    body('carPlate').optional().isString().trim().toUpperCase(),
   ],
   async (req: Request, res: Response) => {
     try {
@@ -146,13 +176,11 @@ router.put(
         return res.status(401).json({ error: 'Unauthorized' });
       }
 
-      const { firstName, lastName, email, carPlate } = req.body;
+      const { firstName, lastName } = req.body;
 
       const updatedUser = await authService.updateUserProfile(req.userId, {
         firstName,
         lastName,
-        email,
-        carPlate,
       });
 
       res.json({
@@ -168,13 +196,89 @@ router.put(
 
 /**
  * GET /auth/verify-token
- * Проверить валидность токена
  */
 router.get('/verify-token', verifyToken, (req: Request, res: Response) => {
-  res.json({
-    valid: true,
-    userId: req.userId,
-  });
+  res.json({ valid: true, userId: req.userId });
+});
+
+/**
+ * GET /auth/cars
+ * Получить все машины пользователя (без удалённых)
+ */
+router.get('/cars', verifyToken, async (req: Request, res: Response) => {
+  try {
+    if (!req.userId) return res.status(401).json({ error: 'Unauthorized' });
+    const cars = await prisma.car.findMany({
+      where: { userId: req.userId, deletedAt: null },
+      orderBy: { createdAt: 'asc' },
+    });
+    res.json(cars);
+  } catch (error) {
+    logger.error('❌ Error fetching cars:', error);
+    res.status(500).json({ error: 'Failed to fetch cars' });
+  }
+});
+
+/**
+ * POST /auth/cars
+ * Добавить машину
+ */
+router.post(
+  '/cars',
+  verifyToken,
+  [
+    body('brand').isString().trim().notEmpty().withMessage('Brand is required'),
+    body('model').isString().trim().notEmpty().withMessage('Model is required'),
+    body('plateNumber').isString().trim().notEmpty().withMessage('Plate number is required'),
+  ],
+  async (req: Request, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+      if (!req.userId) return res.status(401).json({ error: 'Unauthorized' });
+
+      const { brand, model, plateNumber } = req.body;
+
+      const existing = await prisma.car.findUnique({ where: { plateNumber } });
+      if (existing) {
+        // If the user previously soft-deleted this car, restore it
+        if (existing.deletedAt && existing.userId === req.userId) {
+          const car = await prisma.car.update({
+            where: { id: existing.id },
+            data: { brand, model, deletedAt: null },
+          });
+          return res.json({ car, message: '✅ Car added' });
+        }
+        return res.status(400).json({ error: 'This plate number is already registered' });
+      }
+
+      const car = await prisma.car.create({
+        data: { userId: req.userId, brand, model, plateNumber },
+      });
+
+      res.json({ car, message: '✅ Car added' });
+    } catch (error) {
+      logger.error('❌ Error adding car:', error);
+      res.status(500).json({ error: 'Failed to add car' });
+    }
+  }
+);
+
+/**
+ * DELETE /auth/cars/:id
+ * Мягкое удаление машины (soft delete — запись остаётся в БД)
+ */
+router.delete('/cars/:id', verifyToken, async (req: Request, res: Response) => {
+  try {
+    if (!req.userId) return res.status(401).json({ error: 'Unauthorized' });
+    const car = await prisma.car.findFirst({ where: { id: req.params.id, userId: req.userId, deletedAt: null } });
+    if (!car) return res.status(404).json({ error: 'Car not found' });
+    await prisma.car.update({ where: { id: req.params.id }, data: { deletedAt: new Date() } });
+    res.json({ message: '✅ Car removed' });
+  } catch (error) {
+    logger.error('❌ Error deleting car:', error);
+    res.status(500).json({ error: 'Failed to delete car' });
+  }
 });
 
 export default router;

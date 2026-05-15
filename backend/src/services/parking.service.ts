@@ -89,7 +89,7 @@ export class ParkingService {
       // Найти бронирование по номеру машины
       const booking = await prisma.booking.findFirst({
         where: {
-          user: { carPlate },
+          spot: { currentUserPlate: carPlate },
           status: { in: ['PENDING', 'CONFIRMED'] },
         },
         include: { spot: true, user: true },

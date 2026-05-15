@@ -57,7 +57,7 @@ export class PaymentService {
       const amount = paymentIntent.amount / 100;
 
       // Обновить платёж в БД
-      const payment = await prisma.payment.update({
+      const payment = await prisma.payment.updateMany({
         where: { stripePaymentIntentId: paymentIntentId },
         data: { status: 'COMPLETED' },
       });
