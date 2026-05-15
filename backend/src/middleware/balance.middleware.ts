@@ -101,13 +101,6 @@ export const requireCarPlate = async (req: Request, res: Response, next: NextFun
       return res.status(404).json({ error: 'User not found' });
     }
 
-    if (!user.carPlate) {
-      return res.status(400).json({
-        error: 'Car plate is required',
-        message: 'Please add your car plate in profile',
-      });
-    }
-
     req.user = user;
     next();
   } catch (error) {

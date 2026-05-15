@@ -10,6 +10,8 @@ export function ProfileScreen() {
   const { user, setUser, setIsAuthenticated, setCurrentScreen, darkMode, setDarkMode, language, setLanguage, t } = useParking()
   const [isAddingCar, setIsAddingCar] = useState(false)
   const [newCar, setNewCar] = useState({ brand: "", model: "", plateNumber: "" })
+  const [carError, setCarError] = useState("")
+  const [isCarLoading, setIsCarLoading] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [notifications, setNotifications] = useState(true)
   const [isEditingName, setIsEditingName] = useState(false)
@@ -21,31 +23,78 @@ export function ProfileScreen() {
 
   const languageNames = { en: "English", kk: "Қазақша", ru: "Русский" }
 
-  const handleAddCar = () => {
+  const handleAddCar = async () => {
     if (!user || !newCar.brand || !newCar.model || !newCar.plateNumber) return
-    setUser({
-      ...user,
-      cars: [
-        ...user.cars,
-        { id: `car-${Date.now()}`, brand: newCar.brand, model: newCar.model, plateNumber: newCar.plateNumber },
-      ],
-    })
-    setNewCar({ brand: "", model: "", plateNumber: "" })
-    setIsAddingCar(false)
+    setIsCarLoading(true)
+    setCarError("")
+    try {
+      const token = localStorage.getItem("qpark_token")
+      const res = await fetch("/backend/auth/cars", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          brand: newCar.brand.trim(),
+          model: newCar.model.trim(),
+          plateNumber: newCar.plateNumber.trim().toUpperCase(),
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setCarError(data.error || data.errors?.[0]?.msg || "Failed to add car")
+        return
+      }
+      setUser({
+        ...user,
+        cars: [
+          ...user.cars,
+          { id: data.car.id, brand: newCar.brand.trim(), model: newCar.model.trim(), plateNumber: newCar.plateNumber.trim().toUpperCase() },
+        ],
+      })
+      setNewCar({ brand: "", model: "", plateNumber: "" })
+      setIsAddingCar(false)
+    } catch {
+      setCarError("Cannot connect to server")
+    } finally {
+      setIsCarLoading(false)
+    }
   }
 
-  const handleRemoveCar = (carId: string) => {
+  const handleRemoveCar = async (carId: string) => {
     if (!user) return
+    try {
+      const token = localStorage.getItem("qpark_token")
+      await fetch(`/backend/auth/cars/${carId}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      })
+    } catch {
+      // continue — remove from local state even if backend fails
+    }
     setUser({ ...user, cars: user.cars.filter((c) => c.id !== carId) })
   }
 
   const handleSignOut = () => {
+    localStorage.removeItem("qpark_token")
     setIsAuthenticated(false)
+    setUser(null)
     setCurrentScreen("home")
   }
 
-  const handleSaveName = () => {
+  const handleSaveName = async () => {
     if (!user || !editedName.trim()) return
+    const parts = editedName.trim().split(" ")
+    const firstName = parts[0] || ""
+    const lastName = parts.slice(1).join(" ")
+    try {
+      const token = localStorage.getItem("qpark_token")
+      await fetch("/backend/auth/me", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ firstName, lastName }),
+      })
+    } catch {
+      // continue even if backend fails
+    }
     setUser({ ...user, name: editedName.trim() })
     setIsEditingName(false)
   }
@@ -462,19 +511,20 @@ export function ProfileScreen() {
                 onChange={(e) => setNewCar({ ...newCar, plateNumber: e.target.value })}
                 className="rounded-xl bg-white/10 border-white/20 text-white placeholder:text-white/50"
               />
+              {carError && <p className="text-red-300 text-sm text-center">{carError}</p>}
               <div className="flex gap-2">
                 <button
-                  onClick={() => { setIsAddingCar(false); setNewCar({ brand: "", model: "", plateNumber: "" }) }}
+                  onClick={() => { setIsAddingCar(false); setNewCar({ brand: "", model: "", plateNumber: "" }); setCarError("") }}
                   className="flex-1 py-3 rounded-xl border border-white/30 font-medium text-white hover:bg-white/10 transition-colors"
                 >
                   {t.cancel}
                 </button>
                 <button
                   onClick={handleAddCar}
-                  disabled={!newCar.brand || !newCar.model || !newCar.plateNumber}
+                  disabled={!newCar.brand || !newCar.model || !newCar.plateNumber || isCarLoading}
                   className="flex-1 py-3 rounded-xl bg-white text-[#34415F] font-medium hover:bg-white/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {t.add}
+                  {isCarLoading ? "Saving..." : t.add}
                 </button>
               </div>
             </div>

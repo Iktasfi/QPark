@@ -54,6 +54,56 @@ export class AuthService {
   }
 
   /**
+   * Firebase login — upsert: создать если нет, вернуть если есть
+   * Возвращает { user, token, isNew }
+   */
+  async firebaseLogin(phoneNumber: string, firebaseUid: string) {
+    try {
+      let isNew = false
+
+      // Найти или создать пользователя
+      let user = await prisma.user.findUnique({
+        where: { phoneNumber },
+        include: { cars: { where: { deletedAt: null }, orderBy: { createdAt: 'asc' } } },
+      })
+
+      if (!user) {
+        isNew = true
+        user = await prisma.user.create({
+          data: {
+            phoneNumber,
+            walletBalance: 150, // бонус новому пользователю
+            bonusPoints: 0,
+          },
+          include: { cars: true },
+        })
+
+        // Транзакция на стартовый бонус
+        await prisma.transaction.create({
+          data: {
+            userId: user.id,
+            amount: 150,
+            type: 'PROMO',
+            description: 'Стартовый бонус для новых пользователей',
+            balanceBefore: 0,
+            balanceAfter: 150,
+          },
+        })
+
+        logger.info(`✅ New user registered via Firebase: ${phoneNumber}`)
+      } else {
+        logger.info(`✅ Existing user logged in: ${phoneNumber}`)
+      }
+
+      const token = this.generateToken(user.id)
+      return { user, token, isNew }
+    } catch (error) {
+      logger.error('❌ Firebase login error:', error)
+      throw error
+    }
+  }
+
+  /**
    * Найти пользователя
    */
   async findUserByPhone(phoneNumber: string) {
@@ -101,14 +151,13 @@ export class AuthService {
     data: {
       firstName?: string;
       lastName?: string;
-      email?: string;
-      carPlate?: string;
     }
   ) {
     try {
       const user = await prisma.user.update({
         where: { id: userId },
         data,
+        include: { cars: true },
       });
 
       logger.info(`✅ User profile updated: ${userId}`);
@@ -120,18 +169,21 @@ export class AuthService {
   }
 
   /**
-   * Получить профиль пользователя
+   * Получить профиль пользователя (с машинами и транзакциями)
    */
   async getUserProfile(userId: string) {
     try {
       const user = await prisma.user.findUnique({
         where: { id: userId },
-      });
-
-      return user;
+        include: {
+          cars: { where: { deletedAt: null }, orderBy: { createdAt: 'asc' } },
+          transactions: { orderBy: { createdAt: 'desc' }, take: 20 },
+        },
+      })
+      return user
     } catch (error) {
-      logger.error('❌ Error fetching user profile:', error);
-      throw error;
+      logger.error('❌ Error fetching user profile:', error)
+      throw error
     }
   }
 

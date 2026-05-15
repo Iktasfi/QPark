@@ -62,11 +62,17 @@ export function SpotDetailsScreen() {
       bookedAt: new Date(),
     })
 
-    // Sync with backend — send carPlate so LPR can verify it on entry
+    // Sync with backend — creates booking/rental record in PostgreSQL
     fetch("/backend/parking/set-status", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ spotNumber: selectedSpot.id, status: newStatus, carPlate: selectedCarData.plateNumber }),
+      body: JSON.stringify({
+        spotNumber: selectedSpot.id,
+        status: newStatus,
+        carPlate: selectedCarData.plateNumber,
+        userId: user.id,
+        rentalDays: selectedRentalDays ?? undefined,
+      }),
     }).catch(() => {/* backend offline — local state is still correct */})
 
     setIsBooking(false)

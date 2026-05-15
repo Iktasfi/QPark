@@ -65,6 +65,10 @@ const liveEventLabels: Record<string, { label: string; color: string; emoji: str
   "payment-completed": { label: "Оплата прошла",        color: "text-green-600",  emoji: "💳" },
 }
 
+interface DbUser { id: string; phoneNumber: string; firstName: string | null; lastName: string | null; walletBalance: number; isBanned: boolean; cars: { plateNumber: string; brand: string; model: string }[] }
+interface DbBooking { id: string; spotNumber: string; plateNumber: string; userName: string; status: string; startTime: string; totalCost: number }
+interface DbRental { id: string; spotNumber: string; plateNumber: string; userName: string; rentalDays: number; totalCost: number; status: string; endDate: string }
+
 export function AdminDashboard() {
   const [parkingData, setParkingData] = useState<ParkingData | null>(null)
   const [loading, setLoading] = useState(true)
@@ -76,6 +80,10 @@ export function AdminDashboard() {
   const [liveEvents, setLiveEvents] = useState<LiveEvent[]>([])
   const liveEventsRef = useRef(liveEvents)
   liveEventsRef.current = liveEvents
+  const [dbUsers, setDbUsers] = useState<DbUser[]>([])
+  const [dbBookings, setDbBookings] = useState<DbBooking[]>([])
+  const [dbRentals, setDbRentals] = useState<DbRental[]>([])
+  const [activeTab, setActiveTab] = useState<"spots" | "users" | "bookings">("spots")
 
   const addLiveEvent = (type: LiveEvent["type"], data: Record<string, unknown>) => {
     const event: LiveEvent = {
@@ -153,10 +161,19 @@ export function AdminDashboard() {
 
   const fetchParkingData = async () => {
     try {
-      const response = await fetch("/backend/parking/spots")
-      if (!response.ok) throw new Error("Ошибка загрузки данных")
-      const data = await response.json()
+      const [spotsRes, dbRes] = await Promise.all([
+        fetch("/backend/parking/spots"),
+        fetch("/backend/admin/dashboard"),
+      ])
+      if (!spotsRes.ok) throw new Error("Ошибка загрузки данных")
+      const data = await spotsRes.json()
       setParkingData(data)
+      if (dbRes.ok) {
+        const db = await dbRes.json()
+        setDbUsers(db.users ?? [])
+        setDbBookings(db.bookings ?? [])
+        setDbRentals(db.rentals ?? [])
+      }
       setError(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : "Произошла ошибка")
@@ -466,9 +483,127 @@ export function AdminDashboard() {
           </CardContent>
         </Card>
 
+        {/* Табы */}
+        <div className="flex gap-2 mb-6">
+          {(["spots", "users", "bookings"] as const).map(tab => (
+            <button key={tab} onClick={() => setActiveTab(tab)}
+              className={`px-4 py-2 rounded-lg font-medium text-sm transition-colors ${activeTab === tab ? "bg-[#354469] text-white" : "bg-white text-gray-600 hover:bg-gray-100 border"}`}>
+              {tab === "spots" ? `Места (${parkingData.statistics.total})` : tab === "users" ? `Пользователи (${dbUsers.length})` : `Бронирования (${dbBookings.length + dbRentals.length})`}
+            </button>
+          ))}
+        </div>
+
         {/* Таблицы парковки */}
-        {renderParkingSection(parkingData.tables.shortTerm.title, parkingData.tables.shortTerm.table)}
-        {renderParkingSection(parkingData.tables.longTerm.title, parkingData.tables.longTerm.table)}
+        {activeTab === "spots" && (
+          <>
+            {renderParkingSection(parkingData.tables.shortTerm.title, parkingData.tables.shortTerm.table)}
+            {renderParkingSection(parkingData.tables.longTerm.title, parkingData.tables.longTerm.table)}
+          </>
+        )}
+
+        {/* Пользователи из БД */}
+        {activeTab === "users" && (
+          <Card>
+            <CardHeader><CardTitle>Зарегистрированные пользователи</CardTitle></CardHeader>
+            <CardContent>
+              {dbUsers.length === 0 ? (
+                <p className="text-gray-400 text-center py-8">Нет пользователей в базе данных</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead><tr className="border-b text-left text-gray-500">
+                      <th className="pb-2 pr-4">Телефон</th>
+                      <th className="pb-2 pr-4">Имя</th>
+                      <th className="pb-2 pr-4">Баланс</th>
+                      <th className="pb-2 pr-4">Машины</th>
+                      <th className="pb-2">Статус</th>
+                    </tr></thead>
+                    <tbody>
+                      {dbUsers.map(u => (
+                        <tr key={u.id} className="border-b last:border-0 hover:bg-gray-50">
+                          <td className="py-2 pr-4 font-mono text-xs">{u.phoneNumber}</td>
+                          <td className="py-2 pr-4">{u.firstName ?? "-"} {u.lastName ?? ""}</td>
+                          <td className="py-2 pr-4 font-medium">{u.walletBalance.toLocaleString()} ₸</td>
+                          <td className="py-2 pr-4">
+                            {u.cars.length === 0 ? <span className="text-gray-400">—</span> : u.cars.map(c => (
+                              <span key={c.plateNumber} className="inline-block bg-gray-100 rounded px-2 py-0.5 text-xs mr-1">{c.brand} {c.model} · {c.plateNumber}</span>
+                            ))}
+                          </td>
+                          <td className="py-2">
+                            <span className={`px-2 py-0.5 rounded-full text-xs ${u.isBanned ? "bg-red-100 text-red-600" : "bg-green-100 text-green-600"}`}>
+                              {u.isBanned ? "Забанен" : "Активен"}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Бронирования из БД */}
+        {activeTab === "bookings" && (
+          <div className="space-y-6">
+            <Card>
+              <CardHeader><CardTitle>Краткосрочные бронирования</CardTitle></CardHeader>
+              <CardContent>
+                {dbBookings.length === 0 ? <p className="text-gray-400 text-center py-4">Нет бронирований</p> : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead><tr className="border-b text-left text-gray-500">
+                        <th className="pb-2 pr-4">Место</th><th className="pb-2 pr-4">Номер авто</th>
+                        <th className="pb-2 pr-4">Пользователь</th><th className="pb-2 pr-4">Статус</th><th className="pb-2">Стоимость</th>
+                      </tr></thead>
+                      <tbody>
+                        {dbBookings.map(b => (
+                          <tr key={b.id} className="border-b last:border-0 hover:bg-gray-50">
+                            <td className="py-2 pr-4 font-bold">{b.spotNumber}</td>
+                            <td className="py-2 pr-4 font-mono text-xs">{b.plateNumber}</td>
+                            <td className="py-2 pr-4">{b.userName}</td>
+                            <td className="py-2 pr-4"><span className="bg-yellow-100 text-yellow-700 text-xs px-2 py-0.5 rounded-full">{b.status}</span></td>
+                            <td className="py-2">{b.totalCost} ₸</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader><CardTitle>Долгосрочная аренда</CardTitle></CardHeader>
+              <CardContent>
+                {dbRentals.length === 0 ? <p className="text-gray-400 text-center py-4">Нет аренды</p> : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead><tr className="border-b text-left text-gray-500">
+                        <th className="pb-2 pr-4">Место</th><th className="pb-2 pr-4">Номер авто</th>
+                        <th className="pb-2 pr-4">Пользователь</th><th className="pb-2 pr-4">Дней</th>
+                        <th className="pb-2 pr-4">До</th><th className="pb-2">Стоимость</th>
+                      </tr></thead>
+                      <tbody>
+                        {dbRentals.map(r => (
+                          <tr key={r.id} className="border-b last:border-0 hover:bg-gray-50">
+                            <td className="py-2 pr-4 font-bold">{r.spotNumber}</td>
+                            <td className="py-2 pr-4 font-mono text-xs">{r.plateNumber}</td>
+                            <td className="py-2 pr-4">{r.userName}</td>
+                            <td className="py-2 pr-4">{r.rentalDays} дн.</td>
+                            <td className="py-2 pr-4 text-xs text-gray-500">{new Date(r.endDate).toLocaleDateString("ru-RU")}</td>
+                            <td className="py-2">{r.totalCost.toLocaleString()} ₸</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        )}
       </div>
     </div>
   )
