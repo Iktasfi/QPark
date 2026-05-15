@@ -74,13 +74,53 @@ export function OnboardingScreen() {
     }
   }
 
-  const handleFinish = () => {
+  const handleFinish = async () => {
     if (!user) return
-    setUser({
-      ...user,
-      name: `${firstName} ${lastName}`.trim() || "User",
-      cars: cars.map(c => ({ id: c.id, brand: c.brand, model: c.model, plateNumber: c.plateNumber })),
-    })
+
+    // Fetch fresh user data from DB — ensures profile reflects exactly what's in PostgreSQL
+    try {
+      const currentToken = localStorage.getItem("qpark_token")
+      const res = await fetch("/backend/auth/me", {
+        headers: { Authorization: `Bearer ${currentToken}` },
+      })
+      if (res.ok) {
+        const fresh = await res.json()
+        setUser({
+          id: fresh.id ?? user.id,
+          phone: fresh.phoneNumber ?? user.phone,
+          name: fresh.firstName
+            ? `${fresh.firstName}${fresh.lastName ? " " + fresh.lastName : ""}`.trim()
+            : `${firstName} ${lastName}`.trim() || "User",
+          balance: fresh.walletBalance ?? user.balance,
+          bonusPoints: fresh.bonusPoints ?? user.bonusPoints,
+          noShowCount: fresh.noShowCount ?? user.noShowCount,
+          isBanned: fresh.isBanned ?? user.isBanned,
+          bannedUntil: fresh.bannedUntil ? new Date(fresh.bannedUntil) : undefined,
+          cars: fresh.cars?.map((c: { id: string; brand: string; model: string; plateNumber: string }) => ({
+            id: c.id,
+            brand: c.brand,
+            model: c.model,
+            plateNumber: c.plateNumber,
+          })) ?? cars.map(c => ({ id: c.id, brand: c.brand, model: c.model, plateNumber: c.plateNumber })),
+          transactions: user.transactions,
+        })
+      } else {
+        // Backend unreachable — use local state
+        setUser({
+          ...user,
+          name: `${firstName} ${lastName}`.trim() || "User",
+          cars: cars.map(c => ({ id: c.id, brand: c.brand, model: c.model, plateNumber: c.plateNumber })),
+        })
+      }
+    } catch {
+      // Backend unreachable — use local state
+      setUser({
+        ...user,
+        name: `${firstName} ${lastName}`.trim() || "User",
+        cars: cars.map(c => ({ id: c.id, brand: c.brand, model: c.model, plateNumber: c.plateNumber })),
+      })
+    }
+
     setCurrentScreen("home")
   }
 
