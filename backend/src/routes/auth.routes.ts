@@ -1,11 +1,9 @@
 import { Router, Request, Response } from 'express';
 import { body, validationResult } from 'express-validator';
-import { PrismaClient } from '@prisma/client';
 import authService from '../services/auth.service';
 import { verifyToken } from '../middleware/auth';
 import { logger } from '../server';
-
-const prisma = new PrismaClient();
+import { prisma } from '../lib/prisma';
 
 const router = Router();
 

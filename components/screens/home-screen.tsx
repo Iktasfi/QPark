@@ -5,7 +5,7 @@ import { useParking } from "@/lib/parking-context"
 import Image from "next/image"
 
 export function HomeScreen() {
-  const { setCurrentScreen, user } = useParking()
+  const { setCurrentScreen, user, activeBooking } = useParking()
   const [activeTab, setActiveTab] = useState("home")
 
   const navItems = [
@@ -74,36 +74,40 @@ export function HomeScreen() {
           </div>
         </div>
 
-        {/* Active Booking Card */}
-        <div className="bg-[#F0EDED] rounded-[20px] p-5 mb-8" style={{boxShadow: '0 10px 20px rgba(0,0,0,0.08)'}}>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <Image 
-                src="/clock.svg" 
-                alt="Clock" 
-                width={48}
-                height={48}
-                className="object-contain"
-              />
-              <div>
-                <h3 className="text-[#333333] font-extrabold text-lg drop-shadow-md">Active Booking</h3>
-                <p className="text-gray-600 text-sm">Spot A-24 • 2h remaining</p>
+        {/* Active Booking Card — only shown when booking is active */}
+        {activeBooking && (
+          <div className="bg-[#F0EDED] rounded-[20px] p-5 mb-8" style={{boxShadow: '0 10px 20px rgba(0,0,0,0.08)'}}>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <Image
+                  src="/clock.svg"
+                  alt="Clock"
+                  width={48}
+                  height={48}
+                  className="object-contain"
+                />
+                <div>
+                  <h3 className="text-[#333333] font-extrabold text-lg drop-shadow-md">Active Booking</h3>
+                  <p className="text-gray-600 text-sm">
+                    Spot {activeBooking.spotId} • {activeBooking.type === "long-term" ? "Long-term" : "Short-term"}
+                  </p>
+                </div>
               </div>
+              <button
+                onClick={() => setCurrentScreen("booking")}
+                className="p-2 rounded-lg hover:bg-gray-200 transition-colors"
+              >
+                <Image
+                  src="/Arrow_right.svg"
+                  alt="Arrow"
+                  width={32}
+                  height={32}
+                  className="object-contain"
+                />
+              </button>
             </div>
-            <button 
-              onClick={() => setCurrentScreen("booking")}
-              className="p-2 rounded-lg hover:bg-gray-200 transition-colors"
-            >
-              <Image 
-                src="/Arrow_right.svg" 
-                alt="Arrow" 
-                width={32}
-                height={32}
-                className="object-contain"
-              />
-            </button>
           </div>
-        </div>
+        )}
 
         {/* Parking Spots */}
         <div className="mb-8">

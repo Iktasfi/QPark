@@ -14,6 +14,7 @@ import paymentRoutes from './routes/payment.routes';
 import rentalRoutes from './routes/rental.routes';
 import adminRoutes from './routes/admin.routes';
 import testRoutes from './routes/test.routes';
+import { prisma } from './lib/prisma';
 
 // Load environment variables
 dotenv.config();
@@ -96,9 +97,6 @@ export { app, httpServer, io, logger };
 // Initialize parking spots on startup
 async function initializeParkingSpots() {
   try {
-    const { PrismaClient } = await import('@prisma/client');
-    const prisma = new PrismaClient();
-    
     // Проверить, есть ли уже места
     const count = await prisma.parkingSpot.count();
     if (count > 0) {
@@ -137,6 +135,57 @@ async function initializeParkingSpots() {
   }
 }
 
+// No-show auto-cancel job: runs every 60s
+// Finds PENDING/CONFIRMED short-term bookings older than 15 min where spot is still BOOKED (car hasn't arrived)
+// Cancels them, increments noShowCount, auto-bans at 6
+async function runNoShowJob() {
+  try {
+    const cutoff = new Date(Date.now() - 15 * 60 * 1000);
+
+    const expired = await prisma.booking.findMany({
+      where: {
+        status: { in: ['PENDING', 'CONFIRMED'] },
+        startTime: { lt: cutoff },
+        spot: { type: 'SHORT_TERM', status: 'BOOKED' },
+      },
+      include: { spot: true },
+    });
+
+    for (const booking of expired) {
+      await prisma.$transaction([
+        prisma.booking.update({
+          where: { id: booking.id },
+          data: { status: 'CANCELLED', actualEndTime: new Date() },
+        }),
+        prisma.parkingSpot.update({
+          where: { id: booking.spotId },
+          data: { status: 'FREE', currentUserPlate: null, currentUserId: null },
+        }),
+        prisma.user.update({
+          where: { id: booking.userId },
+          data: { noShowCount: { increment: 1 } },
+        }),
+      ]);
+
+      // Auto-ban at 6 no-shows
+      const user = await prisma.user.findUnique({ where: { id: booking.userId } });
+      if (user && user.noShowCount >= 6 && !user.isBanned) {
+        const bannedUntil = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
+        await prisma.user.update({
+          where: { id: booking.userId },
+          data: { isBanned: true, bannedUntil },
+        });
+        logger.info(`🚫 User ${booking.userId} auto-banned until ${bannedUntil.toISOString()}`);
+      }
+
+      io.emit('spot-status-changed', { spotNumber: booking.spot.spotNumber, status: 'FREE', carPlate: null });
+      logger.info(`⏰ No-show cancelled: booking ${booking.id}, spot ${booking.spot.spotNumber}`);
+    }
+  } catch (e) {
+    logger.error('❌ No-show job error:', e);
+  }
+}
+
 // Start server
 const PORT = process.env.PORT || 3001;
 
@@ -144,9 +193,13 @@ httpServer.listen(PORT, async () => {
   logger.info(`🚀 Server running on port ${PORT}`);
   logger.info(`📍 Environment: ${process.env.NODE_ENV || 'development'}`);
   logger.info(`📡 Socket.io listening for connections`);
-  
+
   // Initialize parking spots
   await initializeParkingSpots();
+
+  // Start no-show auto-cancel job
+  setInterval(runNoShowJob, 60 * 1000);
+  logger.info('⏰ No-show auto-cancel job started (every 60s)');
 });
 
 // Graceful shutdown

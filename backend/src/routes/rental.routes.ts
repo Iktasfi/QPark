@@ -6,7 +6,7 @@ import { checkBalance, requireCarPlate } from '../middleware/balance.middleware'
 import { validateLongTermRental } from '../middleware/validation.middleware';
 import { getLongTermPrice } from '../utils/pricing';
 import { logger } from '../server';
-
+import { prisma } from '../lib/prisma';
 const router = Router();
 
 // Все маршруты требуют авторизации
@@ -42,8 +42,6 @@ router.post('/', requireCarPlate, validateLongTermRental, async (req: Request, r
     );
 
     // Обновить статус оплаты в аренде
-    const { PrismaClient } = await import('@prisma/client');
-    const prisma = new PrismaClient();
     await prisma.longTermRental.update({
       where: { id: rental.id },
       data: { isPaid: true },
@@ -138,7 +136,7 @@ router.post('/:id/cancel', async (req: Request, res: Response) => {
 router.post('/check-expired', async (req: Request, res: Response) => {
   try {
     const expiredCount = await longTermRentalService.checkExpiredRentals();
-    
+
     res.json({
       expiredCount,
       message: `✅ Completed ${expiredCount} expired rentals`,
@@ -146,6 +144,52 @@ router.post('/check-expired', async (req: Request, res: Response) => {
   } catch (error) {
     logger.error('❌ Error checking expired rentals:', error);
     res.status(500).json({ error: 'Failed to check expired rentals' });
+  }
+});
+
+/**
+ * POST /rentals/terminate-by-spot
+ * Досрочное завершение долгосрочной аренды (без возврата средств)
+ */
+router.post('/terminate-by-spot', async (req: Request, res: Response) => {
+  try {
+    const { spotNumber } = req.body;
+    const userId = req.userId!;
+
+    if (!spotNumber) {
+      return res.status(400).json({ error: 'spotNumber is required' });
+    }
+
+
+    const spot = await prisma.parkingSpot.findUnique({ where: { spotNumber } });
+    if (!spot) return res.status(404).json({ error: 'Spot not found' });
+
+    const rental = await prisma.longTermRental.findFirst({
+      where: { spotId: spot.id, userId, status: 'ACTIVE' },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (!rental) return res.status(404).json({ error: 'Active rental not found' });
+
+    await prisma.$transaction([
+      prisma.longTermRental.update({
+        where: { id: rental.id },
+        data: { status: 'CANCELLED', endDate: new Date() },
+      }),
+      prisma.parkingSpot.update({
+        where: { spotNumber },
+        data: { status: 'FREE', currentUserPlate: null, currentUserId: null },
+      }),
+    ]);
+
+    const { io } = await import('../server');
+    io.emit('spot-status-changed', { spotNumber, status: 'FREE', carPlate: null });
+    io.emit('rental-terminated', { rentalId: rental.id, spotNumber });
+
+    res.json({ success: true, message: 'Rental terminated' });
+  } catch (error) {
+    logger.error('❌ Error terminating rental by spot:', error);
+    res.status(500).json({ error: 'Failed to terminate rental' });
   }
 });
 

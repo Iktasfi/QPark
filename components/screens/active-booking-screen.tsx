@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { useParking } from "@/lib/parking-context"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -25,36 +25,41 @@ export function ActiveBookingScreen() {
     ? (spots.find(s => s.id === activeBooking.spotId) ?? _selectedSpot)
     : _selectedSpot
 
-  const [timer, setTimer] = useState(15 * 60) // 15 minutes in seconds
-  const [isArrived, setIsArrived] = useState(false)
-  const [parkingDuration, setParkingDuration] = useState(0)
+  // Single clock — all timers derive from this, so they survive navigation
+  const [now, setNow] = useState(() => Date.now())
+  const [extraWaitSeconds, setExtraWaitSeconds] = useState(0)
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(id)
+  }, [])
+
+  const isLongTerm = selectedSpot?.type === "long-term" || activeBooking?.type === "long-term"
+  const isArrived = !isLongTerm && selectedSpot?.status === "OCCUPIED"
+  const elapsedSec = activeBooking ? Math.floor((now - new Date(activeBooking.startTime).getTime()) / 1000) : 0
+  const timer = Math.max(0, 15 * 60 + extraWaitSeconds - elapsedSec)
+
+  // Record arrival time locally the moment isArrived first becomes true
+  const arrivedAtLocalRef = useRef<number | null>(null)
+  useEffect(() => {
+    if (isArrived && !arrivedAtLocalRef.current) {
+      arrivedAtLocalRef.current = activeBooking?.arrivedAt
+        ? new Date(activeBooking.arrivedAt).getTime()
+        : Date.now()
+    }
+  }, [isArrived])
+
+  const parkingDuration = isArrived && arrivedAtLocalRef.current
+    ? Math.floor((now - arrivedAtLocalRef.current) / 1000)
+    : 0
   const [isPaying, setIsPaying] = useState(false)
+  const [showGateOpened, setShowGateOpened] = useState(false)
   const [showExtend, setShowExtend] = useState(false)
   const [selectedExtendDays, setSelectedExtendDays] = useState<number | null>(null)
   const [isExtending, setIsExtending] = useState(false)
-  
+  const [isTerminating, setIsTerminating] = useState(false)
+  const [showTerminateConfirm, setShowTerminateConfirm] = useState(false)
+
   const selectedCar = user?.cars.find(c => c.plateNumber === activeBooking?.plateNumber)
-  const isLongTerm = selectedSpot?.type === "long-term"
-  
-  // Countdown timer for arrival
-  useEffect(() => {
-    if (!isArrived && !isLongTerm && timer > 0) {
-      const interval = setInterval(() => {
-        setTimer(prev => prev - 1)
-      }, 1000)
-      return () => clearInterval(interval)
-    }
-  }, [timer, isArrived, isLongTerm])
-  
-  // Parking duration timer
-  useEffect(() => {
-    if (isArrived && !isLongTerm) {
-      const interval = setInterval(() => {
-        setParkingDuration(prev => prev + 1)
-      }, 1000)
-      return () => clearInterval(interval)
-    }
-  }, [isArrived, isLongTerm])
   
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60)
@@ -70,49 +75,72 @@ export function ActiveBookingScreen() {
     return 150 + (extraMinutes * 3)
   }
   
-  // Auto-detect arrival: when LPR opens barrier → socket updates spot to OCCUPIED
-  useEffect(() => {
-    if (!isArrived && selectedSpot?.status === "OCCUPIED") {
-      setIsArrived(true)
-    }
-  }, [selectedSpot?.status])
-
-  const handlePayAndExit = () => {
-    if (!user) return
+  const handlePayAndExit = async () => {
+    if (!user || !activeBooking) return
 
     setIsPaying(true)
-    const cost = calculateCost()
+    try {
+      const token = localStorage.getItem("qpark_token")
+      const res = await fetch("/backend/bookings/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ spotNumber: activeBooking.spotId }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "Checkout failed")
 
-    setTimeout(() => {
       setUser({
         ...user,
-        balance: user.balance - cost,
+        balance: data.walletBalance,
+        bonusPoints: data.bonusPoints,
         transactions: [
           {
             id: `t-${Date.now()}`,
             type: "parking_charge",
-            amount: -cost,
-            description: `Parking ${activeBooking?.spotId}`,
+            amount: -data.netCharge,
+            description: `Parking ${activeBooking.spotId}`,
             date: new Date(),
           },
           ...user.transactions,
         ],
       })
-
-      if (selectedSpot) {
-        updateSpot(selectedSpot.id, { status: "FREE", bookedBy: undefined, plateNumber: undefined })
-        // Tell backend: car exited
-        fetch("/backend/parking/simulate-exit", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ spotNumber: selectedSpot.id, carPlate: activeBooking?.plateNumber ?? "" }),
-        }).catch(() => {})
-      }
-
       setActiveBooking(null)
-      setCurrentScreen("home")
+      // Spot stays OCCUPIED — exit camera will free it when plate is scanned
+      // Show gate-opened confirmation for 2.5 s, then go home
+      setShowGateOpened(true)
+      setTimeout(() => {
+        setShowGateOpened(false)
+        setCurrentScreen("home")
+      }, 2500)
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Payment failed")
+    } finally {
       setIsPaying(false)
-    }, 1500)
+    }
+  }
+
+  const [isExtendingWaiting, setIsExtendingWaiting] = useState(false)
+
+  const handleExtendWaiting = async () => {
+    if (!user || !activeBooking) return
+    setIsExtendingWaiting(true)
+    try {
+      const token = localStorage.getItem("qpark_token")
+      const res = await fetch("/backend/bookings/extend-waiting", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ spotNumber: activeBooking.spotId }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "Failed to extend waiting")
+
+      setUser({ ...user, balance: data.walletBalance })
+      setExtraWaitSeconds(prev => prev + 30 * 60)
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to extend waiting")
+    } finally {
+      setIsExtendingWaiting(false)
+    }
   }
 
   const handleExtendRental = () => {
@@ -141,32 +169,133 @@ export function ActiveBookingScreen() {
     }, 800)
   }
 
-  const handleCancelBooking = () => {
+  const handleCancelBooking = useCallback(async () => {
     if (selectedSpot) {
       updateSpot(selectedSpot.id, { status: "FREE", bookedBy: undefined, plateNumber: undefined })
-      // Tell backend: booking cancelled
-      fetch("/backend/parking/set-status", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ spotNumber: selectedSpot.id, status: "FREE" }),
-      }).catch(() => {})
     }
     setActiveBooking(null)
     setCurrentScreen("home")
-  }
+    // Cancel the DB record in background
+    const token = localStorage.getItem("qpark_token")
+    try {
+      await fetch("/backend/bookings/cancel-by-spot", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ spotNumber: activeBooking?.spotId }),
+      })
+    } catch { /* ignore — UI already cleared */ }
+  }, [selectedSpot, activeBooking, updateSpot, setActiveBooking, setCurrentScreen])
+
+  const handleTerminateRental = useCallback(async () => {
+    if (!activeBooking || !user) return
+    setIsTerminating(true)
+    try {
+      const token = localStorage.getItem("qpark_token")
+      const res = await fetch("/backend/rentals/terminate-by-spot", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ spotNumber: activeBooking.spotId }),
+      })
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error || "Failed to terminate rental")
+      }
+      if (selectedSpot) {
+        updateSpot(selectedSpot.id, { status: "FREE", bookedBy: undefined, plateNumber: undefined })
+      }
+      setActiveBooking(null)
+      setCurrentScreen("home")
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to terminate rental")
+    } finally {
+      setIsTerminating(false)
+      setShowTerminateConfirm(false)
+    }
+  }, [activeBooking, user, selectedSpot, updateSpot, setActiveBooking, setCurrentScreen])
   
+  const [history, setHistory] = useState<{id: string; spotId: string; plateNumber: string; status: string; startTime: string; totalCost: number; type: string}[]>([])
+  const [historyLoading, setHistoryLoading] = useState(false)
+
+  useEffect(() => {
+    if (!activeBooking) {
+      setHistoryLoading(true)
+      const token = localStorage.getItem("qpark_token")
+      fetch("/backend/bookings/history", {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
+        .then(r => r.ok ? r.json() : [])
+        .then(data => setHistory(Array.isArray(data) ? data : []))
+        .catch(() => {})
+        .finally(() => setHistoryLoading(false))
+    }
+  }, [activeBooking])
+
   if (!activeBooking) {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-4 p-4">
-        <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted">
-          <Car className="h-8 w-8 text-muted-foreground" />
+      <div className="flex flex-col h-full pb-4">
+        <div className="px-4 pt-4 pb-2">
+          <h1 className="text-xl font-bold text-foreground">My Bookings</h1>
+          <p className="text-sm text-muted-foreground">No active booking</p>
         </div>
-        <p className="text-muted-foreground">No active booking</p>
-        <Button onClick={() => setCurrentScreen("map")} className="bg-[#354469] hover:bg-[#354469]/90">Find Parking</Button>
+        <div className="flex-1 overflow-y-auto px-4 space-y-3">
+          {historyLoading ? (
+            <div className="flex justify-center py-8">
+              <div className="w-6 h-6 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+            </div>
+          ) : history.length === 0 ? (
+            <div className="flex flex-col items-center justify-center gap-4 py-16">
+              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted">
+                <Car className="h-8 w-8 text-muted-foreground" />
+              </div>
+              <p className="text-muted-foreground text-sm">No booking history yet</p>
+              <Button onClick={() => setCurrentScreen("map")} className="bg-[#354469] hover:bg-[#354469]/90">Find Parking</Button>
+            </div>
+          ) : (
+            history.map(b => (
+              <div key={b.id} className="bg-white rounded-xl border p-4 space-y-1 shadow-sm">
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-foreground">{b.spotId}</span>
+                  <span className={cn(
+                    "text-xs px-2 py-0.5 rounded-full font-medium",
+                    b.status === "COMPLETED" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
+                  )}>
+                    {b.status === "COMPLETED" ? "Completed" : "Cancelled"}
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground">{b.plateNumber} · {b.type === "long-term" ? "Long-term" : "Short-term"}</p>
+                <div className="flex justify-between text-xs text-muted-foreground">
+                  <span>{new Date(b.startTime).toLocaleString("ru-RU", { timeZone: "Asia/Almaty", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
+                  {b.totalCost > 0 && <span className="font-medium text-foreground">{b.totalCost.toLocaleString()} ₸</span>}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+        <div className="px-4 pt-2">
+          <Button onClick={() => setCurrentScreen("map")} className="w-full bg-[#354469] hover:bg-[#354469]/90">Find Parking</Button>
+        </div>
       </div>
     )
   }
   
+  // Gate-opened full-screen overlay (shown for 2.5 s after payment)
+  if (showGateOpened) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full gap-6 p-6">
+        <div className="flex h-24 w-24 items-center justify-center rounded-full bg-green-100">
+          <svg className="h-12 w-12 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+          </svg>
+        </div>
+        <div className="text-center space-y-2">
+          <h2 className="text-2xl font-bold text-gray-900">Payment Successful!</h2>
+          <p className="text-gray-500 text-sm">Drive to the exit — the barrier will open when the camera scans your plate.</p>
+        </div>
+        <div className="w-8 h-8 border-4 border-green-200 border-t-green-600 rounded-full animate-spin" />
+      </div>
+    )
+  }
+
   return (
     <div className="flex flex-col gap-4 p-4 pb-24">
       {/* Header */}
@@ -362,10 +491,23 @@ export function ActiveBookingScreen() {
           </Button>
         )}
         
+        {!isArrived && !isLongTerm && timer < 300 && (
+          <Button
+            variant="outline"
+            size="lg"
+            className="w-full hover:bg-orange-50 hover:border-orange-400 hover:text-orange-600 border-orange-300 text-orange-600"
+            onClick={handleExtendWaiting}
+            disabled={isExtendingWaiting}
+          >
+            <Clock className="h-5 w-5 mr-2" />
+            {isExtendingWaiting ? "Processing..." : "Extend +30 min · 75 ₸"}
+          </Button>
+        )}
+
         {!isArrived && !isLongTerm && (
-          <Button 
-            variant="outline" 
-            size="lg" 
+          <Button
+            variant="outline"
+            size="lg"
             className="w-full hover:bg-[#36549B]/10 hover:border-[#36549B] hover:text-[#36549B]"
             onClick={handleCancelBooking}
           >
@@ -382,6 +524,18 @@ export function ActiveBookingScreen() {
           >
             <Calendar className="h-5 w-5 mr-2" />
             Extend Rental
+          </Button>
+        )}
+
+        {isLongTerm && (
+          <Button
+            variant="outline"
+            size="lg"
+            className="w-full border-red-300 text-red-600 hover:bg-red-50 hover:border-red-400"
+            onClick={() => setShowTerminateConfirm(true)}
+          >
+            <X className="h-5 w-5 mr-2" />
+            Завершить аренду досрочно
           </Button>
         )}
       </div>
@@ -467,6 +621,39 @@ export function ActiveBookingScreen() {
                   ? `Confirm +${selectedExtendDays} day${selectedExtendDays > 1 ? "s" : ""} · ${extendOptions.find(o => o.days === selectedExtendDays)!.price.toLocaleString()} ₸`
                   : "Select a period"}
             </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Terminate Rental Confirm Modal */}
+      {showTerminateConfirm && (
+        <div className="absolute inset-0 z-50 flex flex-col justify-end">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setShowTerminateConfirm(false)} />
+          <div className="relative bg-white rounded-t-3xl px-5 pt-5 pb-10">
+            <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-gray-200" />
+            <div className="flex flex-col items-center gap-3 mb-5">
+              <div className="flex h-14 w-14 items-center justify-center rounded-full bg-red-100">
+                <AlertTriangle className="h-7 w-7 text-red-500" />
+              </div>
+              <h2 className="text-lg font-bold text-gray-900 text-center">Завершить аренду?</h2>
+              <p className="text-sm text-gray-500 text-center">
+                Аренда места <span className="font-semibold text-gray-800">{activeBooking.spotId}</span> будет досрочно завершена.
+                Средства не возвращаются.
+              </p>
+            </div>
+            <div className="flex gap-3">
+              <Button variant="outline" size="lg" className="flex-1" onClick={() => setShowTerminateConfirm(false)}>
+                Отмена
+              </Button>
+              <Button
+                size="lg"
+                className="flex-1 bg-red-600 hover:bg-red-700 text-white"
+                onClick={handleTerminateRental}
+                disabled={isTerminating}
+              >
+                {isTerminating ? "Завершаем..." : "Завершить"}
+              </Button>
+            </div>
           </div>
         </div>
       )}

@@ -119,6 +119,7 @@ export interface Booking {
   isPaid: boolean
   waitingFee: number
   rentalDays?: number
+  arrivedAt?: Date
 }
 
 interface ParkingContextType {
@@ -129,6 +130,7 @@ interface ParkingContextType {
   setIsAuthenticated: (auth: boolean) => void
   isNewUser: boolean
   setIsNewUser: (v: boolean) => void
+  isRestoringSession: boolean
 
   // User
   user: User | null
@@ -196,26 +198,34 @@ const generateInitialSpots = (): ParkingSpot[] => {
   return spots
 }
 
-// Demo user data
-const demoUser: User = {
-  id: "user-1",
-  phone: "+7 777 123 4567",
-  name: "Alikhan Serikov",
-  balance: 2500,
-  bonusPoints: 25,
-  noShowCount: 1,
-  isBanned: false,
-  cars: [
-    { id: "car-1", brand: "Toyota", model: "Camry", plateNumber: "123 ABC 01" },
-    { id: "car-2", brand: "Hyundai", model: "Tucson", plateNumber: "456 DEF 01" },
-  ],
-  transactions: [
-    { id: "t1", type: "topup_stripe", amount: 3000, description: "Wallet top-up", date: new Date(Date.now() - 86400000 * 2) },
-    { id: "t2", type: "parking_charge", amount: -330, description: "Parking SP-07, 2 hours", date: new Date(Date.now() - 86400000) },
-    { id: "t3", type: "bonus_credit", amount: 3, description: "Bonus points earned", date: new Date(Date.now() - 86400000) },
-    { id: "t4", type: "topup_stripe", amount: 1000, description: "Wallet top-up", date: new Date(Date.now() - 3600000 * 5) },
-  ],
-  promoCode: "FIRST",
+// Maps backend DB user to frontend User type — shared by login, onboarding, and session restore
+export function mapDbUser(dbUser: {
+  id: string; phoneNumber: string; firstName?: string | null; lastName?: string | null;
+  walletBalance: number; bonusPoints: number; noShowCount: number; isBanned: boolean;
+  bannedUntil?: string | Date | null;
+  cars?: { id: string; brand: string; model: string; plateNumber: string }[];
+  transactions?: { id: string; type: string; amount: number; description?: string | null; createdAt: string | Date }[];
+}): User {
+  return {
+    id: dbUser.id,
+    phone: dbUser.phoneNumber,
+    name: dbUser.firstName
+      ? `${dbUser.firstName}${dbUser.lastName ? " " + dbUser.lastName : ""}`
+      : "User",
+    balance: dbUser.walletBalance,
+    bonusPoints: dbUser.bonusPoints,
+    noShowCount: dbUser.noShowCount,
+    isBanned: dbUser.isBanned,
+    bannedUntil: dbUser.bannedUntil ? new Date(dbUser.bannedUntil) : undefined,
+    cars: (dbUser.cars ?? []).map(c => ({ id: c.id, brand: c.brand, model: c.model, plateNumber: c.plateNumber })),
+    transactions: (dbUser.transactions ?? []).map(t => ({
+      id: t.id,
+      type: t.type.toLowerCase() as Transaction["type"],
+      amount: t.amount,
+      description: t.description ?? "",
+      date: new Date(t.createdAt),
+    })),
+  }
 }
 
 // Maps backend spot data to frontend ParkingSpot format
@@ -237,17 +247,55 @@ export function ParkingProvider({ children }: { children: ReactNode }) {
   const [currentScreen, setCurrentScreen] = useState("home")
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [isNewUser, setIsNewUser] = useState(false)
-  const [user, setUser] = useState<User | null>(demoUser)
+  const [user, setUser] = useState<User | null>(null)
   const [spots, setSpots] = useState<ParkingSpot[]>(generateInitialSpots())
   const [activeBooking, setActiveBooking] = useState<Booking | null>(null)
+  const activeBookingRef = useRef<Booking | null>(null)
+  useEffect(() => { activeBookingRef.current = activeBooking }, [activeBooking])
   const [bookings, setBookings] = useState<Booking[]>([])
   const [selectedSpot, setSelectedSpot] = useState<ParkingSpot | null>(null)
   const [isAdminMode, setIsAdminMode] = useState(false)
   const [darkMode, setDarkMode] = useState(false)
   const [language, setLanguage] = useState<Language>("en")
+  const [isRestoringSession, setIsRestoringSession] = useState(true)
   const t = translations[language]
   const spotsRef = useRef(spots)
   spotsRef.current = spots
+
+  // Restore session from JWT token on mount — 3 second timeout so UI never hangs
+  useEffect(() => {
+    const token = localStorage.getItem("qpark_token")
+    if (!token) { setIsRestoringSession(false); return }
+
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 3000)
+
+    fetch("/backend/auth/me", {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: controller.signal,
+    })
+      .then(async (res) => {
+        if (res.ok) {
+          const dbUser = await res.json()
+          setUser(mapDbUser(dbUser))
+          setIsAuthenticated(true)
+          // Restore active booking/rental so it survives page refresh
+          try {
+            const br = await fetch("/backend/bookings/restore", {
+              headers: { Authorization: `Bearer ${token}` },
+            })
+            if (br.ok) {
+              const restored = await br.json()
+              if (restored) setActiveBooking(restored)
+            }
+          } catch { /* ignore — booking restore is best-effort */ }
+        } else {
+          localStorage.removeItem("qpark_token")
+        }
+      })
+      .catch(() => { /* backend offline or timeout — show login */ })
+      .finally(() => { clearTimeout(timeout); setIsRestoringSession(false) })
+  }, [])
 
   // Fetch real spots from backend and keep Socket.io in sync
   const fetchSpotsFromBackend = async () => {
@@ -289,6 +337,11 @@ export function ParkingProvider({ children }: { children: ReactNode }) {
           ? { ...s, status: statusMap[data.status] ?? s.status, plateNumber: data.carPlate ?? undefined }
           : s
       ))
+      // Stamp arrival time when car enters (OCCUPIED) — used for parking duration timer
+      const ab = activeBookingRef.current
+      if (data.status === "OCCUPIED" && ab && ab.spotId === data.spotNumber && !ab.arrivedAt) {
+        setActiveBooking({ ...ab, arrivedAt: new Date() })
+      }
     }
 
     // Re-fetch for booking API events (authenticated routes)
@@ -346,6 +399,7 @@ export function ParkingProvider({ children }: { children: ReactNode }) {
       setDarkMode,
       language,
       setLanguage,
+      isRestoringSession,
       t,
     }}>
       {children}
