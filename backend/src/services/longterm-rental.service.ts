@@ -1,8 +1,6 @@
-import { PrismaClient } from '@prisma/client';
 import { getLongTermPrice } from '../utils/pricing';
 import { logger } from '../server';
-
-const prisma = new PrismaClient();
+import { prisma } from '../lib/prisma';
 
 export class LongTermRentalService {
   /**

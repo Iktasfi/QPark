@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
-import { ArrowLeft, MapPin, Clock, Calendar, Car, Check } from "lucide-react"
+import { ArrowLeft, MapPin, Clock, Calendar, Car, Check, AlertTriangle } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const rentalOptions = [
@@ -18,11 +18,13 @@ const rentalOptions = [
 ]
 
 export function SpotDetailsScreen() {
-  const { selectedSpot, user, setCurrentScreen, setActiveBooking, updateSpot } = useParking()
+  const { selectedSpot, user, setUser, setCurrentScreen, setActiveBooking, updateSpot, activeBooking } = useParking()
   const [selectedCar, setSelectedCar] = useState(user?.cars[0]?.id || "")
   const [selectedRentalDays, setSelectedRentalDays] = useState<number | null>(null)
   const [isBooking, setIsBooking] = useState(false)
-  
+  const [bookingError, setBookingError] = useState("")
+  const [showConflictModal, setShowConflictModal] = useState(false)
+
   if (!selectedSpot) {
     return (
       <div className="flex h-full items-center justify-center p-4">
@@ -30,68 +32,95 @@ export function SpotDetailsScreen() {
       </div>
     )
   }
-  
+
   const isLongTerm = selectedSpot.type === "long-term"
   const selectedCarData = user?.cars.find(c => c.id === selectedCar)
-  
+
   const handleBookNow = async () => {
     if (!selectedCarData || !user) return
 
-    setIsBooking(true)
-
-    const newStatus = isLongTerm ? "RESERVED" : "BOOKED"
-    const booking = {
-      id: `booking-${Date.now()}`,
-      spotId: selectedSpot.id,
-      userId: user.id,
-      plateNumber: selectedCarData.plateNumber,
-      type: selectedSpot.type,
-      status: "active" as const,
-      startTime: new Date(),
-      isPaid: false,
-      waitingFee: 0,
-      rentalDays: selectedRentalDays || undefined,
+    // If user already has an active booking, show the conflict modal instead of blocking
+    if (activeBooking) {
+      setShowConflictModal(true)
+      return
     }
 
-    // Update local state immediately
-    setActiveBooking(booking)
-    updateSpot(selectedSpot.id, {
-      status: newStatus,
-      bookedBy: user.id,
-      plateNumber: selectedCarData.plateNumber,
-      bookedAt: new Date(),
-    })
+    setIsBooking(true)
+    setBookingError("")
 
-    // Sync with backend — creates booking/rental record in PostgreSQL
-    fetch("/backend/parking/set-status", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        spotNumber: selectedSpot.id,
-        status: newStatus,
-        carPlate: selectedCarData.plateNumber,
+    const newStatus = isLongTerm ? "RESERVED" : "BOOKED"
+
+    try {
+      const token = localStorage.getItem("qpark_token")
+      const res = await fetch("/backend/parking/set-status", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          spotNumber: selectedSpot.id,
+          status: newStatus,
+          carPlate: selectedCarData.plateNumber,
+          userId: user.id,
+          rentalDays: selectedRentalDays ?? undefined,
+        }),
+      })
+
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error || "Failed to book spot")
+      }
+
+      const data = await res.json()
+
+      const booking = {
+        id: `booking-${Date.now()}`,
+        spotId: selectedSpot.id,
         userId: user.id,
-        rentalDays: selectedRentalDays ?? undefined,
-      }),
-    }).catch(() => {/* backend offline — local state is still correct */})
+        plateNumber: selectedCarData.plateNumber,
+        type: selectedSpot.type,
+        status: "active" as const,
+        startTime: new Date(),
+        isPaid: false,
+        waitingFee: 0,
+        rentalDays: selectedRentalDays || undefined,
+      }
 
-    setIsBooking(false)
-    setCurrentScreen("booking-confirm")
+      setActiveBooking(booking)
+      updateSpot(selectedSpot.id, {
+        status: newStatus,
+        bookedBy: user.id,
+        plateNumber: selectedCarData.plateNumber,
+        bookedAt: new Date(),
+      })
+
+      // Update wallet balance after long-term payment deduction
+      if (isLongTerm && data.newBalance !== undefined) {
+        setUser({ ...user, balance: data.newBalance })
+      }
+
+      setCurrentScreen("booking-confirm")
+    } catch (err) {
+      setBookingError(err instanceof Error ? err.message : "Failed to book spot")
+    } finally {
+      setIsBooking(false)
+    }
   }
-  
+
   const getRentalPrice = () => {
-    if (!isLongTerm) return 150 // First hour minimum
+    if (!isLongTerm) return 150
     const option = rentalOptions.find(o => o.days === selectedRentalDays)
     return option?.price || 0
   }
-  
+
   return (
     <div className="flex flex-col gap-4 p-4 pb-24">
       {/* Header */}
       <div className="flex items-center gap-3">
-        <Button 
-          variant="ghost" 
-          size="icon" 
+        <Button
+          variant="ghost"
+          size="icon"
           onClick={() => setCurrentScreen("map")}
           className="h-10 w-10 hover:bg-[#354469]/10"
         >
@@ -103,9 +132,9 @@ export function SpotDetailsScreen() {
             {isLongTerm ? "Long-term rental" : "Short-term booking"}
           </p>
         </div>
-        <div className="w-10" /> {/* Spacer for centering */}
+        <div className="w-10" />
       </div>
-      
+
       {/* Spot Info Card */}
       <Card>
         <CardContent className="p-4">
@@ -133,7 +162,7 @@ export function SpotDetailsScreen() {
           </div>
         </CardContent>
       </Card>
-      
+
       {/* Select Vehicle */}
       <Card>
         <CardHeader className="pb-2">
@@ -143,14 +172,14 @@ export function SpotDetailsScreen() {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-2">
-          {user?.cars.map((car) => (
+          {user?.cars && user.cars.length > 0 ? user.cars.map((car) => (
             <button
               key={car.id}
               onClick={() => setSelectedCar(car.id)}
               className={cn(
                 "flex w-full items-center justify-between rounded-lg border-2 p-3 transition-all",
-                selectedCar === car.id 
-                  ? "border-primary bg-primary/5" 
+                selectedCar === car.id
+                  ? "border-primary bg-primary/5"
                   : "border-border hover:border-primary/50"
               )}
             >
@@ -164,10 +193,14 @@ export function SpotDetailsScreen() {
                 </div>
               )}
             </button>
-          ))}
+          )) : (
+            <p className="text-sm text-muted-foreground text-center py-2">
+              No cars registered. Add a car in Profile first.
+            </p>
+          )}
         </CardContent>
       </Card>
-      
+
       {/* Rental Period (Long-term only) */}
       {isLongTerm && (
         <Card>
@@ -184,8 +217,8 @@ export function SpotDetailsScreen() {
                 onClick={() => setSelectedRentalDays(option.days)}
                 className={cn(
                   "flex w-full items-center justify-between rounded-lg border-2 p-3 transition-all",
-                  selectedRentalDays === option.days 
-                    ? "border-primary bg-primary/5" 
+                  selectedRentalDays === option.days
+                    ? "border-primary bg-primary/5"
                     : "border-border hover:border-primary/50"
                 )}
               >
@@ -208,7 +241,7 @@ export function SpotDetailsScreen() {
           </CardContent>
         </Card>
       )}
-      
+
       {/* Short-term Info */}
       {!isLongTerm && (
         <Card className="bg-secondary/50">
@@ -226,7 +259,7 @@ export function SpotDetailsScreen() {
           </CardContent>
         </Card>
       )}
-      
+
       {/* Summary */}
       <Card>
         <CardContent className="p-4">
@@ -257,48 +290,109 @@ export function SpotDetailsScreen() {
           </div>
         </CardContent>
       </Card>
-      
+
+      {/* Error message */}
+      {bookingError && (
+        <p className="text-red-500 text-sm text-center px-2">{bookingError}</p>
+      )}
+
       {/* Book Button */}
-      <Button 
-        size="lg" 
+      <Button
+        size="lg"
         className="w-full bg-[#354469] hover:bg-[#354469]/90"
         onClick={handleBookNow}
-        disabled={!selectedCar || (isLongTerm && !selectedRentalDays) || isBooking}
+        disabled={!selectedCar || (isLongTerm && !selectedRentalDays) || isBooking || !user?.cars?.length}
       >
         {isBooking ? "Booking..." : isLongTerm ? "Reserve & Pay Now" : "Book Now"}
       </Button>
-    
-    {/* Bottom Navigation */}
-    <div className="absolute bottom-0 left-0 right-0 h-20 bg-white border-t border-gray-300 z-50 shadow-lg" style={{ borderTop: '1px solid #D1D5DB' }}>
-      <div className="flex justify-around items-center h-full px-4">
-        {[
-          { id: "home", icon: "/Home_light.svg", activeIcon: "/Home_light_active.svg", label: "Home", active: false },
-          { id: "map", icon: "/Map_light.svg", activeIcon: "/Map_light_active.svg", label: "Map", active: true },
-          { id: "booking", icon: "/Component.svg", activeIcon: "/Component_active.svg", label: "Booking", active: false },
-          { id: "wallet", icon: "/wallet.svg", activeIcon: "/wallet_active.svg", label: "Wallet", active: false },
-          { id: "profile", icon: "/User_cicrle_light.svg", activeIcon: "/User_cicrle_light_active.svg", label: "Profile", active: false },
-        ].map((item) => (
-          <button
-            key={item.id}
-            onClick={() => setCurrentScreen(item.id)}
-            className="flex flex-col items-center justify-center gap-0.5 p-3 transition-all hover:bg-gray-100 rounded-xl active:scale-95"
-          >
-            <div className="w-8 h-8 flex items-center justify-center">
-              <img 
-                src={item.active ? item.activeIcon : item.icon} 
-                alt={item.label} 
-                width={28}
-                height={28}
-                className={item.active ? "opacity-100" : "opacity-80"}
-              />
-            </div>
-            <span className={`text-xs font-medium ${item.active ? "text-[#36549B] drop-shadow-sm" : "text-gray-900 drop-shadow-sm"}`}>
-              {item.label}
-            </span>
-          </button>
-        ))}
+
+      {/* Bottom Navigation */}
+      <div className="absolute bottom-0 left-0 right-0 h-20 bg-white border-t border-gray-300 z-50 shadow-lg" style={{ borderTop: '1px solid #D1D5DB' }}>
+        <div className="flex justify-around items-center h-full px-4">
+          {[
+            { id: "home", icon: "/Home_light.svg", activeIcon: "/Home_light_active.svg", label: "Home", active: false },
+            { id: "map", icon: "/Map_light.svg", activeIcon: "/Map_light_active.svg", label: "Map", active: true },
+            { id: "booking", icon: "/Component.svg", activeIcon: "/Component_active.svg", label: "Booking", active: false },
+            { id: "wallet", icon: "/wallet.svg", activeIcon: "/wallet_active.svg", label: "Wallet", active: false },
+            { id: "profile", icon: "/User_cicrle_light.svg", activeIcon: "/User_cicrle_light_active.svg", label: "Profile", active: false },
+          ].map((item) => (
+            <button
+              key={item.id}
+              onClick={() => setCurrentScreen(item.id)}
+              className="flex flex-col items-center justify-center gap-0.5 p-3 transition-all hover:bg-gray-100 rounded-xl active:scale-95"
+            >
+              <div className="w-8 h-8 flex items-center justify-center">
+                <img
+                  src={item.active ? item.activeIcon : item.icon}
+                  alt={item.label}
+                  width={28}
+                  height={28}
+                  className={item.active ? "opacity-100" : "opacity-80"}
+                />
+              </div>
+              <span className={`text-xs font-medium ${item.active ? "text-[#36549B] drop-shadow-sm" : "text-gray-900 drop-shadow-sm"}`}>
+                {item.label}
+              </span>
+            </button>
+          ))}
+        </div>
       </div>
+
+      {/* Active Booking Conflict Modal */}
+      {showConflictModal && activeBooking && (
+        <div className="absolute inset-0 z-50 flex flex-col justify-end">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setShowConflictModal(false)} />
+          <div className="relative bg-white rounded-t-3xl px-5 pt-5 pb-10">
+            <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-gray-200" />
+
+            {/* Icon + title */}
+            <div className="flex flex-col items-center gap-3 mb-5">
+              <div className="flex h-14 w-14 items-center justify-center rounded-full bg-red-50">
+                <AlertTriangle className="h-7 w-7 text-[#b94a4a]" />
+              </div>
+              <h2 className="text-lg font-bold text-gray-900 text-center">You Already Have a Booking</h2>
+              <p className="text-sm text-gray-500 text-center">
+                Spot <span className="font-semibold text-gray-800">{activeBooking.spotId}</span> is already booked.
+                Complete or cancel your current booking to select a new spot.
+              </p>
+            </div>
+
+            {/* Current booking info */}
+            <div className="bg-[#F0F4FF] rounded-2xl p-4 mb-5 flex items-center gap-3">
+              <MapPin className="h-5 w-5 text-[#36549B] shrink-0" />
+              <div>
+                <p className="font-semibold text-[#36549B]">{activeBooking.spotId}</p>
+                <p className="text-xs text-gray-500">
+                  {activeBooking.type === "long-term"
+                    ? `Long-term — ${activeBooking.rentalDays ?? 0} day${(activeBooking.rentalDays ?? 0) !== 1 ? "s" : ""}`
+                    : "Short-term"}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <Button
+                variant="outline"
+                size="lg"
+                className="flex-1"
+                onClick={() => setShowConflictModal(false)}
+              >
+                Back
+              </Button>
+              <Button
+                size="lg"
+                className="flex-1 bg-[#354469] hover:bg-[#354469]/90"
+                onClick={() => {
+                  setShowConflictModal(false)
+                  setCurrentScreen("booking")
+                }}
+              >
+                View My Booking
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
-  </div>
   )
 }

@@ -1,7 +1,6 @@
-import { PrismaClient, SpotStatus } from '@prisma/client';
+import { SpotStatus } from '@prisma/client';
 import { logger } from '../server';
-
-const prisma = new PrismaClient();
+import { prisma } from '../lib/prisma';
 
 export class ParkingService {
   /**

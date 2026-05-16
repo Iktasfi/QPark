@@ -68,6 +68,7 @@ const liveEventLabels: Record<string, { label: string; color: string; emoji: str
 interface DbUser { id: string; phoneNumber: string; firstName: string | null; lastName: string | null; walletBalance: number; isBanned: boolean; cars: { plateNumber: string; brand: string; model: string }[] }
 interface DbBooking { id: string; spotNumber: string; plateNumber: string; userName: string; status: string; startTime: string; totalCost: number }
 interface DbRental { id: string; spotNumber: string; plateNumber: string; userName: string; rentalDays: number; totalCost: number; status: string; endDate: string }
+interface DbTransaction { id: string; amount: number; type: string; description: string | null; balanceBefore: number; balanceAfter: number; stripePaymentIntentId: string | null; createdAt: string; user: { phoneNumber: string; firstName: string | null; lastName: string | null } }
 
 export function AdminDashboard() {
   const [parkingData, setParkingData] = useState<ParkingData | null>(null)
@@ -83,7 +84,8 @@ export function AdminDashboard() {
   const [dbUsers, setDbUsers] = useState<DbUser[]>([])
   const [dbBookings, setDbBookings] = useState<DbBooking[]>([])
   const [dbRentals, setDbRentals] = useState<DbRental[]>([])
-  const [activeTab, setActiveTab] = useState<"spots" | "users" | "bookings">("spots")
+  const [dbTransactions, setDbTransactions] = useState<DbTransaction[]>([])
+  const [activeTab, setActiveTab] = useState<"spots" | "users" | "bookings" | "transactions">("spots")
 
   const addLiveEvent = (type: LiveEvent["type"], data: Record<string, unknown>) => {
     const event: LiveEvent = {
@@ -173,6 +175,14 @@ export function AdminDashboard() {
         setDbUsers(db.users ?? [])
         setDbBookings(db.bookings ?? [])
         setDbRentals(db.rentals ?? [])
+      }
+      // Подгружаем транзакции отдельно
+      const token = typeof window !== "undefined" ? localStorage.getItem("qpark_token") : null
+      if (token) {
+        const txRes = await fetch("/backend/payments/admin/transactions", {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        if (txRes.ok) setDbTransactions(await txRes.json())
       }
       setError(null)
     } catch (err) {
@@ -301,6 +311,16 @@ export function AdminDashboard() {
               className="flex-1"
             >
               {actionLoading === `exit-${spot.spotNumber}` ? <Loader2 className="h-3 w-3 animate-spin" /> : "🚙 Выезд"}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={!!actionLoading}
+              onClick={() => setSpotStatus(spot.spotNumber, "FREE")}
+              className="text-green-600 border-green-300 hover:bg-green-50"
+              title="Сбросить в FREE"
+            >
+              🔄
             </Button>
           </div>
 
@@ -484,11 +504,14 @@ export function AdminDashboard() {
         </Card>
 
         {/* Табы */}
-        <div className="flex gap-2 mb-6">
-          {(["spots", "users", "bookings"] as const).map(tab => (
+        <div className="flex flex-wrap gap-2 mb-6">
+          {(["spots", "users", "bookings", "transactions"] as const).map(tab => (
             <button key={tab} onClick={() => setActiveTab(tab)}
               className={`px-4 py-2 rounded-lg font-medium text-sm transition-colors ${activeTab === tab ? "bg-[#354469] text-white" : "bg-white text-gray-600 hover:bg-gray-100 border"}`}>
-              {tab === "spots" ? `Места (${parkingData.statistics.total})` : tab === "users" ? `Пользователи (${dbUsers.length})` : `Бронирования (${dbBookings.length + dbRentals.length})`}
+              {tab === "spots"        ? `Места (${parkingData.statistics.total})`
+               : tab === "users"     ? `Пользователи (${dbUsers.length})`
+               : tab === "bookings"  ? `Бронирования (${dbBookings.length + dbRentals.length})`
+               :                      `Транзакции (${dbTransactions.length})`}
             </button>
           ))}
         </div>
@@ -603,6 +626,67 @@ export function AdminDashboard() {
               </CardContent>
             </Card>
           </div>
+        )}
+
+        {/* Транзакции */}
+        {activeTab === "transactions" && (
+          <Card>
+            <CardHeader>
+              <CardTitle>История транзакций</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {dbTransactions.length === 0 ? (
+                <p className="text-gray-400 text-center py-8">Нет транзакций в базе данных</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b text-left text-gray-500">
+                        <th className="pb-2 pr-3">Дата</th>
+                        <th className="pb-2 pr-3">Пользователь</th>
+                        <th className="pb-2 pr-3">Тип</th>
+                        <th className="pb-2 pr-3">Описание</th>
+                        <th className="pb-2 pr-3 text-right">Сумма</th>
+                        <th className="pb-2 text-right">Баланс после</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {dbTransactions.map(tx => (
+                        <tr key={tx.id} className="border-b last:border-0 hover:bg-gray-50">
+                          <td className="py-2 pr-3 text-xs text-gray-500 whitespace-nowrap">
+                            {new Date(tx.createdAt).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                          </td>
+                          <td className="py-2 pr-3 text-xs">
+                            <div>{tx.user.firstName ?? ""} {tx.user.lastName ?? ""}</div>
+                            <div className="text-gray-400 font-mono">{tx.user.phoneNumber}</div>
+                          </td>
+                          <td className="py-2 pr-3">
+                            <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                              tx.type === "DEPOSIT" ? "bg-green-100 text-green-700"
+                              : tx.type === "PAYMENT" ? "bg-orange-100 text-orange-700"
+                              : tx.type === "REFUND" ? "bg-blue-100 text-blue-700"
+                              : tx.type === "CASHBACK" ? "bg-purple-100 text-purple-700"
+                              : "bg-gray-100 text-gray-600"
+                            }`}>
+                              {tx.type}
+                            </span>
+                            {tx.stripePaymentIntentId && (
+                              <span className="ml-1 px-1.5 py-0.5 rounded text-xs bg-indigo-50 text-indigo-500 font-mono">Stripe</span>
+                            )}
+                          </td>
+                          <td className="py-2 pr-3 text-xs text-gray-600 max-w-[160px] truncate">{tx.description ?? "—"}</td>
+                          <td className={`py-2 pr-3 font-semibold text-right whitespace-nowrap ${tx.amount > 0 ? "text-green-600" : "text-gray-900"}`}>
+                            {tx.amount > 0 ? "+" : ""}{tx.amount.toLocaleString()} ₸
+                          </td>
+                          <td className="py-2 text-right font-mono text-xs">{tx.balanceAfter.toLocaleString()} ₸</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
         )}
       </div>
     </div>

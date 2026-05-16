@@ -1,6 +1,8 @@
 import { Router, Request, Response } from 'express';
 import parkingService from '../services/parking.service';
 import { logger } from '../server';
+import jwt from 'jsonwebtoken';
+import { prisma } from '../lib/prisma';
 
 const router = Router();
 
@@ -134,8 +136,6 @@ router.post('/lpr/entry', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'carPlate and spotNumber are required' });
     }
 
-    const { PrismaClient } = await import('@prisma/client');
-    const prisma = new PrismaClient();
     const { io } = await import('../server');
 
     const spot = await prisma.parkingSpot.findUnique({ where: { spotNumber } });
@@ -163,7 +163,7 @@ router.post('/lpr/entry', async (req: Request, res: Response) => {
         io.emit('lpr-gate-denied', { carPlate, spotNumber, reason: `Номер не совпадает с бронью` });
         return res.json({ success: false, message: 'Plate does not match booking' });
       }
-    } else if (spot.status === 'RESERVED' || spot.status === 'OCCUPIED') {
+    } else if ((spot.status === 'RESERVED' || spot.status === 'OCCUPIED') && spot.type === 'LONG_TERM') {
       // Долгосрочное — одна камера, toggle: RESERVED↔OCCUPIED
       if (!plateMatches) {
         io.emit('lpr-gate-denied', { carPlate, spotNumber, reason: 'Номер не совпадает с арендой' });
@@ -225,8 +225,6 @@ router.post('/lpr/exit-lpr', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'carPlate and spotNumber are required' });
     }
 
-    const { PrismaClient } = await import('@prisma/client');
-    const prisma = new PrismaClient();
     const { io } = await import('../server');
 
     const spot = await prisma.parkingSpot.findUnique({ where: { spotNumber } });
@@ -234,31 +232,49 @@ router.post('/lpr/exit-lpr', async (req: Request, res: Response) => {
       return res.status(404).json({ success: false, message: 'Spot not found' });
     }
 
-    const normalize = (p: string) => p.replace(/\s/g, '').toUpperCase();
-    if (spot.currentUserPlate && normalize(spot.currentUserPlate) !== normalize(carPlate)) {
-      io.emit('lpr-gate-denied', { carPlate, spotNumber, reason: 'Номер не совпадает' });
-      return res.json({ success: false, message: 'Plate does not match' });
+    if (spot.type === 'SHORT_TERM') {
+      // Find the most recent booking for this spot
+      const booking = await prisma.booking.findFirst({
+        where: { spotId: spot.id, status: { in: ['PENDING', 'CONFIRMED', 'COMPLETED'] } },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      // Check payment FIRST — if paid, open gate (plate match is secondary for paid bookings)
+      if (booking?.isPaid) {
+        await prisma.parkingSpot.update({
+          where: { spotNumber },
+          data: { status: 'FREE', currentUserPlate: null, currentUserId: null },
+        });
+        io.emit('lpr-gate-open', { carPlate, spotNumber, type: 'exit' });
+        io.emit('spot-status-changed', { spotNumber, status: 'FREE', carPlate: null });
+        logger.info(`✅ LPR exit (paid): ${carPlate} from ${spotNumber} → FREE`);
+        return res.json({ success: true, message: 'Gate opened', newStatus: 'FREE' });
+      }
+
+      // Also open if spot is already FREE (paid via app, spot freed already)
+      if (spot.status === 'FREE') {
+        io.emit('lpr-gate-open', { carPlate, spotNumber, type: 'exit' });
+        logger.info(`✅ LPR exit (spot free): ${carPlate} from ${spotNumber}`);
+        return res.json({ success: true, message: 'Gate opened', newStatus: 'FREE' });
+      }
+
+      // Not paid — deny
+      io.emit('lpr-gate-denied', { carPlate, spotNumber, reason: 'Pay in the app before exiting' });
+      logger.warn(`⛔ LPR exit denied (unpaid): ${carPlate} at ${spotNumber}`);
+      return res.json({ success: false, message: 'Payment required — please pay in the app first' });
     }
 
-    // Long-term → RESERVED (место остаётся за пользователем)
-    // Short-term → FREE
-    const exitStatus = spot.type === 'LONG_TERM' ? 'RESERVED' : 'FREE';
-    const clearPlate  = spot.type === 'LONG_TERM';  // сохраняем номер для следующего въезда
-
+    // LONG_TERM → RESERVED (spot stays reserved, car can come back)
     await prisma.parkingSpot.update({
       where: { spotNumber },
-      data: {
-        status: exitStatus,
-        currentUserPlate: clearPlate ? spot.currentUserPlate : null,
-        currentUserId:    clearPlate ? spot.currentUserId    : null,
-      },
+      data: { status: 'RESERVED', currentUserPlate: spot.currentUserPlate, currentUserId: spot.currentUserId },
     });
 
     io.emit('lpr-gate-open', { carPlate, spotNumber, type: 'exit' });
-    io.emit('spot-status-changed', { spotNumber, status: exitStatus, carPlate: clearPlate ? carPlate : null });
+    io.emit('spot-status-changed', { spotNumber, status: 'RESERVED', carPlate });
 
-    logger.info(`✅ LPR exit: ${carPlate} from ${spotNumber} → ${exitStatus}`);
-    res.json({ success: true, message: 'Gate opened for exit', newStatus: exitStatus });
+    logger.info(`✅ LPR exit: ${carPlate} from ${spotNumber} → RESERVED`);
+    res.json({ success: true, message: 'Gate opened for exit', newStatus: 'RESERVED' });
   } catch (error) {
     logger.error('❌ Error handling LPR exit:', error);
     res.status(500).json({ error: 'Failed to process exit' });
@@ -279,9 +295,6 @@ router.post('/simulate-entry', async (req: Request, res: Response) => {
         example: { spotNumber: "SP-02", carPlate: "KZ777ABC01" }
       });
     }
-
-    const { PrismaClient } = await import('@prisma/client');
-    const prisma = new PrismaClient();
 
     await prisma.parkingSpot.update({
       where: { spotNumber },
@@ -313,9 +326,6 @@ router.post('/simulate-exit', async (req: Request, res: Response) => {
       });
     }
 
-    const { PrismaClient } = await import('@prisma/client');
-    const prisma = new PrismaClient();
-
     await prisma.parkingSpot.update({
       where: { spotNumber },
       data: { status: 'FREE', currentUserPlate: null, currentUserId: null },
@@ -337,7 +347,18 @@ router.post('/simulate-exit', async (req: Request, res: Response) => {
  */
 router.post('/set-status', async (req: Request, res: Response) => {
   try {
-    const { spotNumber, status, carPlate, userId, rentalDays } = req.body;
+    const { spotNumber, status, carPlate, userId: bodyUserId, rentalDays } = req.body;
+
+    // Prefer JWT userId over body userId (prevents stale client IDs from reaching payment)
+    let userId = bodyUserId;
+    const authHeader = req.headers.authorization;
+    if (authHeader?.startsWith('Bearer ')) {
+      try {
+        const secret = process.env.JWT_SECRET || 'your-secret-key';
+        const decoded = jwt.verify(authHeader.slice(7), secret) as { userId: string };
+        if (decoded.userId) userId = decoded.userId;
+      } catch { /* fall back to body userId */ }
+    }
 
     if (!spotNumber || !status) {
       return res.status(400).json({ error: 'spotNumber and status are required' });
@@ -347,9 +368,6 @@ router.post('/set-status', async (req: Request, res: Response) => {
     if (!validStatuses.includes(status)) {
       return res.status(400).json({ error: 'Invalid status' });
     }
-
-    const { PrismaClient } = await import('@prisma/client');
-    const prisma = new PrismaClient();
 
     const updatedSpot = await prisma.parkingSpot.update({
       where: { spotNumber },
@@ -385,52 +403,70 @@ router.post('/set-status', async (req: Request, res: Response) => {
       }
     }
 
-    // ── Создать запись в long_term_rentals (долгосрочное) ──
+    // ── Оплата и создание записи в long_term_rentals (долгосрочное) ──
+    let newBalance: number | undefined;
     if (status === 'RESERVED' && userId && carPlate && rentalDays) {
       try {
-        const spot = await prisma.parkingSpot.findUnique({ where: { spotNumber } });
+        const { default: paymentService } = await import('../services/payment.service');
         const priceMap: Record<number, number> = { 1: 700, 3: 1800, 5: 2700, 7: 3500, 14: 6000 };
-        const totalCost = priceMap[rentalDays] ?? rentalDays * 700;
+        const totalCost = priceMap[Number(rentalDays)] ?? Number(rentalDays) * 700;
+
+        // Атомарно списать с кошелька (выбросит ошибку если недостаточно средств)
+        const payment = await paymentService.payLongTermRental(userId, spotNumber, Number(rentalDays), totalCost);
+        newBalance = payment?.walletBalance;
+
+        const spot = await prisma.parkingSpot.findUnique({ where: { spotNumber } });
         if (spot) {
           const now = new Date();
-          const endDate = new Date(now.getTime() + rentalDays * 24 * 60 * 60 * 1000);
+          const endDate = new Date(now.getTime() + Number(rentalDays) * 24 * 60 * 60 * 1000);
           await prisma.longTermRental.create({
             data: {
               userId,
               spotId: spot.id,
               plateNumber: carPlate,
-              rentalDays,
+              rentalDays: Number(rentalDays),
               totalCost,
               startDate: now,
               endDate,
-              isPaid: false,
+              isPaid: true,
               status: 'ACTIVE',
-            },
-          });
-          // Транзакция на списание
-          await prisma.transaction.create({
-            data: {
-              userId,
-              amount: -totalCost,
-              type: 'PAYMENT',
-              description: `Long-term rental ${spotNumber} — ${rentalDays} days`,
-              balanceBefore: 0,
-              balanceAfter: 0,
             },
           });
         }
       } catch (e) {
-        logger.warn('⚠️ Could not create rental record:', e);
+        logger.warn('⚠️ Could not process long-term rental payment:', e);
+        return res.status(400).json({ error: e instanceof Error ? e.message : 'Payment failed' });
       }
     }
 
     const { io } = await import('../server');
     io.emit('spot-status-changed', { spotNumber, status, carPlate: updatedSpot.currentUserPlate ?? null });
 
-    res.json({ success: true, spot: { spotNumber: updatedSpot.spotNumber, status: updatedSpot.status } });
+    res.json({
+      success: true,
+      spot: { spotNumber: updatedSpot.spotNumber, status: updatedSpot.status },
+      ...(newBalance !== undefined ? { newBalance } : {}),
+    });
   } catch (error) {
     logger.error('❌ Error setting spot status:', error);
     res.status(500).json({ error: 'Failed to set spot status' });
+  }
+});
+
+/**
+ * GET /parking/spot-status/:spotNumber
+ * Быстрый статус одного места — для авто-определения режима в LPR скрипте
+ */
+router.get('/spot-status/:spotNumber', async (req: Request, res: Response) => {
+  try {
+    const spot = await prisma.parkingSpot.findUnique({
+      where: { spotNumber: req.params.spotNumber },
+      select: { spotNumber: true, status: true, type: true, currentUserPlate: true },
+    });
+    if (!spot) return res.status(404).json({ error: 'Spot not found' });
+    res.json(spot);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch spot status' });
   }
 });
 
