@@ -2,7 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import authService from '../services/auth.service';
 import { logger } from '../server';
 
-// Расширить интерфейс Request
+
 declare global {
   namespace Express {
     interface Request {
@@ -12,9 +12,7 @@ declare global {
   }
 }
 
-/**
- * Middleware для проверки JWT токена
- */
+
 export const verifyToken = (req: Request, res: Response, next: NextFunction) => {
   try {
     const authHeader = req.headers.authorization;
@@ -38,18 +36,14 @@ export const verifyToken = (req: Request, res: Response, next: NextFunction) => 
   }
 };
 
-/**
- * Middleware для проверки роли администратора (опционально)
- */
+
 export const requireAdmin = (req: Request, res: Response, next: NextFunction) => {
-  // TODO: Implement admin role check
-  // Когда добавим поле role в User модель
+
+
   next();
 };
 
-/**
- * Middleware для обработки ошибок
- */
+
 export const errorHandler = (
   err: any,
   req: Request,
@@ -75,9 +69,7 @@ export const errorHandler = (
   });
 };
 
-/**
- * Middleware для логирования запросов
- */
+
 export const requestLogger = (req: Request, res: Response, next: NextFunction) => {
   const start = Date.now();
 

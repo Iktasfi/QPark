@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { useParking } from "@/lib/parking-context"
+import { useParking, mapDbUser } from "@/lib/parking-context"
 import { User, Car, Plus, Trash2, Check, ChevronRight } from "lucide-react"
 
 type Step = "profile" | "cars"
@@ -39,7 +39,6 @@ export function OnboardingScreen() {
       })
       setStep("cars")
     } catch {
-      // continue even if backend is offline
       setStep("cars")
     } finally {
       setIsSaving(false)
@@ -77,35 +76,14 @@ export function OnboardingScreen() {
   const handleFinish = async () => {
     if (!user) return
 
-    // Fetch fresh user data from DB — ensures profile reflects exactly what's in PostgreSQL
     try {
       const currentToken = localStorage.getItem("qpark_token")
       const res = await fetch("/backend/auth/me", {
         headers: { Authorization: `Bearer ${currentToken}` },
       })
       if (res.ok) {
-        const fresh = await res.json()
-        setUser({
-          id: fresh.id ?? user.id,
-          phone: fresh.phoneNumber ?? user.phone,
-          name: fresh.firstName
-            ? `${fresh.firstName}${fresh.lastName ? " " + fresh.lastName : ""}`.trim()
-            : `${firstName} ${lastName}`.trim() || "User",
-          balance: fresh.walletBalance ?? user.balance,
-          bonusPoints: fresh.bonusPoints ?? user.bonusPoints,
-          noShowCount: fresh.noShowCount ?? user.noShowCount,
-          isBanned: fresh.isBanned ?? user.isBanned,
-          bannedUntil: fresh.bannedUntil ? new Date(fresh.bannedUntil) : undefined,
-          cars: fresh.cars?.map((c: { id: string; brand: string; model: string; plateNumber: string }) => ({
-            id: c.id,
-            brand: c.brand,
-            model: c.model,
-            plateNumber: c.plateNumber,
-          })) ?? cars.map(c => ({ id: c.id, brand: c.brand, model: c.model, plateNumber: c.plateNumber })),
-          transactions: user.transactions,
-        })
+        setUser(mapDbUser(await res.json()))
       } else {
-        // Backend unreachable — use local state
         setUser({
           ...user,
           name: `${firstName} ${lastName}`.trim() || "User",
@@ -113,7 +91,6 @@ export function OnboardingScreen() {
         })
       }
     } catch {
-      // Backend unreachable — use local state
       setUser({
         ...user,
         name: `${firstName} ${lastName}`.trim() || "User",
@@ -126,7 +103,6 @@ export function OnboardingScreen() {
 
   return (
     <div className="flex flex-col h-full bg-gray-50">
-      {/* Header */}
       <div className="bg-white px-6 pt-8 pb-6 shadow-sm">
         <div className="flex gap-2 mb-4">
           {(["profile", "cars"] as Step[]).map((s, i) => (
@@ -143,7 +119,6 @@ export function OnboardingScreen() {
 
       <div className="flex-1 overflow-y-auto px-6 py-6 space-y-4">
 
-        {/* ── STEP 1: Profile ── */}
         {step === "profile" && (
           <>
             <div className="bg-white rounded-2xl p-5 shadow-sm space-y-4">
@@ -188,10 +163,8 @@ export function OnboardingScreen() {
           </>
         )}
 
-        {/* ── STEP 2: Cars ── */}
         {step === "cars" && (
           <>
-            {/* Added cars list */}
             {cars.length > 0 && (
               <div className="space-y-2">
                 {cars.map((c, i) => (
@@ -213,7 +186,6 @@ export function OnboardingScreen() {
               </div>
             )}
 
-            {/* Add car form */}
             <div className="bg-white rounded-2xl p-5 shadow-sm space-y-3">
               <div className="flex items-center gap-3 mb-1">
                 <div className="w-10 h-10 rounded-full bg-[#354469]/10 flex items-center justify-center">

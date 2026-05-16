@@ -74,11 +74,9 @@ export function LoginScreen() {
     setError("")
     setIsVerifying(true)
     try {
-      // Step 1: Firebase verification
       const credential = await confirmationResult.confirm(code)
       const firebaseUser = credential.user
 
-      // Step 2: Sync with backend DB — upsert user, get JWT + real data
       let dbUser = null
       let jwtToken = null
       let isNew = false
@@ -98,11 +96,8 @@ export function LoginScreen() {
           isNew = data.isNew ?? false
           if (jwtToken) localStorage.setItem("qpark_token", jwtToken)
         }
-      } catch {
-        // backend offline — continue with Firebase data only
-      }
+      } catch {}
 
-      // Step 3: Set user in context — fetch /auth/me for complete profile (cars + transactions)
       if (jwtToken) {
         try {
           const meRes = await fetch("/backend/auth/me", {
@@ -171,10 +166,8 @@ export function LoginScreen() {
 
   return (
     <div className="relative mx-auto h-[844px] w-[390px] overflow-hidden rounded-[3rem] border-[12px] border-foreground/90 bg-gray-50 shadow-2xl">
-      {/* Invisible reCAPTCHA */}
       <div id="recaptcha-container" />
 
-      {/* Status bar */}
       <div className="flex h-12 items-center justify-between bg-white px-6 text-sm">
         <span className="font-medium">9:41</span>
         <div className="absolute left-1/2 top-3 h-6 w-28 -translate-x-1/2 rounded-full bg-foreground/90" />
@@ -185,9 +178,7 @@ export function LoginScreen() {
         </div>
       </div>
 
-      {/* Main content */}
       <div className="h-[calc(100%-48px)] overflow-y-auto bg-gray-50">
-        {/* Header */}
         <div className="bg-white rounded-b-3xl px-6 py-8 shadow-md">
           <div className="flex flex-col items-center">
             <div className="w-16 h-16 rounded-full flex items-center justify-center mb-4">
@@ -198,7 +189,6 @@ export function LoginScreen() {
           </div>
         </div>
 
-        {/* Card */}
         <div className="px-6 py-8">
           <div className="bg-white rounded-3xl p-6 shadow-md">
             {step === "phone" && (

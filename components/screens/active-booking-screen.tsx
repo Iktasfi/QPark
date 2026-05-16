@@ -18,14 +18,12 @@ const extendOptions = [
 ]
 
 export function ActiveBookingScreen() {
-  const { activeBooking, selectedSpot: _selectedSpot, spots, user, setCurrentScreen, setActiveBooking, updateSpot, setUser } = useParking()
+  const { activeBooking, selectedSpot: _selectedSpot, spots, user, setCurrentScreen, setActiveBooking, updateSpot, setUser, t } = useParking()
 
-  // Use live spot from spots array (updated via socket) instead of snapshot
   const selectedSpot = activeBooking
     ? (spots.find(s => s.id === activeBooking.spotId) ?? _selectedSpot)
     : _selectedSpot
 
-  // Single clock — all timers derive from this, so they survive navigation
   const [now, setNow] = useState(() => Date.now())
   const [extraWaitSeconds, setExtraWaitSeconds] = useState(0)
   useEffect(() => {
@@ -38,7 +36,6 @@ export function ActiveBookingScreen() {
   const elapsedSec = activeBooking ? Math.floor((now - new Date(activeBooking.startTime).getTime()) / 1000) : 0
   const timer = Math.max(0, 15 * 60 + extraWaitSeconds - elapsedSec)
 
-  // Record arrival time locally the moment isArrived first becomes true
   const arrivedAtLocalRef = useRef<number | null>(null)
   useEffect(() => {
     if (isArrived && !arrivedAtLocalRef.current) {
@@ -106,8 +103,6 @@ export function ActiveBookingScreen() {
         ],
       })
       setActiveBooking(null)
-      // Spot stays OCCUPIED — exit camera will free it when plate is scanned
-      // Show gate-opened confirmation for 2.5 s, then go home
       setShowGateOpened(true)
       setTimeout(() => {
         setShowGateOpened(false)
@@ -188,7 +183,6 @@ export function ActiveBookingScreen() {
     }
     setActiveBooking(null)
     setCurrentScreen("home")
-    // Cancel the DB record in background
     const token = localStorage.getItem("qpark_token")
     try {
       await fetch("/backend/bookings/cancel-by-spot", {
@@ -247,8 +241,8 @@ export function ActiveBookingScreen() {
     return (
       <div className="flex flex-col h-full pb-4">
         <div className="px-4 pt-4 pb-2">
-          <h1 className="text-xl font-bold text-foreground">My Bookings</h1>
-          <p className="text-sm text-muted-foreground">No active booking</p>
+          <h1 className="text-xl font-bold text-foreground">{t.myBookings}</h1>
+          <p className="text-sm text-muted-foreground">{t.noActiveBooking}</p>
         </div>
         <div className="flex-1 overflow-y-auto px-4 space-y-3">
           {historyLoading ? (
@@ -260,8 +254,8 @@ export function ActiveBookingScreen() {
               <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted">
                 <Car className="h-8 w-8 text-muted-foreground" />
               </div>
-              <p className="text-muted-foreground text-sm">No booking history yet</p>
-              <Button onClick={() => setCurrentScreen("map")} className="bg-[#354469] hover:bg-[#354469]/90">Find Parking</Button>
+              <p className="text-muted-foreground text-sm">{t.noBookingHistory}</p>
+              <Button onClick={() => setCurrentScreen("map")} className="bg-[#354469] hover:bg-[#354469]/90">{t.findParkingBtn}</Button>
             </div>
           ) : (
             history.map(b => (
@@ -272,10 +266,10 @@ export function ActiveBookingScreen() {
                     "text-xs px-2 py-0.5 rounded-full font-medium",
                     b.status === "COMPLETED" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
                   )}>
-                    {b.status === "COMPLETED" ? "Completed" : "Cancelled"}
+                    {b.status === "COMPLETED" ? t.completed : t.cancelled}
                   </span>
                 </div>
-                <p className="text-xs text-muted-foreground">{b.plateNumber} · {b.type === "long-term" ? "Long-term" : "Short-term"}</p>
+                <p className="text-xs text-muted-foreground">{b.plateNumber} · {b.type === "long-term" ? t.longTerm : t.shortTerm}</p>
                 <div className="flex justify-between text-xs text-muted-foreground">
                   <span>{new Date(b.startTime).toLocaleString("ru-RU", { timeZone: "Asia/Almaty", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
                   {b.totalCost > 0 && <span className="font-medium text-foreground">{b.totalCost.toLocaleString()} ₸</span>}
@@ -285,13 +279,12 @@ export function ActiveBookingScreen() {
           )}
         </div>
         <div className="px-4 pt-2">
-          <Button onClick={() => setCurrentScreen("map")} className="w-full bg-[#354469] hover:bg-[#354469]/90">Find Parking</Button>
+          <Button onClick={() => setCurrentScreen("map")} className="w-full bg-[#354469] hover:bg-[#354469]/90">{t.findParkingBtn}</Button>
         </div>
       </div>
     )
   }
   
-  // Gate-opened full-screen overlay (shown for 2.5 s after payment)
   if (showGateOpened) {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-6 p-6">
@@ -301,8 +294,8 @@ export function ActiveBookingScreen() {
           </svg>
         </div>
         <div className="text-center space-y-2">
-          <h2 className="text-2xl font-bold text-gray-900">Payment Successful!</h2>
-          <p className="text-gray-500 text-sm">Drive to the exit — the barrier will open when the camera scans your plate.</p>
+          <h2 className="text-2xl font-bold text-gray-900">{t.paymentSuccessful}</h2>
+          <p className="text-gray-500 text-sm">{t.driveToExitMsg}</p>
         </div>
         <div className="w-8 h-8 border-4 border-green-200 border-t-green-600 rounded-full animate-spin" />
       </div>
@@ -311,13 +304,12 @@ export function ActiveBookingScreen() {
 
   return (
     <div className="flex flex-col gap-4 p-4 pb-24">
-      {/* Header */}
       <div className="flex items-center justify-between">
-        <div className="w-16" /> {/* Left spacer */}
+        <div className="w-16" />
         <div className="flex-1 text-center">
-          <h1 className="text-xl font-bold text-foreground">Active Booking</h1>
+          <h1 className="text-xl font-bold text-foreground">{t.activeBooking}</h1>
           <p className="text-sm text-muted-foreground">
-            {isLongTerm ? "Long-term reservation" : "Short-term parking"}
+            {isLongTerm ? t.longTermReservation : t.shortTermParking}
           </p>
         </div>
         <div className="w-16 flex justify-end">
@@ -325,12 +317,11 @@ export function ActiveBookingScreen() {
             variant={isArrived ? "default" : "secondary"}
             className={isArrived ? "bg-[oklch(var(--status-occupied))]" : ""}
           >
-            {isArrived ? "Parked" : "En Route"}
+            {isArrived ? t.parked : t.enRoute}
           </Badge>
         </div>
       </div>
       
-      {/* Timer Card — countdown until car must arrive via LPR */}
       {!isLongTerm && !isArrived && (
         <Card className={timer < 300 ? "border-destructive bg-destructive/5" : "border-red-200 bg-red-50"}>
           <CardContent className="p-4">
@@ -341,25 +332,22 @@ export function ActiveBookingScreen() {
                 <Clock className="h-8 w-8 text-red-600" />
               )}
               <div className="flex-1">
-                <p className="text-sm text-muted-foreground">Time to arrive</p>
+                <p className="text-sm text-muted-foreground">{t.timeToArrive}</p>
                 <p className="text-3xl font-bold text-foreground">{formatTime(timer)}</p>
               </div>
               <div className="text-right">
-                <p className="text-xs text-muted-foreground">Drive up to</p>
+                <p className="text-xs text-muted-foreground">{t.driveUpTo}</p>
                 <p className="text-sm font-semibold text-foreground">{activeBooking?.spotId}</p>
-                <p className="text-xs text-muted-foreground">LPR will detect you</p>
+                <p className="text-xs text-muted-foreground">{t.lprDetect}</p>
               </div>
             </div>
             {timer < 300 && (
-              <p className="mt-2 text-sm text-destructive">
-                Hurry! Your booking will expire soon.
-              </p>
+              <p className="mt-2 text-sm text-destructive">{t.hurryExpire}</p>
             )}
           </CardContent>
         </Card>
       )}
       
-      {/* Parking Duration (when arrived) */}
       {!isLongTerm && isArrived && (
         <Card className="border-[#36549B] bg-[#36549B]/5">
           <CardContent className="p-4">
@@ -367,12 +355,12 @@ export function ActiveBookingScreen() {
               <div className="flex items-center gap-3">
                 <Clock className="h-8 w-8 text-[#36549B]" />
                 <div>
-                  <p className="text-sm text-muted-foreground">Parking Duration</p>
+                  <p className="text-sm text-muted-foreground">{t.parkingDuration}</p>
                   <p className="text-3xl font-bold text-foreground">{formatTime(parkingDuration)}</p>
                 </div>
               </div>
               <div className="text-right">
-                <p className="text-sm text-muted-foreground">Current Cost</p>
+                <p className="text-sm text-muted-foreground">{t.currentCost}</p>
                 <p className="text-2xl font-bold text-[#36549B]">{calculateCost()} &#8376;</p>
               </div>
             </div>
@@ -380,7 +368,6 @@ export function ActiveBookingScreen() {
         </Card>
       )}
       
-      {/* Long-term Rental Info */}
       {isLongTerm && (
         <>
           <Card className="border-[oklch(var(--status-reserved))] bg-[oklch(var(--status-reserved)/0.05)]">
@@ -389,16 +376,15 @@ export function ActiveBookingScreen() {
                 <div className="flex items-center gap-3">
                   <Clock className="h-8 w-8 text-[oklch(var(--status-reserved))]" />
                   <div>
-                    <p className="text-sm text-muted-foreground">Rental Period</p>
-                    <p className="text-xl font-bold text-foreground">{activeBooking.rentalDays} days remaining</p>
+                    <p className="text-sm text-muted-foreground">{t.rentalPeriod}</p>
+                    <p className="text-xl font-bold text-foreground">{activeBooking.rentalDays} {t.daysRemaining}</p>
                   </div>
                 </div>
-                <Badge variant="outline">Paid</Badge>
+                <Badge variant="outline">{t.paid}</Badge>
               </div>
             </CardContent>
           </Card>
 
-          {/* Car status — in/out indicator driven by live spot status */}
           <Card className={selectedSpot?.status === "OCCUPIED"
             ? "border-green-300 bg-green-50"
             : "border-purple-200 bg-purple-50"
@@ -409,12 +395,10 @@ export function ActiveBookingScreen() {
                   <div className={`h-3 w-3 rounded-full ${selectedSpot?.status === "OCCUPIED" ? "bg-green-500" : "bg-purple-400"}`} />
                   <div>
                     <p className="text-sm font-semibold text-foreground">
-                      {selectedSpot?.status === "OCCUPIED" ? "Car is parked" : "Spot reserved — car outside"}
+                      {selectedSpot?.status === "OCCUPIED" ? t.carParked : t.spotReservedOutside}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      {selectedSpot?.status === "OCCUPIED"
-                        ? "Drive to exit — LPR will open the barrier"
-                        : "Drive in — LPR will detect your plate"}
+                      {selectedSpot?.status === "OCCUPIED" ? t.driveToExitLpr : t.driveInLpr}
                     </p>
                   </div>
                 </div>
@@ -425,7 +409,6 @@ export function ActiveBookingScreen() {
         </>
       )}
       
-      {/* Booking Details */}
       <Card>
         <CardContent className="p-4 space-y-4">
           <div className="flex items-center gap-3">
@@ -433,7 +416,7 @@ export function ActiveBookingScreen() {
               <MapPin className="h-6 w-6 text-[#36549B]" />
             </div>
             <div>
-              <p className="text-sm text-muted-foreground">Parking Spot</p>
+              <p className="text-sm text-muted-foreground">{t.parkingSpot}</p>
               <p className="text-lg font-bold text-foreground">{activeBooking.spotId}</p>
             </div>
           </div>
@@ -443,7 +426,7 @@ export function ActiveBookingScreen() {
               <Car className="h-6 w-6 text-[#36549B]" />
             </div>
             <div>
-              <p className="text-sm text-muted-foreground">Vehicle</p>
+              <p className="text-sm text-muted-foreground">{t.vehicle}</p>
               <p className="font-medium text-foreground">
                 {selectedCar?.brand} {selectedCar?.model}
               </p>
@@ -456,33 +439,32 @@ export function ActiveBookingScreen() {
               <Camera className="h-6 w-6 text-[#36549B]" />
             </div>
             <div>
-              <p className="text-sm text-muted-foreground">Entry Method</p>
-              <p className="font-medium text-foreground">LPR Camera</p>
-              <p className="text-xs text-muted-foreground">Automatic plate recognition</p>
+              <p className="text-sm text-muted-foreground">{t.entryMethod}</p>
+              <p className="font-medium text-foreground">{t.lprCamera}</p>
+              <p className="text-xs text-muted-foreground">{t.autoPlate}</p>
             </div>
           </div>
         </CardContent>
       </Card>
       
-      {/* Cost Summary (Short-term) */}
       {!isLongTerm && isArrived && (
         <Card>
           <CardContent className="p-4">
-            <h3 className="mb-3 font-medium text-foreground">Cost Breakdown</h3>
+            <h3 className="mb-3 font-medium text-foreground">{t.costBreakdown}</h3>
             <div className="space-y-2 text-sm">
               <div className="flex justify-between">
-                <span className="text-muted-foreground">First hour (minimum)</span>
+                <span className="text-muted-foreground">{t.firstHourMin}</span>
                 <span className="text-foreground">150 &#8376;</span>
               </div>
               {parkingDuration > 3600 && (
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Extra time ({Math.ceil((parkingDuration - 3600) / 60)} min)</span>
+                  <span className="text-muted-foreground">{t.extraTime} ({Math.ceil((parkingDuration - 3600) / 60)} min)</span>
                   <span className="text-foreground">{Math.ceil((parkingDuration - 3600) / 60) * 3} &#8376;</span>
                 </div>
               )}
               <Separator />
               <div className="flex justify-between font-medium">
-                <span className="text-foreground">Total</span>
+                <span className="text-foreground">{t.total}</span>
                 <span className="text-[#36549B]">{calculateCost()} &#8376;</span>
               </div>
             </div>
@@ -490,7 +472,6 @@ export function ActiveBookingScreen() {
         </Card>
       )}
       
-      {/* Actions */}
       <div className="space-y-2 mt-2">
         {isArrived && !isLongTerm && (
           <Button 
@@ -500,7 +481,7 @@ export function ActiveBookingScreen() {
             disabled={isPaying}
           >
             <CreditCard className="h-5 w-5" />
-            {isPaying ? "Processing..." : `Pay ${calculateCost()} ₸ & Exit`}
+            {isPaying ? t.processing : `${calculateCost()} ₸ ${t.payAndExit}`}
           </Button>
         )}
         
@@ -513,7 +494,7 @@ export function ActiveBookingScreen() {
             disabled={isExtendingWaiting}
           >
             <Clock className="h-5 w-5 mr-2" />
-            {isExtendingWaiting ? "Processing..." : "Extend +30 min · 75 ₸"}
+            {isExtendingWaiting ? t.processing : t.extendWaiting}
           </Button>
         )}
 
@@ -524,7 +505,7 @@ export function ActiveBookingScreen() {
             className="w-full hover:bg-[#36549B]/10 hover:border-[#36549B] hover:text-[#36549B]"
             onClick={handleCancelBooking}
           >
-            Cancel Booking
+            {t.cancelBooking}
           </Button>
         )}
         
@@ -536,7 +517,7 @@ export function ActiveBookingScreen() {
             onClick={() => setShowExtend(true)}
           >
             <Calendar className="h-5 w-5 mr-2" />
-            Extend Rental
+            {t.extendRental}
           </Button>
         )}
 
@@ -548,28 +529,24 @@ export function ActiveBookingScreen() {
             onClick={() => setShowTerminateConfirm(true)}
           >
             <X className="h-5 w-5 mr-2" />
-            Terminate Rental Early
+            {t.terminateRental}
           </Button>
         )}
       </div>
       
-      {/* Extend Rental Bottom Sheet */}
       {showExtend && (
         <div className="absolute inset-0 z-50 flex flex-col justify-end">
-          {/* Backdrop */}
           <div
             className="absolute inset-0 bg-black/40"
             onClick={() => { setShowExtend(false); setSelectedExtendDays(null) }}
           />
-          {/* Sheet */}
           <div className="relative bg-white dark:bg-gray-900 rounded-t-3xl px-5 pt-5 pb-28">
-            {/* Handle bar */}
             <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-gray-200 dark:bg-gray-700" />
 
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
                 <Calendar className="h-5 w-5 text-[#36549B]" />
-                <h2 className="text-lg font-bold text-gray-900 dark:text-white">Extend Rental</h2>
+                <h2 className="text-lg font-bold text-gray-900 dark:text-white">{t.extendRental}</h2>
               </div>
               <button
                 onClick={() => { setShowExtend(false); setSelectedExtendDays(null) }}
@@ -580,7 +557,7 @@ export function ActiveBookingScreen() {
             </div>
 
             <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-              Current: <span className="font-semibold text-gray-800 dark:text-gray-200">{activeBooking?.rentalDays ?? 0} day{(activeBooking?.rentalDays ?? 0) !== 1 ? "s" : ""}</span> · Add more days below
+              {t.currentPeriod} <span className="font-semibold text-gray-800 dark:text-gray-200">{activeBooking?.rentalDays ?? 0} day{(activeBooking?.rentalDays ?? 0) !== 1 ? "s" : ""}</span> · {t.addMoreDays}
             </p>
 
             <div className="space-y-2 mb-5">
@@ -615,7 +592,7 @@ export function ActiveBookingScreen() {
 
             {selectedExtendDays && (
               <div className="flex justify-between text-sm mb-4 px-1">
-                <span className="text-gray-500 dark:text-gray-400">New total period</span>
+                <span className="text-gray-500 dark:text-gray-400">{t.newTotalPeriod}</span>
                 <span className="font-semibold text-gray-900 dark:text-white">
                   {(activeBooking?.rentalDays ?? 0) + selectedExtendDays} days
                 </span>
@@ -629,16 +606,15 @@ export function ActiveBookingScreen() {
               onClick={handleExtendRental}
             >
               {isExtending
-                ? "Processing..."
+                ? t.processing
                 : selectedExtendDays
-                  ? `Confirm +${selectedExtendDays} day${selectedExtendDays > 1 ? "s" : ""} · ${extendOptions.find(o => o.days === selectedExtendDays)!.price.toLocaleString()} ₸`
-                  : "Select a period"}
+                  ? `${t.confirmExtend} +${selectedExtendDays} day${selectedExtendDays > 1 ? "s" : ""} · ${extendOptions.find(o => o.days === selectedExtendDays)!.price.toLocaleString()} ₸`
+                  : t.selectPeriod}
             </Button>
           </div>
         </div>
       )}
 
-      {/* Terminate Rental Confirm Modal */}
       {showTerminateConfirm && (
         <div className="absolute inset-0 z-50 flex flex-col justify-end">
           <div className="absolute inset-0 bg-black/40" onClick={() => setShowTerminateConfirm(false)} />
@@ -648,15 +624,14 @@ export function ActiveBookingScreen() {
               <div className="flex h-14 w-14 items-center justify-center rounded-full bg-red-100 dark:bg-red-900/30">
                 <AlertTriangle className="h-7 w-7 text-red-500" />
               </div>
-              <h2 className="text-lg font-bold text-gray-900 dark:text-white text-center">Terminate Rental?</h2>
+              <h2 className="text-lg font-bold text-gray-900 dark:text-white text-center">{t.terminateRentalTitle}</h2>
               <p className="text-sm text-gray-500 dark:text-gray-400 text-center">
-                Your rental for spot <span className="font-semibold text-gray-800 dark:text-gray-200">{activeBooking.spotId}</span> will be ended early.
-                No refund will be issued.
+                {t.terminateRentalMsg} <span className="font-semibold text-gray-800 dark:text-gray-200">{activeBooking.spotId}</span> {t.terminateRentalMsg2}
               </p>
             </div>
             <div className="flex gap-3">
               <Button variant="outline" size="lg" className="flex-1" onClick={() => setShowTerminateConfirm(false)}>
-                Cancel
+                {t.cancel}
               </Button>
               <Button
                 size="lg"
@@ -664,14 +639,13 @@ export function ActiveBookingScreen() {
                 onClick={handleTerminateRental}
                 disabled={isTerminating}
               >
-                {isTerminating ? "Terminating..." : "Terminate"}
+                {isTerminating ? t.terminating : t.terminate}
               </Button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Insufficient Balance Bottom Sheet */}
       {insufficientBalance && (
         <div className="absolute inset-0 z-50 flex flex-col justify-end">
           <div className="absolute inset-0 bg-black/40" onClick={() => setInsufficientBalance(null)} />
@@ -681,32 +655,31 @@ export function ActiveBookingScreen() {
               <div className="flex h-14 w-14 items-center justify-center rounded-full bg-red-50 dark:bg-red-900/30">
                 <Wallet className="h-7 w-7 text-[#b94a4a]" />
               </div>
-              <h2 className="text-lg font-bold text-gray-900 dark:text-white text-center">Insufficient Balance</h2>
+              <h2 className="text-lg font-bold text-gray-900 dark:text-white text-center">{t.insufficientBalance}</h2>
               <p className="text-sm text-gray-500 dark:text-gray-400 text-center">
-                You need <span className="font-semibold text-gray-800 dark:text-gray-200">{insufficientBalance.need}₸</span> but your wallet only has <span className="font-semibold text-gray-800 dark:text-gray-200">{insufficientBalance.have}₸</span>. Please top up to continue.
+                {t.insufficientMsg1} <span className="font-semibold text-gray-800 dark:text-gray-200">{insufficientBalance.need}₸</span> {t.insufficientMsg2} <span className="font-semibold text-gray-800 dark:text-gray-200">{insufficientBalance.have}₸</span>. {t.insufficientMsg3}
               </p>
               <div className="w-full bg-gray-100 dark:bg-gray-800 rounded-xl px-4 py-3 flex justify-between text-sm">
-                <span className="text-gray-500 dark:text-gray-400">Shortfall</span>
+                <span className="text-gray-500 dark:text-gray-400">{t.shortfall}</span>
                 <span className="font-bold text-[#b94a4a]">−{insufficientBalance.need - insufficientBalance.have}₸</span>
               </div>
             </div>
             <div className="flex gap-3">
-              <Button variant="outline" size="lg" className="flex-1" onClick={() => setInsufficientBalance(null)}>Back</Button>
-              <Button size="lg" className="flex-1 bg-[#354469] hover:bg-[#354469]/90" onClick={() => { setInsufficientBalance(null); setCurrentScreen("wallet") }}>Top Up Wallet</Button>
+              <Button variant="outline" size="lg" className="flex-1" onClick={() => setInsufficientBalance(null)}>{t.back}</Button>
+              <Button size="lg" className="flex-1 bg-[#354469] hover:bg-[#354469]/90" onClick={() => { setInsufficientBalance(null); setCurrentScreen("wallet") }}>{t.topUpWallet}</Button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Bottom Navigation */}
       <div className="absolute bottom-0 left-0 right-0 h-20 bg-white dark:bg-gray-900 border-t border-gray-300 dark:border-gray-700 z-50 shadow-lg">
         <div className="flex justify-around items-center h-full px-4">
           {[
-            { id: "home", icon: "/Home_light.svg", activeIcon: "/Home_light_active.svg", label: "Home", active: false },
-            { id: "map", icon: "/Map_light.svg", activeIcon: "/Map_light_active.svg", label: "Map", active: false },
-            { id: "booking", icon: "/Component.svg", activeIcon: "/Component_active.svg", label: "Booking", active: true },
-            { id: "wallet", icon: "/wallet.svg", activeIcon: "/wallet_active.svg", label: "Wallet", active: false },
-            { id: "profile", icon: "/User_cicrle_light.svg", activeIcon: "/User_cicrle_light_active.svg", label: "Profile", active: false },
+            { id: "home", icon: "/Home_light.svg", activeIcon: "/Home_light_active.svg", label: t.home, active: false },
+            { id: "map", icon: "/Map_light.svg", activeIcon: "/Map_light_active.svg", label: t.map, active: false },
+            { id: "booking", icon: "/Component.svg", activeIcon: "/Component_active.svg", label: t.booking, active: true },
+            { id: "wallet", icon: "/wallet.svg", activeIcon: "/wallet_active.svg", label: t.wallet, active: false },
+            { id: "profile", icon: "/User_cicrle_light.svg", activeIcon: "/User_cicrle_light_active.svg", label: t.profile, active: false },
           ].map((item) => (
             <button
               key={item.id}

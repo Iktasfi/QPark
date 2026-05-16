@@ -10,24 +10,21 @@ import { prisma } from '../lib/prisma';
 
 const router = Router();
 
-// Все маршруты требуют авторизации
+
 router.use(verifyToken);
 
-/**
- * POST /bookings
- * Создать краткосрочное бронирование
- */
+
 router.post('/', requireCarPlate, validateBooking, async (req: Request, res: Response) => {
   try {
     const { spotId } = req.body;
     const userId = req.userId!;
 
     const booking = await bookingService.createShortTermBooking(userId, spotId);
-    
-    // Отправить уведомление через Socket.io
+
+
     const { io } = await import('../server');
     io.emit('booking-created', booking);
-    
+
     res.status(201).json({
       booking,
       message: '✅ Booking created successfully',
@@ -38,10 +35,7 @@ router.post('/', requireCarPlate, validateBooking, async (req: Request, res: Res
   }
 });
 
-/**
- * GET /bookings/active
- * Получить активные бронирования пользователя
- */
+
 router.get('/active', async (req: Request, res: Response) => {
   try {
     const userId = req.userId!;
@@ -53,16 +47,12 @@ router.get('/active', async (req: Request, res: Response) => {
   }
 });
 
-/**
- * GET /bookings/restore
- * Восстановить активную бронь/аренду после обновления страницы
- * Возвращает null если нет активной брони
- */
+
 router.get('/restore', async (req: Request, res: Response) => {
   try {
     const userId = req.userId!;
 
-    // Short-term active booking
+
     const booking = await prisma.booking.findFirst({
       where: { userId, status: { in: ['PENDING', 'CONFIRMED'] } },
       orderBy: { createdAt: 'desc' },
@@ -83,7 +73,7 @@ router.get('/restore', async (req: Request, res: Response) => {
       });
     }
 
-    // Long-term active rental
+
     const rental = await prisma.longTermRental.findFirst({
       where: { userId, status: 'ACTIVE' },
       orderBy: { createdAt: 'desc' },
@@ -112,17 +102,14 @@ router.get('/restore', async (req: Request, res: Response) => {
   }
 });
 
-/**
- * POST /bookings/:id/complete
- * Завершить бронирование
- */
+
 router.post('/:id/complete', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const { carPlate } = req.body;
     const userId = req.userId!;
 
-    // Получить бронирование для проверки
+
     const booking = await prisma.booking.findUnique({
       where: { id },
     });
@@ -136,11 +123,11 @@ router.post('/:id/complete', async (req: Request, res: Response) => {
     }
 
     const completedBooking = await bookingService.completeBooking(id, carPlate);
-    
-    // Отправить уведомление через Socket.io
+
+
     const { io } = await import('../server');
     io.emit('booking-completed', completedBooking);
-    
+
     res.json({
       booking: completedBooking,
       message: '✅ Booking completed',
@@ -151,17 +138,14 @@ router.post('/:id/complete', async (req: Request, res: Response) => {
   }
 });
 
-/**
- * POST /bookings/:id/cancel
- * Отменить бронирование
- */
+
 router.post('/:id/cancel', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const { reason } = req.body;
     const userId = req.userId!;
 
-    // Проверить, принадлежит ли бронирование пользователю
+
     const booking = await prisma.booking.findUnique({
       where: { id },
     });
@@ -175,11 +159,11 @@ router.post('/:id/cancel', async (req: Request, res: Response) => {
     }
 
     const cancelledBooking = await bookingService.cancelBooking(id, reason);
-    
-    // Отправить уведомление через Socket.io
+
+
     const { io } = await import('../server');
     io.emit('booking-cancelled', cancelledBooking);
-    
+
     res.json({
       booking: cancelledBooking,
       message: '✅ Booking cancelled',
@@ -190,10 +174,7 @@ router.post('/:id/cancel', async (req: Request, res: Response) => {
   }
 });
 
-/**
- * POST /bookings/checkout
- * Оплата при выезде (краткосрочное): считает стоимость, списывает с кошелька, освобождает место
- */
+
 router.post('/checkout', async (req: Request, res: Response) => {
   try {
     const { spotNumber } = req.body;
@@ -207,7 +188,7 @@ router.post('/checkout', async (req: Request, res: Response) => {
 
     const { io } = await import('../server');
     io.emit('booking-completed', { spotNumber });
-    // Spot stays OCCUPIED — exit-lpr opens gate + frees spot when user shows plate to camera
+
 
     res.json({ ...result, message: '✅ Payment complete' });
   } catch (error) {
@@ -216,10 +197,7 @@ router.post('/checkout', async (req: Request, res: Response) => {
   }
 });
 
-/**
- * POST /bookings/extend-waiting
- * Продление окна ожидания на 30 мин за 75₸
- */
+
 router.post('/extend-waiting', async (req: Request, res: Response) => {
   try {
     const { spotNumber } = req.body;
@@ -237,16 +215,13 @@ router.post('/extend-waiting', async (req: Request, res: Response) => {
   }
 });
 
-/**
- * POST /bookings/:id/extend
- * Продлить бронирование
- */
+
 router.post('/:id/extend', checkBalance(getExtendBookingCost()), async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const userId = req.userId!;
 
-    // Проверить, принадлежит ли бронирование пользователю
+
     const booking = await prisma.booking.findUnique({
       where: { id },
     });
@@ -259,7 +234,7 @@ router.post('/:id/extend', checkBalance(getExtendBookingCost()), async (req: Req
       return res.status(403).json({ error: 'Access denied' });
     }
 
-    // Продлить бронирование
+
     const extendCost = getExtendBookingCost();
     const { walletBalance } = await paymentService.debitWallet(
       userId,
@@ -267,21 +242,21 @@ router.post('/:id/extend', checkBalance(getExtendBookingCost()), async (req: Req
       `Продление бронирования: ${id}`
     );
 
-    // Обновить время окончания
+
     const updatedBooking = await prisma.booking.update({
       where: { id },
       data: {
         estimatedEndTime: new Date(
-          new Date(booking.estimatedEndTime).getTime() + 30 * 60 * 1000 // 30 минут
+          new Date(booking.estimatedEndTime).getTime() + 30 * 60 * 1000
         ),
         minutesExtended: { increment: 30 },
       },
     });
 
-    // Отправить уведомление через Socket.io
+
     const { io } = await import('../server');
     io.emit('booking-extended', updatedBooking);
-    
+
     res.json({
       booking: updatedBooking,
       walletBalance,
@@ -294,10 +269,7 @@ router.post('/:id/extend', checkBalance(getExtendBookingCost()), async (req: Req
   }
 });
 
-/**
- * POST /bookings/cancel-by-spot
- * Отменить активную бронь по номеру места (из мобильного приложения)
- */
+
 router.post('/cancel-by-spot', async (req: Request, res: Response) => {
   try {
     const { spotNumber } = req.body;
@@ -310,7 +282,7 @@ router.post('/cancel-by-spot', async (req: Request, res: Response) => {
     const spot = await prisma.parkingSpot.findUnique({ where: { spotNumber } });
     if (!spot) return res.status(404).json({ error: 'Spot not found' });
 
-    // Find active booking for this spot+user
+
     const booking = await prisma.booking.findFirst({
       where: { spotId: spot.id, userId, status: { in: ['PENDING', 'CONFIRMED'] } },
       orderBy: { createdAt: 'desc' },
@@ -335,10 +307,7 @@ router.post('/cancel-by-spot', async (req: Request, res: Response) => {
   }
 });
 
-/**
- * GET /bookings/history
- * История бронирований пользователя (последние 30)
- */
+
 router.get('/history', async (req: Request, res: Response) => {
   try {
     const userId = req.userId!;

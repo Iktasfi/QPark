@@ -13,16 +13,91 @@ const translations = {
     securityPrivacy: "Security & Privacy", privacyPolicy: "Privacy Policy",
     termsOfService: "Terms of Service", about: "About", appVersion: "App Version",
     build: "Build", deleteAccount: "Delete Account", selectLanguage: "Select Language",
-    balance: "Balance", bonus: "Bonus Points", noShowCounter: "No-Show Counter",
+    noShowCounter: "No-Show Counter", contactSupport: "Contact support:", signOut: "Sign Out",
+    balance: "Balance", bonus: "Bonus Points", bonusPoints: "Bonus Points",
     myCars: "My Cars", add: "Add", cancel: "Cancel", noCarsRegistered: "No cars registered",
-    contactSupport: "Contact support:", signOut: "Sign Out",
     manageBalance: "Manage your balance", currentBalance: "Current Balance",
-    bonusPoints: "Bonus Points", topUpBalance: "Top Up Balance",
-    promoCodeAvailable: "Promo Code Available",
+    topUpBalance: "Top Up Balance", promoCodeAvailable: "Promo Code Available",
     promoDescription: "FIRST - 150₸ off your first parking",
     active: "Active", transactionHistory: "Transaction History",
     selectAmount: "Select Amount", payWithStripe: "Pay with Stripe",
     poweredByStripe: "Powered by Stripe (Test Mode)", walletTopUp: "Wallet Top-Up",
+    welcomeBack: "Welcome back,", bonusPointsLabel: "Bonus points",
+    shortTerm: "Short-term", longTerm: "Long-term", spotsAvailable: "spots available",
+    activeBooking: "Active Booking", quickActions: "Quick Actions",
+    bookNow: "Book now", findParking: "Find available parking",
+    registered: "registered", specialOffer: "Special Offer!",
+    firstBookingOffer: "Get 50% off your first booking",
+    parkingMap: "Parking Map", parkingLocation: "Astana, Central Location - 30 spots",
+    shortTermSection: "Short-term · SP-01–15", longTermSection: "Long-term · SP-16–30",
+    statusFree: "Free", statusBooked: "Booked", statusOccupied: "Occupied",
+    statusReserved: "Reserved", statusRepair: "Repair",
+    myBookings: "My Bookings", noActiveBooking: "No active booking",
+    longTermReservation: "Long-term reservation", shortTermParking: "Short-term parking",
+    parked: "Parked", enRoute: "En Route",
+    timeToArrive: "Time to arrive", driveUpTo: "Drive up to", lprDetect: "LPR will detect you",
+    hurryExpire: "Hurry! Your booking will expire soon.",
+    parkingDuration: "Parking Duration", currentCost: "Current Cost",
+    rentalPeriod: "Rental Period", daysRemaining: "days remaining", paid: "Paid",
+    carParked: "Car is parked", spotReservedOutside: "Spot reserved — car outside",
+    driveToExitLpr: "Drive to exit — LPR will open the barrier",
+    driveInLpr: "Drive in — LPR will detect your plate",
+    parkingSpot: "Parking Spot", vehicle: "Vehicle",
+    entryMethod: "Entry Method", lprCamera: "LPR Camera", autoPlate: "Automatic plate recognition",
+    costBreakdown: "Cost Breakdown", firstHourMin: "First hour (minimum)",
+    extraTime: "Extra time", total: "Total",
+    processing: "Processing...", payAndExit: "Pay & Exit",
+    extendWaiting: "Extend +30 min · 75 ₸", cancelBooking: "Cancel Booking",
+    extendRental: "Extend Rental", terminateRental: "Terminate Rental Early",
+    noBookingHistory: "No booking history yet", findParkingBtn: "Find Parking",
+    completed: "Completed", cancelled: "Cancelled",
+    paymentSuccessful: "Payment Successful!",
+    driveToExitMsg: "Drive to the exit — the barrier will open when the camera scans your plate.",
+    terminateRentalTitle: "Terminate Rental?",
+    terminateRentalMsg: "Your rental for spot", terminateRentalMsg2: "will be ended early. No refund will be issued.",
+    terminate: "Terminate", terminating: "Terminating...",
+    currentPeriod: "Current:", addMoreDays: "Add more days below",
+    newTotalPeriod: "New total period", confirmExtend: "Confirm",
+    selectPeriod: "Select a period",
+    insufficientBalance: "Insufficient Balance",
+    insufficientMsg1: "You need", insufficientMsg2: "but your wallet only has",
+    insufficientMsg3: "Please top up to continue.",
+    shortfall: "Shortfall", back: "Back", topUpWallet: "Top Up Wallet",
+    spotDetails: "Spot Details", free: "Free", bookedStatus: "Booked",
+    hourlyRate: "Hourly rate", dailyRate: "Daily rate",
+    minOneHour: "Minimum 1 hour", additionalMin: "min · 3₸/min after 1hr",
+    selectVehicle: "Select your vehicle", selectPeriodLabel: "Select rental period",
+    perDay: "per day", bookNowBtn: "Book Now", bookingLabel: "Booking...",
+    youAlreadyBooked: "You Already Have a Booking",
+    alreadyBookedMsg: "is already booked. Complete or cancel it to select a new spot.",
+    goToBooking: "Go to Booking", viewMyBooking: "View My Booking",
+    alreadyBookedComplete: "Complete or cancel your current booking to select a new spot.",
+    period: "Period", day: "day", days: "days", selected: "Selected",
+    spotLabel: "Spot", noCarsAddFirst: "No cars registered. Add a car in Profile first.",
+    pricing: "Pricing",
+    firstHourDetail: "First hour: 150 ₸ (minimum)",
+    afterFirstHour: "After first hour: 3 ₸/minute",
+    arrivalWindow: "15 min arrival window (free)",
+    extendedWaitingInfo: "Extended waiting: +75 ₸ for 30 min",
+    noTransactionsYet: "No transactions yet",
+    payment: "Payment",
+    reservationConfirmed: "Reservation Confirmed!", bookingConfirmed: "Booking Confirmed!",
+    spotNowReserved: "Your spot is now reserved",
+    have15Minutes: "You have 15 minutes to arrive",
+    arrivalDeadline: "Arrival Deadline", arriveWithin15: "Arrive within 15 minutes",
+    unlimitedEntries: "Unlimited entries & exits",
+    lprEntry: "LPR Entry",
+    lprEntryDesc: "Drive to the entrance — camera reads your plate and opens barrier",
+    viewActiveBooking: "View Active Booking", backToHome: "Back to Home",
+    saving: "Saving...",
+    brandPlaceholder: "Brand (e.g., Toyota)",
+    modelPlaceholder: "Model (e.g., Camry)",
+    platePlaceholder: "Plate Number (e.g., 123 ABC 01)",
+    close: "Close",
+    stripeTopUpDesc: "Top up via Stripe — ",
+    deleteAccountTitle: "Delete Account?",
+    deleteAccountMsg: "This action cannot be undone. All your data, including cars and booking history, will be permanently deleted.",
+    delete: "Delete",
   },
   kk: {
     home: "Басты", map: "Карта", booking: "Брондау", wallet: "Әмиян", profile: "Профиль",
@@ -31,17 +106,94 @@ const translations = {
     securityPrivacy: "Қауіпсіздік және құпиялылық", privacyPolicy: "Құпиялылық саясаты",
     termsOfService: "Қызмет көрсету шарттары", about: "Қосымша туралы",
     appVersion: "Нұсқасы", build: "Жинақ", deleteAccount: "Аккаунтты жою",
-    selectLanguage: "Тілді таңдаңыз", balance: "Баланс", bonus: "Бонус ұпайлар",
-    noShowCounter: "Келмеу санауышы", myCars: "Менің көліктерім", add: "Қосу",
-    cancel: "Болдырмау", noCarsRegistered: "Тіркелген көлік жоқ",
+    selectLanguage: "Тілді таңдаңыз", noShowCounter: "Келмеу санауышы",
     contactSupport: "Қолдау қызметіне хабарласу:", signOut: "Шығу",
+    balance: "Баланс", bonus: "Бонус ұпайлар", bonusPoints: "Бонус ұпайлар",
+    myCars: "Менің көліктерім", add: "Қосу", cancel: "Болдырмау",
+    noCarsRegistered: "Тіркелген көлік жоқ",
     manageBalance: "Балансты басқару", currentBalance: "Ағымдағы баланс",
-    bonusPoints: "Бонус ұпайлар", topUpBalance: "Балансты толтыру",
-    promoCodeAvailable: "Промокод қол жетімді",
+    topUpBalance: "Балансты толтыру", promoCodeAvailable: "Промокод қол жетімді",
     promoDescription: "FIRST - алғашқы тұрақ үшін 150₸ жеңілдік",
     active: "Белсенді", transactionHistory: "Транзакция тарихы",
     selectAmount: "Сумманы таңдаңыз", payWithStripe: "Stripe арқылы төлеу",
     poweredByStripe: "Stripe (Тест режимі)", walletTopUp: "Әмиянды толтыру",
+    welcomeBack: "Қайта оралдыңыз,", bonusPointsLabel: "Бонус ұпайлар",
+    shortTerm: "Қысқа мерзімді", longTerm: "Ұзақ мерзімді", spotsAvailable: "орын бар",
+    activeBooking: "Белсенді брондау", quickActions: "Жылдам әрекеттер",
+    bookNow: "Қазір брондау", findParking: "Бос орын табу",
+    registered: "тіркелген", specialOffer: "Арнайы ұсыныс!",
+    firstBookingOffer: "Бірінші брондауға 50% жеңілдік",
+    parkingMap: "Тұрақ картасы", parkingLocation: "Астана, Орталық орын - 30 орын",
+    shortTermSection: "Қысқа мерзімді · SP-01–15",
+    longTermSection: "Ұзақ мерзімді · SP-16–30",
+    statusFree: "Бос", statusBooked: "Брондалған", statusOccupied: "Бос емес",
+    statusReserved: "Резервте", statusRepair: "Жөндеуде",
+    myBookings: "Менің брондауларым", noActiveBooking: "Белсенді брондау жоқ",
+    longTermReservation: "Ұзақ мерзімді брондау", shortTermParking: "Қысқа мерзімді тұрақ",
+    parked: "Тұрды", enRoute: "Жолда",
+    timeToArrive: "Келу уақыты", driveUpTo: "Жету нүктесі", lprDetect: "LPR анықтайды",
+    hurryExpire: "Асығыңыз! Брондауыңыздың мерзімі жақын арада аяқталады.",
+    parkingDuration: "Тұрақ уақыты", currentCost: "Ағымдағы құны",
+    rentalPeriod: "Жалдау мерзімі", daysRemaining: "күн қалды", paid: "Төленді",
+    carParked: "Көлік тұрды", spotReservedOutside: "Орын резервте — көлік сыртта",
+    driveToExitLpr: "Шығуға жүріңіз — LPR шлагбаумды ашады",
+    driveInLpr: "Кіруге жүріңіз — LPR нөмірді анықтайды",
+    parkingSpot: "Тұрақ орны", vehicle: "Көлік",
+    entryMethod: "Кіру тәсілі", lprCamera: "LPR камера", autoPlate: "Автоматты нөмір тану",
+    costBreakdown: "Шығын бөлімі", firstHourMin: "Бірінші сағат (минимум)",
+    extraTime: "Қосымша уақыт", total: "Жиыны",
+    processing: "Өңделуде...", payAndExit: "Төлеу және шығу",
+    extendWaiting: "+30 мин ұзарту · 75 ₸", cancelBooking: "Брондауды бас тарту",
+    extendRental: "Жалдауды ұзарту", terminateRental: "Жалдауды мерзімінен бұрын аяқтау",
+    noBookingHistory: "Брондау тарихы жоқ", findParkingBtn: "Тұрақ табу",
+    completed: "Аяқталды", cancelled: "Бас тартылды",
+    paymentSuccessful: "Төлем сәтті өтті!",
+    driveToExitMsg: "Шығуға жүріңіз — камера нөміріңізді оқығанда шлагбаум ашылады.",
+    terminateRentalTitle: "Жалдауды аяқтау?",
+    terminateRentalMsg: "Орынның жалдауы", terminateRentalMsg2: "мерзімінен бұрын аяқталады. Қаражат қайтарылмайды.",
+    terminate: "Аяқтау", terminating: "Аяқталуда...",
+    currentPeriod: "Ағымдағы:", addMoreDays: "Төменде күн қосыңыз",
+    newTotalPeriod: "Жаңа жалпы мерзім", confirmExtend: "Растау",
+    selectPeriod: "Мерзімді таңдаңыз",
+    insufficientBalance: "Баланс жеткіліксіз",
+    insufficientMsg1: "Сізге керек", insufficientMsg2: "бірақ балансыңызда тек",
+    insufficientMsg3: "Жалғастыру үшін толтырыңыз.",
+    shortfall: "Жетіспейді", back: "Артқа", topUpWallet: "Балансты толтыру",
+    spotDetails: "Орын мәліметтері", free: "Бос", bookedStatus: "Брондалған",
+    hourlyRate: "Сағаттық тариф", dailyRate: "Күндік тариф",
+    minOneHour: "Кемінде 1 сағат", additionalMin: "мин · 1 сағаттан кейін 3₸/мин",
+    selectVehicle: "Көлігіңізді таңдаңыз", selectPeriodLabel: "Жалдау мерзімін таңдаңыз",
+    perDay: "күніне", bookNowBtn: "Қазір брондау", bookingLabel: "Брондалуда...",
+    youAlreadyBooked: "Сізде белсенді брондау бар",
+    alreadyBookedMsg: "бұрын брондалған. Жаңа орын үшін оны аяқтаңыз немесе бас тартыңыз.",
+    goToBooking: "Брондауға өту", viewMyBooking: "Брондауымды қарау",
+    alreadyBookedComplete: "Жаңа орын таңдау үшін брондауды аяқтаңыз немесе бас тартыңыз.",
+    period: "Мерзім", day: "күн", days: "күн", selected: "Таңдалды",
+    spotLabel: "Орын", noCarsAddFirst: "Тіркелген көлік жоқ. Алдымен Профильде қосыңыз.",
+    pricing: "Баға",
+    firstHourDetail: "Бірінші сағат: 150 ₸ (минимум)",
+    afterFirstHour: "Бірінші сағаттан кейін: 3 ₸/мин",
+    arrivalWindow: "15 мин тегін күту уақыты",
+    extendedWaitingInfo: "Күту ұзартылуы: +75 ₸, 30 мин",
+    noTransactionsYet: "Транзакциялар жоқ",
+    payment: "Төлем",
+    reservationConfirmed: "Брондау расталды!", bookingConfirmed: "Брондау расталды!",
+    spotNowReserved: "Орыныңыз резервте",
+    have15Minutes: "Келу үшін 15 минут бар",
+    arrivalDeadline: "Келу мерзімі", arriveWithin15: "15 минут ішінде келіңіз",
+    unlimitedEntries: "Кіру/шығу шектеусіз",
+    lprEntry: "LPR кіруі",
+    lprEntryDesc: "Кіреберіске жүріңіз — камера нөміріңізді оқып, шлагбаумды ашады",
+    viewActiveBooking: "Белсенді брондауды қарау", backToHome: "Басты бетке оралу",
+    saving: "Сақталуда...",
+    brandPlaceholder: "Маркасы (мыс., Toyota)",
+    modelPlaceholder: "Моделі (мыс., Camry)",
+    platePlaceholder: "Нөмірі (мыс., 123 ABC 01)",
+    close: "Жабу",
+    stripeTopUpDesc: "Stripe арқылы толтыру — ",
+    deleteAccountTitle: "Аккаунтты жою?",
+    deleteAccountMsg: "Бұл әрекетті болдырмау мүмкін емес. Барлық деректеріңіз, соның ішінде көліктер мен брондау тарихы, біржола жойылады.",
+    delete: "Жою",
   },
   ru: {
     home: "Главная", map: "Карта", booking: "Бронирование", wallet: "Кошелёк", profile: "Профиль",
@@ -50,17 +202,94 @@ const translations = {
     securityPrivacy: "Безопасность и конфиденциальность", privacyPolicy: "Политика конфиденциальности",
     termsOfService: "Условия использования", about: "О приложении",
     appVersion: "Версия", build: "Сборка", deleteAccount: "Удалить аккаунт",
-    selectLanguage: "Выбрать язык", balance: "Баланс", bonus: "Бонусные баллы",
-    noShowCounter: "Счётчик неявок", myCars: "Мои автомобили", add: "Добавить",
-    cancel: "Отмена", noCarsRegistered: "Нет зарегистрированных авто",
+    selectLanguage: "Выбрать язык", noShowCounter: "Счётчик неявок",
     contactSupport: "Связаться с поддержкой:", signOut: "Выйти",
+    balance: "Баланс", bonus: "Бонусные баллы", bonusPoints: "Бонусные баллы",
+    myCars: "Мои автомобили", add: "Добавить", cancel: "Отмена",
+    noCarsRegistered: "Нет зарегистрированных авто",
     manageBalance: "Управление балансом", currentBalance: "Текущий баланс",
-    bonusPoints: "Бонусные баллы", topUpBalance: "Пополнить баланс",
-    promoCodeAvailable: "Промокод доступен",
+    topUpBalance: "Пополнить баланс", promoCodeAvailable: "Промокод доступен",
     promoDescription: "FIRST - скидка 150₸ на первую парковку",
     active: "Активен", transactionHistory: "История транзакций",
     selectAmount: "Выберите сумму", payWithStripe: "Оплатить через Stripe",
     poweredByStripe: "Работает на Stripe (Тестовый режим)", walletTopUp: "Пополнение кошелька",
+    welcomeBack: "С возвращением,", bonusPointsLabel: "Бонусные баллы",
+    shortTerm: "Краткосрочная", longTerm: "Долгосрочная", spotsAvailable: "мест свободно",
+    activeBooking: "Активное бронирование", quickActions: "Быстрые действия",
+    bookNow: "Забронировать", findParking: "Найти свободное место",
+    registered: "зарегистрирован(о)", specialOffer: "Спецпредложение!",
+    firstBookingOffer: "Скидка 50% на первое бронирование",
+    parkingMap: "Карта парковки", parkingLocation: "Астана, Центральная - 30 мест",
+    shortTermSection: "Краткосрочн. · SP-01–15",
+    longTermSection: "Долгосрочн. · SP-16–30",
+    statusFree: "Свободно", statusBooked: "Забронировано", statusOccupied: "Занято",
+    statusReserved: "Зарезервировано", statusRepair: "Ремонт",
+    myBookings: "Мои бронирования", noActiveBooking: "Нет активного бронирования",
+    longTermReservation: "Долгосрочная аренда", shortTermParking: "Краткосрочная парковка",
+    parked: "Припаркован", enRoute: "В пути",
+    timeToArrive: "Время прибытия", driveUpTo: "Подъехать к", lprDetect: "LPR вас определит",
+    hurryExpire: "Торопитесь! Срок бронирования скоро истечёт.",
+    parkingDuration: "Время парковки", currentCost: "Текущая стоимость",
+    rentalPeriod: "Срок аренды", daysRemaining: "дней осталось", paid: "Оплачено",
+    carParked: "Автомобиль припаркован", spotReservedOutside: "Место зарезервировано — авто снаружи",
+    driveToExitLpr: "Езжайте на выезд — LPR откроет шлагбаум",
+    driveInLpr: "Въезжайте — LPR определит ваш номер",
+    parkingSpot: "Место парковки", vehicle: "Автомобиль",
+    entryMethod: "Способ въезда", lprCamera: "LPR камера", autoPlate: "Автоматическое распознавание",
+    costBreakdown: "Разбивка стоимости", firstHourMin: "Первый час (минимум)",
+    extraTime: "Дополнительное время", total: "Итого",
+    processing: "Обработка...", payAndExit: "Оплатить и выехать",
+    extendWaiting: "+30 мин · 75 ₸", cancelBooking: "Отменить бронирование",
+    extendRental: "Продлить аренду", terminateRental: "Завершить аренду досрочно",
+    noBookingHistory: "История бронирований пуста", findParkingBtn: "Найти парковку",
+    completed: "Завершено", cancelled: "Отменено",
+    paymentSuccessful: "Оплата прошла успешно!",
+    driveToExitMsg: "Езжайте на выезд — шлагбаум откроется, когда камера считает номер.",
+    terminateRentalTitle: "Завершить аренду?",
+    terminateRentalMsg: "Аренда места", terminateRentalMsg2: "будет досрочно завершена. Средства не возвращаются.",
+    terminate: "Завершить", terminating: "Завершаем...",
+    currentPeriod: "Текущий:", addMoreDays: "Добавьте дни ниже",
+    newTotalPeriod: "Новый общий срок", confirmExtend: "Подтвердить",
+    selectPeriod: "Выберите период",
+    insufficientBalance: "Недостаточно средств",
+    insufficientMsg1: "Нужно", insufficientMsg2: "а на кошельке только",
+    insufficientMsg3: "Пополните баланс для продолжения.",
+    shortfall: "Не хватает", back: "Назад", topUpWallet: "Пополнить кошелёк",
+    spotDetails: "Детали места", free: "Свободно", bookedStatus: "Забронировано",
+    hourlyRate: "Почасовой тариф", dailyRate: "Суточный тариф",
+    minOneHour: "Минимум 1 час", additionalMin: "мин · 3₸/мин после 1 ч",
+    selectVehicle: "Выберите автомобиль", selectPeriodLabel: "Выберите срок аренды",
+    perDay: "в день", bookNowBtn: "Забронировать", bookingLabel: "Бронирование...",
+    youAlreadyBooked: "У вас уже есть бронирование",
+    alreadyBookedMsg: "уже забронировано. Завершите или отмените его для выбора нового места.",
+    goToBooking: "К бронированию", viewMyBooking: "Моё бронирование",
+    alreadyBookedComplete: "Завершите или отмените текущее бронирование, чтобы выбрать новое место.",
+    period: "Период", day: "день", days: "дн.", selected: "Выбрано",
+    spotLabel: "Место", noCarsAddFirst: "Нет авто. Добавьте в Профиле.",
+    pricing: "Тарифы",
+    firstHourDetail: "Первый час: 150 ₸ (минимум)",
+    afterFirstHour: "После первого часа: 3 ₸/мин",
+    arrivalWindow: "15 мин на приезд (бесплатно)",
+    extendedWaitingInfo: "Продление ожидания: +75 ₸ за 30 мин",
+    noTransactionsYet: "Транзакций пока нет",
+    payment: "Оплата",
+    reservationConfirmed: "Бронирование подтверждено!", bookingConfirmed: "Бронирование подтверждено!",
+    spotNowReserved: "Место зарезервировано",
+    have15Minutes: "У вас 15 минут на прибытие",
+    arrivalDeadline: "Крайний срок прибытия", arriveWithin15: "Прибудьте в течение 15 минут",
+    unlimitedEntries: "Неограниченные въезды и выезды",
+    lprEntry: "Вход через LPR",
+    lprEntryDesc: "Подъезжайте ко входу — камера считает номер и откроет шлагбаум",
+    viewActiveBooking: "Просмотр бронирования", backToHome: "На главную",
+    saving: "Сохранение...",
+    brandPlaceholder: "Марка (напр., Toyota)",
+    modelPlaceholder: "Модель (напр., Camry)",
+    platePlaceholder: "Номер (напр., 123 ABC 01)",
+    close: "Закрыть",
+    stripeTopUpDesc: "Пополнение через Stripe — ",
+    deleteAccountTitle: "Удалить аккаунт?",
+    deleteAccountMsg: "Это действие нельзя отменить. Все данные, включая автомобили и историю бронирований, будут удалены навсегда.",
+    delete: "Удалить",
   },
 }
 
@@ -123,7 +352,6 @@ export interface Booking {
 }
 
 interface ParkingContextType {
-  // App state
   currentScreen: string
   setCurrentScreen: (screen: string) => void
   isAuthenticated: boolean
@@ -132,30 +360,24 @@ interface ParkingContextType {
   setIsNewUser: (v: boolean) => void
   isRestoringSession: boolean
 
-  // User
   user: User | null
   setUser: (user: User | null) => void
 
-  // Parking spots
   spots: ParkingSpot[]
   setSpots: (spots: ParkingSpot[]) => void
   updateSpot: (spotId: string, updates: Partial<ParkingSpot>) => void
 
-  // Bookings
   activeBooking: Booking | null
   setActiveBooking: (booking: Booking | null) => void
   bookings: Booking[]
   setBookings: (bookings: Booking[]) => void
 
-  // Selected spot for booking
   selectedSpot: ParkingSpot | null
   setSelectedSpot: (spot: ParkingSpot | null) => void
 
-  // Admin mode
   isAdminMode: boolean
   setIsAdminMode: (admin: boolean) => void
 
-  // UI settings
   darkMode: boolean
   setDarkMode: (dark: boolean) => void
   language: Language
@@ -165,11 +387,8 @@ interface ParkingContextType {
 
 const ParkingContext = createContext<ParkingContextType | undefined>(undefined)
 
-// Generate initial parking spots
 const generateInitialSpots = (): ParkingSpot[] => {
   const spots: ParkingSpot[] = []
-  
-  // Short-term spots (SP-01 to SP-15)
   for (let i = 1; i <= 15; i++) {
     const status: SpotStatus = Math.random() > 0.6 ? "FREE" : 
                                Math.random() > 0.5 ? "OCCUPIED" : 
@@ -181,8 +400,6 @@ const generateInitialSpots = (): ParkingSpot[] => {
       type: "short-term",
     })
   }
-  
-  // Long-term spots (SP-16 to SP-30)
   for (let i = 16; i <= 30; i++) {
     const status: SpotStatus = Math.random() > 0.7 ? "FREE" : 
                                Math.random() > 0.5 ? "RESERVED" : 
@@ -198,7 +415,6 @@ const generateInitialSpots = (): ParkingSpot[] => {
   return spots
 }
 
-// Maps backend DB user to frontend User type — shared by login, onboarding, and session restore
 export function mapDbUser(dbUser: {
   id: string; phoneNumber: string; firstName?: string | null; lastName?: string | null;
   walletBalance: number; bonusPoints: number; noShowCount: number; isBanned: boolean;
@@ -228,7 +444,6 @@ export function mapDbUser(dbUser: {
   }
 }
 
-// Maps backend spot data to frontend ParkingSpot format
 function mapBackendSpot(s: { spotNumber: string; type: string; status: string; carPlate?: string | null }): ParkingSpot {
   const num = parseInt(s.spotNumber.replace("SP-", ""), 10)
   const statusMap: Record<string, SpotStatus> = {
@@ -266,7 +481,6 @@ export function ParkingProvider({ children }: { children: ReactNode }) {
   const spotsRef = useRef(spots)
   spotsRef.current = spots
 
-  // Restore session from JWT token on mount — 3 second timeout so UI never hangs
   useEffect(() => {
     const token = localStorage.getItem("qpark_token")
     if (!token) { setIsRestoringSession(false); return }
@@ -283,7 +497,6 @@ export function ParkingProvider({ children }: { children: ReactNode }) {
           const dbUser = await res.json()
           setUser(mapDbUser(dbUser))
           setIsAuthenticated(true)
-          // Restore active booking/rental so it survives page refresh
           try {
             const br = await fetch("/backend/bookings/restore", {
               headers: { Authorization: `Bearer ${token}` },
@@ -292,16 +505,15 @@ export function ParkingProvider({ children }: { children: ReactNode }) {
               const restored = await br.json()
               if (restored) setActiveBooking(restored)
             }
-          } catch { /* ignore — booking restore is best-effort */ }
+          } catch {}
         } else {
           localStorage.removeItem("qpark_token")
         }
       })
-      .catch(() => { /* backend offline or timeout — show login */ })
+      .catch(() => {})
       .finally(() => { clearTimeout(timeout); setIsRestoringSession(false) })
   }, [])
 
-  // Fetch real spots from backend and keep Socket.io in sync
   const fetchSpotsFromBackend = async () => {
     try {
       const res = await fetch("/backend/parking/spots/simple")
@@ -313,25 +525,17 @@ export function ParkingProvider({ children }: { children: ReactNode }) {
           const idx = updated.findIndex(s => s.id === bs.spotNumber)
           const mapped = mapBackendSpot(bs)
           if (idx >= 0) {
-            // Preserve bookedBy/bookedAt from local state, update status/plate from backend
             updated[idx] = { ...updated[idx], status: mapped.status, plateNumber: mapped.plateNumber }
           }
         })
         return updated
       })
-    } catch {
-      // Backend not running — keep local state
-    }
+    } catch {}
   }
 
   useEffect(() => {
-    // Load real spot data on mount
     fetchSpotsFromBackend()
-
-    // Connect Socket.io for real-time updates
     const socket = getSocket()
-
-    // Instant update from parking routes (set-status, simulate-entry/exit)
     const handleSpotStatusChanged = (data: { spotNumber: string; status: string; carPlate?: string | null }) => {
       const statusMap: Record<string, SpotStatus> = {
         FREE: "FREE", BOOKED: "BOOKED", OCCUPIED: "OCCUPIED", RESERVED: "RESERVED", REPAIR: "REPAIR",
@@ -341,14 +545,11 @@ export function ParkingProvider({ children }: { children: ReactNode }) {
           ? { ...s, status: statusMap[data.status] ?? s.status, plateNumber: data.carPlate ?? undefined }
           : s
       ))
-      // Stamp arrival time when car enters (OCCUPIED) — used for parking duration timer
       const ab = activeBookingRef.current
       if (data.status === "OCCUPIED" && ab && ab.spotId === data.spotNumber && !ab.arrivedAt) {
         setActiveBooking({ ...ab, arrivedAt: new Date() })
       }
     }
-
-    // Re-fetch for booking API events (authenticated routes)
     const handleBookingCreated = () => { fetchSpotsFromBackend() }
     const handleBookingCompleted = () => { fetchSpotsFromBackend() }
     const handleBookingCancelled = () => { fetchSpotsFromBackend() }

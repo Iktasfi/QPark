@@ -115,16 +115,13 @@ export function BarrierGate() {
   return (
     <div className="min-h-screen bg-gray-950 text-white flex flex-col items-center justify-center p-6 select-none">
 
-      {/* Header */}
       <div className="mb-8 text-center">
         <p className="text-gray-500 text-sm font-mono uppercase tracking-widest">QPark LPR System</p>
         <h1 className="text-2xl font-bold mt-1">Шлагбаум — Въезд / Выезд</h1>
       </div>
 
-      {/* Gate visual */}
       <div className="relative flex flex-col items-start mb-8" style={{ width: 320, height: 260 }}>
 
-        {/* Road */}
         <div className="absolute bottom-0 left-0 right-0 h-16 rounded-b-xl overflow-hidden">
           <div className="w-full h-full bg-gray-800 flex items-center justify-center gap-6">
             {[...Array(6)].map((_, i) => (
@@ -133,7 +130,6 @@ export function BarrierGate() {
           </div>
         </div>
 
-        {/* Pillar */}
         <div
           className="absolute rounded-lg"
           style={{
@@ -143,12 +139,10 @@ export function BarrierGate() {
           }}
         />
 
-        {/* Arm pivot box */}
         <div
           className="absolute"
           style={{ left: 40, bottom: 64 + 90, width: 28, height: 28, display: "flex", alignItems: "center", justifyContent: "center" }}
         >
-          {/* Arm — rotates from this pivot */}
           <div
             style={{
               position: "absolute",
@@ -174,7 +168,6 @@ export function BarrierGate() {
               alignItems: "center",
             }}
           >
-            {/* Stripes */}
             {[30, 80, 130, 180].map(x => (
               <div
                 key={x}
@@ -191,11 +184,9 @@ export function BarrierGate() {
             ))}
           </div>
 
-          {/* Pivot dot */}
           <div className="w-5 h-5 rounded-full bg-gray-300 z-10" style={{ boxShadow: "0 0 6px rgba(255,255,255,0.3)" }} />
         </div>
 
-        {/* Status light on pillar */}
         <div
           className="absolute rounded-full"
           style={{
@@ -207,7 +198,6 @@ export function BarrierGate() {
         />
       </div>
 
-      {/* Status card */}
       <div
         className="rounded-2xl border px-8 py-5 text-center mb-8 transition-all duration-300"
         style={{
@@ -250,7 +240,6 @@ export function BarrierGate() {
         )}
       </div>
 
-      {/* History log */}
       {history.length > 0 && (
         <div className="w-full max-w-md">
           <p className="text-xs text-gray-600 font-mono uppercase tracking-widest mb-2">Лог событий</p>

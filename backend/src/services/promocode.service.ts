@@ -2,9 +2,7 @@ import { logger } from '../server';
 import { prisma } from '../lib/prisma';
 
 export class PromoCodeService {
-  /**
-   * Создать новый промокод
-   */
+
   async createPromoCode(data: {
     code: string;
     discount: number;
@@ -31,9 +29,7 @@ export class PromoCodeService {
     }
   }
 
-  /**
-   * Применить промокод
-   */
+
   async applyPromoCode(userId: string, code: string, amount: number) {
     try {
       const promoCode = await prisma.promoCode.findUnique({
@@ -44,33 +40,33 @@ export class PromoCodeService {
         throw new Error('Promo code not found');
       }
 
-      // Проверить активность
+
       if (!promoCode.isActive) {
         throw new Error('Promo code is inactive');
       }
 
-      // Проверить срок действия
+
       if (promoCode.expiresAt && promoCode.expiresAt < new Date()) {
         throw new Error('Promo code has expired');
       }
 
-      // Проверить лимит использований
+
       if (promoCode.maxUses && promoCode.usedCount >= promoCode.maxUses) {
         throw new Error('Promo code usage limit exceeded');
       }
 
-      // Для промокода FIRST - проверить первый ли это раз для пользователя
+
       if (promoCode.type === 'FIRST_RIDE') {
         const existingPayments = await prisma.payment.count({
           where: { userId },
         });
-        
+
         if (existingPayments > 0) {
           throw new Error('First ride promo only for new users');
         }
       }
 
-      // Рассчитать скидку
+
       let discountAmount = 0;
       if (promoCode.type === 'FIXED') {
         discountAmount = Math.min(promoCode.discount, amount);
@@ -80,7 +76,7 @@ export class PromoCodeService {
         discountAmount = Math.min(promoCode.discount, amount);
       }
 
-      // Обновить счетчик использований
+
       await prisma.promoCode.update({
         where: { id: promoCode.id },
         data: { usedCount: { increment: 1 } },
@@ -98,9 +94,7 @@ export class PromoCodeService {
     }
   }
 
-  /**
-   * Получить все промокоды
-   */
+
   async getAllPromoCodes() {
     try {
       const promoCodes = await prisma.promoCode.findMany({
@@ -114,9 +108,7 @@ export class PromoCodeService {
     }
   }
 
-  /**
-   * Получить активные промокоды
-   */
+
   async getActivePromoCodes() {
     try {
       const promoCodes = await prisma.promoCode.findMany({
@@ -137,9 +129,7 @@ export class PromoCodeService {
     }
   }
 
-  /**
-   * Обновить промокод
-   */
+
   async updatePromoCode(id: string, data: Partial<{
     discount: number;
     type: 'PERCENTAGE' | 'FIXED' | 'FIRST_RIDE';
@@ -161,9 +151,7 @@ export class PromoCodeService {
     }
   }
 
-  /**
-   * Удалить промокод
-   */
+
   async deletePromoCode(id: string) {
     try {
       const promoCode = await prisma.promoCode.delete({
@@ -178,9 +166,7 @@ export class PromoCodeService {
     }
   }
 
-  /**
-   * Получить статистику использования промокода
-   */
+
   async getPromoCodeStats(id: string) {
     try {
       const promoCode = await prisma.promoCode.findUnique({

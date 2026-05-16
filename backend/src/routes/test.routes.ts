@@ -3,21 +3,18 @@ import { prisma } from '../lib/prisma';
 
 const router = Router();
 
-/**
- * GET /test/db
- * Тест подключения к базе данных
- */
+
 router.get('/db', async (req: Request, res: Response) => {
   try {
-    // Проверить подключение через простую операцию
+
     await prisma.user.findMany({ take: 1 });
-    
-    // Получить количество пользователей
+
+
     const userCount = await prisma.user.count();
-    
-    // Получить количество парковочных мест
+
+
     const parkingPointCount = await prisma.parkingSpot.count();
-    
+
     res.json({
       status: 'connected',
       database: 'QPark',
@@ -36,10 +33,7 @@ router.get('/db', async (req: Request, res: Response) => {
   }
 });
 
-/**
- * GET /test/users
- * Получить первых 5 пользователей
- */
+
 router.get('/users', async (req: Request, res: Response) => {
   try {
     const users = await prisma.user.findMany({
@@ -52,7 +46,7 @@ router.get('/users', async (req: Request, res: Response) => {
         },
       },
     });
-    
+
     res.json(users);
   } catch (error) {
     console.error('Error fetching users:', error);

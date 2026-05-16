@@ -3,13 +3,11 @@ import { logger } from '../server';
 import { prisma } from '../lib/prisma';
 
 export class BookingService {
-  /**
-   * Создать краткосрочное бронирование
-   */
+
   async createShortTermBooking(userId: string, spotId: string) {
     try {
       const now = new Date();
-      const estimatedEndTime = new Date(now.getTime() + 15 * 60 * 1000); // 15 минут свободно
+      const estimatedEndTime = new Date(now.getTime() + 15 * 60 * 1000);
 
       const booking = await prisma.booking.create({
         data: {
@@ -25,7 +23,7 @@ export class BookingService {
         },
       });
 
-      // Обновить статус места на BOOKED
+
       await prisma.parkingSpot.update({
         where: { id: spotId },
         data: { status: 'BOOKED' },
@@ -39,9 +37,7 @@ export class BookingService {
     }
   }
 
-  /**
-   * Завершить бронирование
-   */
+
   async completeBooking(bookingId: string, carPlate: string) {
     try {
       const booking = await prisma.booking.findUnique({
@@ -69,7 +65,7 @@ export class BookingService {
         },
       });
 
-      // Обновить место обратно на FREE
+
       await prisma.parkingSpot.update({
         where: { id: booking.spotId },
         data: {
@@ -87,9 +83,7 @@ export class BookingService {
     }
   }
 
-  /**
-   * Отменить бронирование
-   */
+
   async cancelBooking(bookingId: string, reason: string = 'User cancelled') {
     try {
       const booking = await prisma.booking.findUnique({
@@ -108,13 +102,13 @@ export class BookingService {
         },
       });
 
-      // Обновить место обратно на FREE
+
       await prisma.parkingSpot.update({
         where: { id: booking.spotId },
         data: { status: 'FREE' },
       });
 
-      // Увеличить счетчик no-show
+
       const freeTimeRemaining = getFreeTravelTimeRemaining(booking.startTime);
       if (freeTimeRemaining > 0) {
         await prisma.user.update({
@@ -133,9 +127,7 @@ export class BookingService {
     }
   }
 
-  /**
-   * Получить все активные бронирования пользователя
-   */
+
   async getUserActiveBookings(userId: string) {
     try {
       const bookings = await prisma.booking.findMany({
@@ -154,12 +146,10 @@ export class BookingService {
     }
   }
 
-  /**
-   * Получить бронирование по номеру машины (для LPR)
-   */
+
   async getBookingByCarPlate(carPlate: string) {
     try {
-      // Look up via Car model since User no longer has a single carPlate field
+
       const booking = await prisma.booking.findFirst({
         where: {
           spot: { currentUserPlate: carPlate },
