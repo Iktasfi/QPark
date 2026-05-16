@@ -6,7 +6,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
-import { MapPin, Car, Clock, AlertTriangle, CreditCard, Camera, Calendar, Check, X } from "lucide-react"
+import { MapPin, Car, Clock, AlertTriangle, CreditCard, Camera, Calendar, Check, X, Wallet } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const extendOptions = [
@@ -53,6 +53,7 @@ export function ActiveBookingScreen() {
     : 0
   const [isPaying, setIsPaying] = useState(false)
   const [showGateOpened, setShowGateOpened] = useState(false)
+  const [insufficientBalance, setInsufficientBalance] = useState<{ need: number; have: number } | null>(null)
   const [showExtend, setShowExtend] = useState(false)
   const [selectedExtendDays, setSelectedExtendDays] = useState<number | null>(null)
   const [isExtending, setIsExtending] = useState(false)
@@ -113,7 +114,13 @@ export function ActiveBookingScreen() {
         setCurrentScreen("home")
       }, 2500)
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Payment failed")
+      const msg = err instanceof Error ? err.message : "Payment failed"
+      const match = msg.match(/need (\d+)₸.*have (\d+)₸/)
+      if (match) {
+        setInsufficientBalance({ need: parseInt(match[1]), have: parseInt(match[2]) })
+      } else {
+        alert(msg)
+      }
     } finally {
       setIsPaying(false)
     }
@@ -137,7 +144,13 @@ export function ActiveBookingScreen() {
       setUser({ ...user, balance: data.walletBalance })
       setExtraWaitSeconds(prev => prev + 30 * 60)
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to extend waiting")
+      const msg = err instanceof Error ? err.message : "Failed to extend waiting"
+      const match = msg.match(/need (\d+)₸.*have (\d+)₸/)
+      if (match) {
+        setInsufficientBalance({ need: parseInt(match[1]), have: parseInt(match[2]) })
+      } else {
+        alert(msg)
+      }
     } finally {
       setIsExtendingWaiting(false)
     }
@@ -535,7 +548,7 @@ export function ActiveBookingScreen() {
             onClick={() => setShowTerminateConfirm(true)}
           >
             <X className="h-5 w-5 mr-2" />
-            Завершить аренду досрочно
+            Terminate Rental Early
           </Button>
         )}
       </div>
@@ -635,15 +648,15 @@ export function ActiveBookingScreen() {
               <div className="flex h-14 w-14 items-center justify-center rounded-full bg-red-100">
                 <AlertTriangle className="h-7 w-7 text-red-500" />
               </div>
-              <h2 className="text-lg font-bold text-gray-900 text-center">Завершить аренду?</h2>
+              <h2 className="text-lg font-bold text-gray-900 text-center">Terminate Rental?</h2>
               <p className="text-sm text-gray-500 text-center">
-                Аренда места <span className="font-semibold text-gray-800">{activeBooking.spotId}</span> будет досрочно завершена.
-                Средства не возвращаются.
+                Your rental for spot <span className="font-semibold text-gray-800">{activeBooking.spotId}</span> will be ended early.
+                No refund will be issued.
               </p>
             </div>
             <div className="flex gap-3">
               <Button variant="outline" size="lg" className="flex-1" onClick={() => setShowTerminateConfirm(false)}>
-                Отмена
+                Cancel
               </Button>
               <Button
                 size="lg"
@@ -651,8 +664,35 @@ export function ActiveBookingScreen() {
                 onClick={handleTerminateRental}
                 disabled={isTerminating}
               >
-                {isTerminating ? "Завершаем..." : "Завершить"}
+                {isTerminating ? "Terminating..." : "Terminate"}
               </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Insufficient Balance Bottom Sheet */}
+      {insufficientBalance && (
+        <div className="absolute inset-0 z-50 flex flex-col justify-end">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setInsufficientBalance(null)} />
+          <div className="relative bg-white rounded-t-3xl px-5 pt-5 pb-10">
+            <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-gray-200" />
+            <div className="flex flex-col items-center gap-3 mb-5">
+              <div className="flex h-14 w-14 items-center justify-center rounded-full bg-red-50">
+                <Wallet className="h-7 w-7 text-[#b94a4a]" />
+              </div>
+              <h2 className="text-lg font-bold text-gray-900 text-center">Insufficient Balance</h2>
+              <p className="text-sm text-gray-500 text-center">
+                You need <span className="font-semibold text-gray-800">{insufficientBalance.need}₸</span> but your wallet only has <span className="font-semibold text-gray-800">{insufficientBalance.have}₸</span>. Please top up to continue.
+              </p>
+              <div className="w-full bg-gray-100 rounded-xl px-4 py-3 flex justify-between text-sm">
+                <span className="text-gray-500">Shortfall</span>
+                <span className="font-bold text-[#b94a4a]">−{insufficientBalance.need - insufficientBalance.have}₸</span>
+              </div>
+            </div>
+            <div className="flex gap-3">
+              <Button variant="outline" size="lg" className="flex-1" onClick={() => setInsufficientBalance(null)}>Back</Button>
+              <Button size="lg" className="flex-1 bg-[#354469] hover:bg-[#354469]/90" onClick={() => { setInsufficientBalance(null); setCurrentScreen("wallet") }}>Top Up Wallet</Button>
             </div>
           </div>
         </div>
