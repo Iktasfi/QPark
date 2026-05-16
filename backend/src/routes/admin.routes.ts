@@ -5,10 +5,6 @@ import { prisma } from '../lib/prisma';
 
 const router = Router();
 
-/**
- * GET /admin/dashboard
- * Полные данные для дашборда — spots + users + bookings + stats
- */
 router.get('/dashboard', async (req: Request, res: Response) => {
   try {
     const [spots, users, bookings, rentals, lprEvents] = await Promise.all([
@@ -94,9 +90,6 @@ router.get('/dashboard', async (req: Request, res: Response) => {
   }
 });
 
-/**
- * GET /admin/users
- */
 router.get('/users', async (req: Request, res: Response) => {
   try {
     const users = await prisma.user.findMany({
@@ -110,9 +103,6 @@ router.get('/users', async (req: Request, res: Response) => {
   }
 });
 
-/**
- * POST /admin/users/:id/unban
- */
 router.post('/users/:id/unban', async (req: Request, res: Response) => {
   try {
     const user = await authService.unbanUser(req.params.id);
@@ -122,9 +112,6 @@ router.post('/users/:id/unban', async (req: Request, res: Response) => {
   }
 });
 
-/**
- * GET /admin/spots
- */
 router.get('/spots', async (req: Request, res: Response) => {
   try {
     const spots = await prisma.parkingSpot.findMany({ orderBy: { spotNumber: 'asc' } });
@@ -134,10 +121,6 @@ router.get('/spots', async (req: Request, res: Response) => {
   }
 });
 
-/**
- * PATCH /admin/spots/:spotNumber/status
- * Изменить статус места (из дашборда)
- */
 router.patch('/spots/:spotNumber/status', async (req: Request, res: Response) => {
   try {
     const { status } = req.body;
@@ -153,9 +136,6 @@ router.patch('/spots/:spotNumber/status', async (req: Request, res: Response) =>
   }
 });
 
-/**
- * GET /admin/bookings
- */
 router.get('/bookings', async (req: Request, res: Response) => {
   try {
     const bookings = await prisma.booking.findMany({
@@ -168,9 +148,6 @@ router.get('/bookings', async (req: Request, res: Response) => {
   }
 });
 
-/**
- * GET /admin/rentals
- */
 router.get('/rentals', async (req: Request, res: Response) => {
   try {
     const rentals = await prisma.longTermRental.findMany({
@@ -183,9 +160,6 @@ router.get('/rentals', async (req: Request, res: Response) => {
   }
 });
 
-/**
- * GET /admin/lpr-events
- */
 router.get('/lpr-events', async (req: Request, res: Response) => {
   try {
     const events = await prisma.lPREvent.findMany({ orderBy: { timestamp: 'desc' }, take: 100 });

@@ -2,9 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { logger } from '../server';
 import { prisma } from '../lib/prisma';
 
-/**
- * Middleware для проверки баланса пользователя
- */
+
 export const checkBalance = (requiredAmount: number) => {
   return async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -28,7 +26,7 @@ export const checkBalance = (requiredAmount: number) => {
         });
       }
 
-      // Добавляем информацию о пользователе в запрос
+
       req.user = user;
       next();
     } catch (error) {
@@ -38,9 +36,7 @@ export const checkBalance = (requiredAmount: number) => {
   };
 };
 
-/**
- * Middleware для проверки, забанен ли пользователь
- */
+
 export const checkBanStatus = async (req: Request, res: Response, next: NextFunction) => {
   try {
     if (!req.userId) {
@@ -56,7 +52,7 @@ export const checkBanStatus = async (req: Request, res: Response, next: NextFunc
     }
 
     if (user.isBanned) {
-      // Если срок бана истёк, разблокировать
+
       if (user.bannedUntil && user.bannedUntil < new Date()) {
         await prisma.user.update({
           where: { id: req.userId },
@@ -82,9 +78,7 @@ export const checkBanStatus = async (req: Request, res: Response, next: NextFunc
   }
 };
 
-/**
- * Middleware для проверки наличия у пользователя номера машины
- */
+
 export const requireCarPlate = async (req: Request, res: Response, next: NextFunction) => {
   try {
     if (!req.userId) {
@@ -107,9 +101,7 @@ export const requireCarPlate = async (req: Request, res: Response, next: NextFun
   }
 };
 
-/**
- * Расширение интерфейса Request для включения пользователя
- */
+
 declare global {
   namespace Express {
     interface Request {

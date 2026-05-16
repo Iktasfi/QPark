@@ -6,25 +6,22 @@ import { prisma } from '../lib/prisma';
 
 const router = Router();
 
-/**
- * GET /parking/spots
- * Получить все места парковки (красивый табличный формат)
- */
+
 router.get('/spots', async (req: Request, res: Response) => {
   try {
     const spots = await parkingService.getAllSpots();
-    
-    // Создаем табличный формат
+
+
     const createTable = (spotsList: any[], type: string) => {
       const table = [];
       const statusIcons = {
         'FREE': '🟢',
-        'BOOKED': '🟡', 
+        'BOOKED': '🟡',
         'OCCUPIED': '🔴',
         'RESERVED': '🟠',
         'REPAIR': '🔧'
       };
-      
+
       const statusText = {
         'FREE': 'Свободно',
         'BOOKED': 'Забронировано',
@@ -32,7 +29,7 @@ router.get('/spots', async (req: Request, res: Response) => {
         'RESERVED': 'Резерв',
         'REPAIR': 'Ремонт'
       };
-      
+
       for (let i = 0; i < spotsList.length; i += 5) {
         const row = [];
         for (let j = 0; j < 5 && i + j < spotsList.length; j++) {
@@ -49,14 +46,14 @@ router.get('/spots', async (req: Request, res: Response) => {
       }
       return table;
     };
-    
+
     const shortTermSpots = spots.filter(s => s.type === 'SHORT_TERM').sort((a, b) => a.spotNumber.localeCompare(b.spotNumber));
     const longTermSpots = spots.filter(s => s.type === 'LONG_TERM').sort((a, b) => a.spotNumber.localeCompare(b.spotNumber));
-    
+
     const shortTermTable = createTable(shortTermSpots, 'SHORT_TERM');
     const longTermTable = createTable(longTermSpots, 'LONG_TERM');
-    
-    // Статистика
+
+
     const stats = {
       total: spots.length,
       shortTerm: {
@@ -74,7 +71,7 @@ router.get('/spots', async (req: Request, res: Response) => {
         repair: longTermSpots.filter(s => s.status === 'REPAIR').length
       }
     };
-    
+
     const result = {
       title: '🚗 Парковка QPark - Текущий статус',
       lastUpdated: new Date().toLocaleString('ru-RU'),
@@ -97,7 +94,7 @@ router.get('/spots', async (req: Request, res: Response) => {
         }
       }
     };
-    
+
     res.json(result);
   } catch (error) {
     logger.error('❌ Error fetching spots:', error);
@@ -105,10 +102,7 @@ router.get('/spots', async (req: Request, res: Response) => {
   }
 });
 
-/**
- * GET /parking/spots/available
- * Получить свободные места
- */
+
 router.get('/spots/available', async (req: Request, res: Response) => {
   try {
     const { type = 'SHORT_TERM' } = req.query;
@@ -121,14 +115,7 @@ router.get('/spots/available', async (req: Request, res: Response) => {
 });
 
 
-/**
- * POST /parking/lpr/entry
- * Обработка LPR события - въезд (вызывается Python LPR скриптом)
- * Логика:
- *  1. SHORT_TERM (BOOKED): проверяем что номер совпадает → OCCUPIED
- *  2. LONG_TERM  (RESERVED): любой въезд зарегистрированного номера → OCCUPIED
- *  3. Всё остальное → отказ
- */
+
 router.post('/lpr/entry', async (req: Request, res: Response) => {
   try {
     const { carPlate, spotNumber } = req.body;
@@ -145,17 +132,17 @@ router.post('/lpr/entry', async (req: Request, res: Response) => {
       return res.status(404).json({ success: false, message: 'Spot not found' });
     }
 
-    // Нормализуем номер из БД для сравнения (убираем пробелы)
+
     const normalize = (p: string) => p.replace(/\s/g, '').toUpperCase();
     const plateMatches = spot.currentUserPlate
       ? normalize(spot.currentUserPlate) === normalize(carPlate)
-      : true; // если номер ещё не записан — пропускаем (первый въезд)
+      : true;
 
     let success = false;
     let newStatus: 'OCCUPIED' | null = null;
 
     if (spot.status === 'BOOKED') {
-      // Краткосрочное — проверяем номер
+
       if (plateMatches) {
         newStatus = 'OCCUPIED';
         success = true;
@@ -164,14 +151,14 @@ router.post('/lpr/entry', async (req: Request, res: Response) => {
         return res.json({ success: false, message: 'Plate does not match booking' });
       }
     } else if ((spot.status === 'RESERVED' || spot.status === 'OCCUPIED') && spot.type === 'LONG_TERM') {
-      // Долгосрочное — одна камера, toggle: RESERVED↔OCCUPIED
+
       if (!plateMatches) {
         io.emit('lpr-gate-denied', { carPlate, spotNumber, reason: 'Номер не совпадает с арендой' });
         return res.json({ success: false, message: 'Plate does not match rental' });
       }
 
-      // TOGGLE: если машина внутри (OCCUPIED) — выпускаем → RESERVED
-      //         если машина снаружи (RESERVED)  — впускаем  → OCCUPIED
+
+
       const isExiting = spot.status === 'OCCUPIED';
       const toggledStatus = isExiting ? 'RESERVED' : 'OCCUPIED';
       const eventType = isExiting ? 'exit' : 'entry';
@@ -180,7 +167,7 @@ router.post('/lpr/entry', async (req: Request, res: Response) => {
         where: { spotNumber },
         data: {
           status: toggledStatus,
-          currentUserPlate: carPlate, // сохраняем номер всегда (нужен для следующего раза)
+          currentUserPlate: carPlate,
         },
       });
 
@@ -212,12 +199,7 @@ router.post('/lpr/entry', async (req: Request, res: Response) => {
   }
 });
 
-/**
- * POST /parking/lpr/exit-lpr
- * Обработка LPR события - выезд (вызывается Python LPR скриптом)
- * SHORT_TERM → FREE (оплата уже прошла в приложении)
- * LONG_TERM  → RESERVED (аренда ещё действует, машина может вернуться)
- */
+
 router.post('/lpr/exit-lpr', async (req: Request, res: Response) => {
   try {
     const { carPlate, spotNumber } = req.body;
@@ -233,13 +215,13 @@ router.post('/lpr/exit-lpr', async (req: Request, res: Response) => {
     }
 
     if (spot.type === 'SHORT_TERM') {
-      // Find the most recent booking for this spot
+
       const booking = await prisma.booking.findFirst({
         where: { spotId: spot.id, status: { in: ['PENDING', 'CONFIRMED', 'COMPLETED'] } },
         orderBy: { createdAt: 'desc' },
       });
 
-      // Check payment FIRST — if paid, open gate (plate match is secondary for paid bookings)
+
       if (booking?.isPaid) {
         await prisma.parkingSpot.update({
           where: { spotNumber },
@@ -251,20 +233,20 @@ router.post('/lpr/exit-lpr', async (req: Request, res: Response) => {
         return res.json({ success: true, message: 'Gate opened', newStatus: 'FREE' });
       }
 
-      // Also open if spot is already FREE (paid via app, spot freed already)
+
       if (spot.status === 'FREE') {
         io.emit('lpr-gate-open', { carPlate, spotNumber, type: 'exit' });
         logger.info(`✅ LPR exit (spot free): ${carPlate} from ${spotNumber}`);
         return res.json({ success: true, message: 'Gate opened', newStatus: 'FREE' });
       }
 
-      // Not paid — deny
+
       io.emit('lpr-gate-denied', { carPlate, spotNumber, reason: 'Pay in the app before exiting' });
       logger.warn(`⛔ LPR exit denied (unpaid): ${carPlate} at ${spotNumber}`);
       return res.json({ success: false, message: 'Payment required — please pay in the app first' });
     }
 
-    // LONG_TERM → RESERVED (spot stays reserved, car can come back)
+
     await prisma.parkingSpot.update({
       where: { spotNumber },
       data: { status: 'RESERVED', currentUserPlate: spot.currentUserPlate, currentUserId: spot.currentUserId },
@@ -281,10 +263,7 @@ router.post('/lpr/exit-lpr', async (req: Request, res: Response) => {
   }
 });
 
-/**
- * POST /parking/simulate-entry
- * Симуляция въезда — напрямую ставит OCCUPIED в БД
- */
+
 router.post('/simulate-entry', async (req: Request, res: Response) => {
   try {
     const { spotNumber, carPlate } = req.body;
@@ -311,10 +290,7 @@ router.post('/simulate-entry', async (req: Request, res: Response) => {
   }
 });
 
-/**
- * POST /parking/simulate-exit
- * Симуляция выезда — напрямую ставит FREE в БД
- */
+
 router.post('/simulate-exit', async (req: Request, res: Response) => {
   try {
     const { spotNumber, carPlate } = req.body;
@@ -341,15 +317,12 @@ router.post('/simulate-exit', async (req: Request, res: Response) => {
   }
 });
 
-/**
- * POST /parking/set-status
- * Бронирование места — обновляет статус и создаёт запись в bookings / long_term_rentals
- */
+
 router.post('/set-status', async (req: Request, res: Response) => {
   try {
     const { spotNumber, status, carPlate, userId: bodyUserId, rentalDays } = req.body;
 
-    // Prefer JWT userId over body userId (prevents stale client IDs from reaching payment)
+
     let userId = bodyUserId;
     const authHeader = req.headers.authorization;
     if (authHeader?.startsWith('Bearer ')) {
@@ -357,7 +330,7 @@ router.post('/set-status', async (req: Request, res: Response) => {
         const secret = process.env.JWT_SECRET || 'your-secret-key';
         const decoded = jwt.verify(authHeader.slice(7), secret) as { userId: string };
         if (decoded.userId) userId = decoded.userId;
-      } catch { /* fall back to body userId */ }
+      } catch {  }
     }
 
     if (!spotNumber || !status) {
@@ -378,13 +351,13 @@ router.post('/set-status', async (req: Request, res: Response) => {
       },
     });
 
-    // ── Создать запись в bookings (краткосрочное) ──
+
     if (status === 'BOOKED' && userId && carPlate) {
       try {
         const spot = await prisma.parkingSpot.findUnique({ where: { spotNumber } });
         if (spot) {
           const now = new Date();
-          const estimated = new Date(now.getTime() + 2 * 60 * 60 * 1000); // +2 часа по умолчанию
+          const estimated = new Date(now.getTime() + 2 * 60 * 60 * 1000);
           await prisma.booking.create({
             data: {
               userId,
@@ -403,7 +376,7 @@ router.post('/set-status', async (req: Request, res: Response) => {
       }
     }
 
-    // ── Оплата и создание записи в long_term_rentals (долгосрочное) ──
+
     let newBalance: number | undefined;
     if (status === 'RESERVED' && userId && carPlate && rentalDays) {
       try {
@@ -411,7 +384,7 @@ router.post('/set-status', async (req: Request, res: Response) => {
         const priceMap: Record<number, number> = { 1: 700, 3: 1800, 5: 2700, 7: 3500, 14: 6000 };
         const totalCost = priceMap[Number(rentalDays)] ?? Number(rentalDays) * 700;
 
-        // Атомарно списать с кошелька (выбросит ошибку если недостаточно средств)
+
         const payment = await paymentService.payLongTermRental(userId, spotNumber, Number(rentalDays), totalCost);
         newBalance = payment?.walletBalance;
 
@@ -453,10 +426,7 @@ router.post('/set-status', async (req: Request, res: Response) => {
   }
 });
 
-/**
- * GET /parking/spot-status/:spotNumber
- * Быстрый статус одного места — для авто-определения режима в LPR скрипте
- */
+
 router.get('/spot-status/:spotNumber', async (req: Request, res: Response) => {
   try {
     const spot = await prisma.parkingSpot.findUnique({
@@ -470,10 +440,7 @@ router.get('/spot-status/:spotNumber', async (req: Request, res: Response) => {
   }
 });
 
-/**
- * GET /parking/spots/simple
- * Простой вывод без таблиц
- */
+
 router.get('/spots/simple', async (req: Request, res: Response) => {
   try {
     const spots = await parkingService.getAllSpots();
@@ -490,28 +457,25 @@ router.get('/spots/simple', async (req: Request, res: Response) => {
   }
 });
 
-/**
- * GET /parking/spots/text
- * Текстовое представление таблицы
- */
+
 router.get('/spots/text', async (req: Request, res: Response) => {
   try {
     const spots = await parkingService.getAllSpots();
     const shortTermSpots = spots.filter(s => s.type === 'SHORT_TERM').sort((a, b) => a.spotNumber.localeCompare(b.spotNumber));
     const longTermSpots = spots.filter(s => s.type === 'LONG_TERM').sort((a, b) => a.spotNumber.localeCompare(b.spotNumber));
-    
+
     const statusIcons = {
       'FREE': '🟢',
-      'BOOKED': '🟡', 
+      'BOOKED': '🟡',
       'OCCUPIED': '🔴',
       'RESERVED': '🟠',
       'REPAIR': '🔧'
     };
-    
+
     let textOutput = '\n🚗 ПАРКОВКА QPARK - ТЕКУЩИЙ СТАТУС\n';
     textOutput += '=' .repeat(50) + '\n\n';
-    
-    // Легенда
+
+
     textOutput += '📍 ЛЕГЕНДА:\n';
     Object.entries(statusIcons).forEach(([status, icon]) => {
       const statusText = {
@@ -524,11 +488,11 @@ router.get('/spots/text', async (req: Request, res: Response) => {
       textOutput += `   ${icon} ${statusText}\n`;
     });
     textOutput += '\n';
-    
-    // Краткосрочная парковка
+
+
     textOutput += '🅿️ КРАТКОСРОЧНАЯ ПАРКОВКА:\n';
     textOutput += '-'.repeat(40) + '\n';
-    
+
     for (let i = 0; i < shortTermSpots.length; i += 5) {
       textOutput += '   ';
       for (let j = 0; j < 5 && i + j < shortTermSpots.length; j++) {
@@ -539,11 +503,11 @@ router.get('/spots/text', async (req: Request, res: Response) => {
       textOutput += '\n';
     }
     textOutput += '\n';
-    
-    // Долгосрочная парковка
+
+
     textOutput += '🅿️ ДОЛГОСРОЧНАЯ ПАРКОВКА:\n';
     textOutput += '-'.repeat(40) + '\n';
-    
+
     for (let i = 0; i < longTermSpots.length; i += 5) {
       textOutput += '   ';
       for (let j = 0; j < 5 && i + j < longTermSpots.length; j++) {
@@ -554,15 +518,15 @@ router.get('/spots/text', async (req: Request, res: Response) => {
       textOutput += '\n';
     }
     textOutput += '\n';
-    
-    // Статистика
+
+
     const stats = {
       totalFree: spots.filter(s => s.status === 'FREE').length,
       totalBooked: spots.filter(s => s.status === 'BOOKED').length,
       totalOccupied: spots.filter(s => s.status === 'OCCUPIED').length,
       totalRepair: spots.filter(s => s.status === 'REPAIR').length
     };
-    
+
     textOutput += '📊 СТАТИСТИКА:\n';
     textOutput += '=' .repeat(30) + '\n';
     textOutput += `   🟢 Свободно:     ${stats.totalFree}\n`;
@@ -571,8 +535,8 @@ router.get('/spots/text', async (req: Request, res: Response) => {
     textOutput += `   🔧 На ремонте:   ${stats.totalRepair}\n`;
     textOutput += '\n';
     textOutput += `🕐 Обновлено: ${new Date().toLocaleString('ru-RU')}\n`;
-    
-    res.json({ 
+
+    res.json({
       title: '🚗 Парковка QPark - Текущий статус',
       textTable: textOutput,
       lastUpdated: new Date().toLocaleString('ru-RU')
@@ -584,10 +548,7 @@ router.get('/spots/text', async (req: Request, res: Response) => {
 });
 
 
-/**
- * GET /parking/stats
- * Получить статистику парковки
- */
+
 router.get('/stats', async (req: Request, res: Response) => {
   try {
     const stats = await parkingService.getParkingStats();
@@ -598,10 +559,7 @@ router.get('/stats', async (req: Request, res: Response) => {
   }
 });
 
-/**
- * POST /parking/initialize
- * Инициализировать места парковки (для разработки)
- */
+
 router.post('/initialize', async (req: Request, res: Response) => {
   try {
     await parkingService.initializeParkingSpots();
@@ -612,19 +570,16 @@ router.post('/initialize', async (req: Request, res: Response) => {
   }
 });
 
-/**
- * GET /parking/spots/:spotNumber
- * Получить место по номеру (должен быть в конце!)
- */
+
 router.get('/spots/:spotNumber', async (req: Request, res: Response) => {
   try {
     const { spotNumber } = req.params;
     const spot = await parkingService.getSpotByNumber(spotNumber);
-    
+
     if (!spot) {
       return res.status(404).json({ error: 'Spot not found' });
     }
-    
+
     res.json(spot);
   } catch (error) {
     logger.error('❌ Error fetching spot:', error);

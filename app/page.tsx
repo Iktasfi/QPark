@@ -14,19 +14,28 @@ import { AdminDashboard } from "@/components/admin/admin-dashboard"
 import { OnboardingScreen } from "@/components/screens/onboarding-screen"
 
 function AppContent() {
-  const { currentScreen, isAuthenticated, isAdminMode } = useParking()
-  
-  // Admin Dashboard (full screen, no mobile shell)
+  const { currentScreen, isAuthenticated, isAdminMode, isRestoringSession } = useParking()
+
+  if (isRestoringSession) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen gap-4">
+        <div className="w-20 h-20 rounded-2xl bg-[#495E8E] flex items-center justify-center shadow-lg">
+          <img src="/app_icon2.svg" alt="QPark" className="w-14 h-14 object-contain" />
+        </div>
+        <p className="text-[#495E8E] font-bold text-2xl">QPark</p>
+        <div className="w-8 h-8 border-4 border-[#495E8E]/30 border-t-[#495E8E] rounded-full animate-spin" />
+      </div>
+    )
+  }
+
   if (isAdminMode) {
     return <AdminDashboard />
   }
-  
-  // Login screen (full screen, no mobile shell)
+
   if (!isAuthenticated) {
     return <LoginScreen />
   }
-  
-  // Main app screens
+
   const renderScreen = () => {
     switch (currentScreen) {
       case "home":

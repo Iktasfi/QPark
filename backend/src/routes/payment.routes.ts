@@ -7,65 +7,69 @@ import { logger } from '../server';
 
 const router = Router();
 
-// Все маршруты требуют авторизации
+
 router.use(verifyToken);
 
-/**
- * POST /payments/stripe/intent
- * Создать платежный intent для пополнения через Stripe
- */
-router.post('/stripe/intent', validateWalletTopup, async (req: Request, res: Response) => {
+
+router.post('/topup', validateWalletTopup, async (req: Request, res: Response) => {
   try {
     const { amount } = req.body;
     const userId = req.userId!;
-
-    const paymentIntent = await paymentService.createStripePaymentIntent(userId, amount);
-    
-    res.json({
-      ...paymentIntent,
-      message: '✅ Payment intent created',
-    });
+    const result = await paymentService.topUpWallet(userId, Number(amount));
+    res.json({ ...result, message: '✅ Wallet topped up' });
   } catch (error) {
-    logger.error('❌ Error creating payment intent:', error);
-    res.status(500).json({ error: 'Failed to create payment intent' });
+    logger.error('❌ Error topping up wallet:', error);
+    res.status(400).json({ error: error instanceof Error ? error.message : 'Top-up failed' });
   }
 });
 
-/**
- * POST /payments/stripe/confirm
- * Подтвердить платеж Stripe (webhook)
- */
+
+router.post('/stripe/create-intent', validateWalletTopup, async (req: Request, res: Response) => {
+  try {
+    const { amount } = req.body;
+    const userId = req.userId!;
+    const result = await paymentService.createStripeIntent(userId, Number(amount));
+    res.json(result);
+  } catch (error) {
+    logger.error('❌ Stripe intent error:', error);
+    res.status(400).json({ error: error instanceof Error ? error.message : 'Failed to create payment intent' });
+  }
+});
+
+
 router.post('/stripe/confirm', async (req: Request, res: Response) => {
   try {
     const { paymentIntentId } = req.body;
-
-    if (!paymentIntentId) {
-      return res.status(400).json({ error: 'Payment intent ID is required' });
-    }
-
-    const result = await paymentService.confirmStripePayment(paymentIntentId);
-    
-    res.json({
-      ...result,
-      message: '✅ Payment confirmed',
-    });
+    const userId = req.userId!;
+    if (!paymentIntentId) return res.status(400).json({ error: 'paymentIntentId is required' });
+    const result = await paymentService.confirmStripeTopUp(userId, paymentIntentId);
+    res.json({ ...result, message: '✅ Payment confirmed, wallet credited' });
   } catch (error) {
-    logger.error('❌ Error confirming payment:', error);
-    res.status(500).json({ error: 'Failed to confirm payment' });
+    logger.error('❌ Stripe confirm error:', error);
+    res.status(400).json({ error: error instanceof Error ? error.message : 'Confirmation failed' });
   }
 });
 
-/**
- * GET /payments/transactions
- * Получить историю транзакций пользователя
- */
+
+router.get('/admin/transactions', async (req: Request, res: Response) => {
+  try {
+    const { limit = 100 } = req.query;
+    const transactions = await paymentService.getAllTransactions(Number(limit));
+    res.json(transactions);
+  } catch (error) {
+    logger.error('❌ Error fetching all transactions:', error);
+    res.status(500).json({ error: 'Failed to fetch transactions' });
+  }
+});
+
+
 router.get('/transactions', async (req: Request, res: Response) => {
   try {
     const userId = req.userId!;
     const { limit = 50 } = req.query;
 
     const transactions = await paymentService.getUserTransactions(userId, Number(limit));
-    
+
     res.json(transactions);
   } catch (error) {
     logger.error('❌ Error fetching transactions:', error);
@@ -73,17 +77,14 @@ router.get('/transactions', async (req: Request, res: Response) => {
   }
 });
 
-/**
- * POST /payments/promo/apply
- * Применить промокод
- */
+
 router.post('/promo/apply', validatePromoCode, async (req: Request, res: Response) => {
   try {
     const { code, amount } = req.body;
     const userId = req.userId!;
 
     const result = await promoCodeService.applyPromoCode(userId, code, amount);
-    
+
     res.json({
       ...result,
       message: '✅ Promo code applied',
@@ -94,14 +95,11 @@ router.post('/promo/apply', validatePromoCode, async (req: Request, res: Respons
   }
 });
 
-/**
- * GET /payments/promo/codes
- * Получить активные промокоды
- */
+
 router.get('/promo/codes', async (req: Request, res: Response) => {
   try {
     const promoCodes = await promoCodeService.getActivePromoCodes();
-    
+
     res.json(promoCodes);
   } catch (error) {
     logger.error('❌ Error fetching promo codes:', error);
@@ -109,10 +107,7 @@ router.get('/promo/codes', async (req: Request, res: Response) => {
   }
 });
 
-/**
- * POST /payments/wallet/debit
- * Списать с кошелька (внутренний метод)
- */
+
 router.post('/wallet/debit', async (req: Request, res: Response) => {
   try {
     const { amount, description } = req.body;
@@ -123,7 +118,7 @@ router.post('/wallet/debit', async (req: Request, res: Response) => {
     }
 
     const result = await paymentService.debitWallet(userId, amount, description);
-    
+
     res.json({
       ...result,
       message: '✅ Wallet debited',

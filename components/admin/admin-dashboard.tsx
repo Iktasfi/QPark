@@ -100,19 +100,15 @@ export function AdminDashboard() {
 
   useEffect(() => {
     fetchParkingData()
-
-    // Socket.io for real-time updates — replaces interval polling
     const socket = getSocket()
 
     socket.on("connect", () => setSocketConnected(true))
     socket.on("disconnect", () => setSocketConnected(false))
 
-    // Instant update from parking routes (set-status, simulate-entry/exit)
     const onSpotStatusChanged = (data: Record<string, unknown>) => {
       fetchParkingData()
     }
 
-    // Booking API events (require auth — triggered when real booking API is used)
     const onBookingCreated = (data: Record<string, unknown>) => {
       addLiveEvent("booking-created", data)
       fetchParkingData()
@@ -144,7 +140,6 @@ export function AdminDashboard() {
     socket.on("rental-created", onRentalCreated)
     socket.on("payment-completed", onPaymentCompleted)
 
-    // Fallback poll every 30s as safety net
     const fallback = setInterval(fetchParkingData, 30000)
 
     return () => {
@@ -176,7 +171,6 @@ export function AdminDashboard() {
         setDbBookings(db.bookings ?? [])
         setDbRentals(db.rentals ?? [])
       }
-      // Подгружаем транзакции отдельно
       const token = typeof window !== "undefined" ? localStorage.getItem("qpark_token") : null
       if (token) {
         const txRes = await fetch("/backend/payments/admin/transactions", {
@@ -355,7 +349,6 @@ export function AdminDashboard() {
   return (
     <div className="min-h-screen bg-gray-50 p-6">
       <div className="mx-auto max-w-7xl">
-        {/* Header */}
         <div className="mb-6 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <Button variant="ghost" size="icon" onClick={() => (window.location.href = "/")}>
@@ -387,7 +380,6 @@ export function AdminDashboard() {
           </Alert>
         )}
 
-        {/* Статистика */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
           <Card>
             <CardContent className="p-4 flex items-center">
@@ -415,7 +407,6 @@ export function AdminDashboard() {
           </Card>
         </div>
 
-        {/* Live Bookings Feed */}
         <Card className="mb-8 border-l-4 border-l-blue-500">
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2">
@@ -460,7 +451,6 @@ export function AdminDashboard() {
           </CardContent>
         </Card>
 
-        {/* Управление симуляцией */}
         <Card className="mb-8">
           <CardHeader>
             <CardTitle>Управление симуляцией</CardTitle>
@@ -480,7 +470,6 @@ export function AdminDashboard() {
           </CardContent>
         </Card>
 
-        {/* Легенда */}
         <Card className="mb-8">
           <CardHeader>
             <CardTitle>Легенда статусов</CardTitle>
@@ -503,7 +492,6 @@ export function AdminDashboard() {
           </CardContent>
         </Card>
 
-        {/* Табы */}
         <div className="flex flex-wrap gap-2 mb-6">
           {(["spots", "users", "bookings", "transactions"] as const).map(tab => (
             <button key={tab} onClick={() => setActiveTab(tab)}
@@ -516,7 +504,6 @@ export function AdminDashboard() {
           ))}
         </div>
 
-        {/* Таблицы парковки */}
         {activeTab === "spots" && (
           <>
             {renderParkingSection(parkingData.tables.shortTerm.title, parkingData.tables.shortTerm.table)}
@@ -524,7 +511,6 @@ export function AdminDashboard() {
           </>
         )}
 
-        {/* Пользователи из БД */}
         {activeTab === "users" && (
           <Card>
             <CardHeader><CardTitle>Зарегистрированные пользователи</CardTitle></CardHeader>
@@ -567,7 +553,6 @@ export function AdminDashboard() {
           </Card>
         )}
 
-        {/* Бронирования из БД */}
         {activeTab === "bookings" && (
           <div className="space-y-6">
             <Card>
@@ -628,7 +613,6 @@ export function AdminDashboard() {
           </div>
         )}
 
-        {/* Транзакции */}
         {activeTab === "transactions" && (
           <Card>
             <CardHeader>

@@ -130,14 +130,15 @@ model Payment {
 
 // ─── TRANSACTIONS (история кошелька) ─────────────────────
 model Transaction {
-  id            String          @id @default(cuid())
-  userId        String
-  amount        Float
-  type          TransactionType
-  description   String?
-  balanceBefore Float
-  balanceAfter  Float
-  createdAt     DateTime        @default(now())
+  id                    String          @id @default(cuid())
+  userId                String
+  amount                Float
+  type                  TransactionType
+  description           String?
+  balanceBefore         Float
+  balanceAfter          Float
+  stripePaymentIntentId String?
+  createdAt             DateTime        @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 

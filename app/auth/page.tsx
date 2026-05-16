@@ -94,7 +94,6 @@ export default function AuthPage() {
       const userCredential = await confirmationResult.confirm(code)
       const firebaseUser = userCredential.user
 
-      // Build local user object from Firebase data
       setUser({
         id: firebaseUser.uid,
         phone: firebaseUser.phoneNumber ?? phoneNumber,
@@ -154,7 +153,6 @@ export default function AuthPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Invisible reCAPTCHA container */}
       <div id="recaptcha-container" ref={recaptchaContainerRef} />
 
       <Header />

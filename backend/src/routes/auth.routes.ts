@@ -7,10 +7,7 @@ import { prisma } from '../lib/prisma';
 
 const router = Router();
 
-/**
- * POST /auth/firebase-login
- * Вход через Firebase Phone Auth — upsert пользователя в БД
- */
+
 router.post(
   '/firebase-login',
   [
@@ -35,10 +32,7 @@ router.post(
   }
 )
 
-/**
- * POST /auth/register
- * Регистрация нового пользователя
- */
+
 router.post(
   '/register',
   [
@@ -59,10 +53,10 @@ router.post(
 
       const { phoneNumber, firstName, lastName } = req.body;
 
-      // Попытаться зарегистрировать пользователя
+
       const user = await authService.registerUser(phoneNumber, firstName, lastName);
 
-      // Сгенерировать токен
+
       const token = authService.generateToken(user.id);
 
       res.json({
@@ -80,10 +74,7 @@ router.post(
   }
 );
 
-/**
- * POST /auth/login
- * Вход пользователя
- */
+
 router.post(
   '/login',
   [
@@ -102,19 +93,19 @@ router.post(
 
       const { phoneNumber } = req.body;
 
-      // Найти пользователя
+
       const user = await authService.findUserByPhone(phoneNumber);
       if (!user) {
         return res.status(404).json({ error: 'User not found' });
       }
 
-      // Проверить, забанен ли
+
       const isBanned = await authService.isUserBanned(user.id);
       if (isBanned) {
         return res.status(403).json({ error: 'User is banned' });
       }
 
-      // Сгенерировать токен
+
       const token = authService.generateToken(user.id);
 
       res.json({
@@ -129,10 +120,7 @@ router.post(
   }
 );
 
-/**
- * GET /auth/me
- * Получить информацию о текущем пользователе
- */
+
 router.get('/me', verifyToken, async (req: Request, res: Response) => {
   try {
     if (!req.userId) {
@@ -151,10 +139,7 @@ router.get('/me', verifyToken, async (req: Request, res: Response) => {
   }
 });
 
-/**
- * PUT /auth/me
- * Обновить профиль пользователя
- */
+
 router.put(
   '/me',
   verifyToken,
@@ -192,17 +177,12 @@ router.put(
   }
 );
 
-/**
- * GET /auth/verify-token
- */
+
 router.get('/verify-token', verifyToken, (req: Request, res: Response) => {
   res.json({ valid: true, userId: req.userId });
 });
 
-/**
- * GET /auth/cars
- * Получить все машины пользователя (без удалённых)
- */
+
 router.get('/cars', verifyToken, async (req: Request, res: Response) => {
   try {
     if (!req.userId) return res.status(401).json({ error: 'Unauthorized' });
@@ -217,10 +197,7 @@ router.get('/cars', verifyToken, async (req: Request, res: Response) => {
   }
 });
 
-/**
- * POST /auth/cars
- * Добавить машину
- */
+
 router.post(
   '/cars',
   verifyToken,
@@ -239,7 +216,7 @@ router.post(
 
       const existing = await prisma.car.findUnique({ where: { plateNumber } });
       if (existing) {
-        // If the user previously soft-deleted this car, restore it
+
         if (existing.deletedAt && existing.userId === req.userId) {
           const car = await prisma.car.update({
             where: { id: existing.id },
@@ -262,10 +239,7 @@ router.post(
   }
 );
 
-/**
- * DELETE /auth/cars/:id
- * Мягкое удаление машины (soft delete — запись остаётся в БД)
- */
+
 router.delete('/cars/:id', verifyToken, async (req: Request, res: Response) => {
   try {
     if (!req.userId) return res.status(401).json({ error: 'Unauthorized' });

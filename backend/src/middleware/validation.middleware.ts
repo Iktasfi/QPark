@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { body, validationResult } from 'express-validator';
 
-// Общий обработчик ошибок валидации
+
 export const handleValidationErrors = (req: Request, res: Response, next: NextFunction) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -13,7 +13,7 @@ export const handleValidationErrors = (req: Request, res: Response, next: NextFu
   next();
 };
 
-// Валидация для регистрации
+
 export const validateRegister = [
   body('phoneNumber')
     .isString()
@@ -25,7 +25,7 @@ export const validateRegister = [
   handleValidationErrors,
 ];
 
-// Валидация для входа
+
 export const validateLogin = [
   body('phoneNumber')
     .isString()
@@ -35,7 +35,7 @@ export const validateLogin = [
   handleValidationErrors,
 ];
 
-// Валидация для обновления профиля
+
 export const validateProfileUpdate = [
   body('firstName').optional().isString().trim().isLength({ min: 1, max: 50 }),
   body('lastName').optional().isString().trim().isLength({ min: 1, max: 50 }),
@@ -44,13 +44,13 @@ export const validateProfileUpdate = [
   handleValidationErrors,
 ];
 
-// Валидация для создания бронирования
+
 export const validateBooking = [
   body('spotId').isString().notEmpty().withMessage('Spot ID is required'),
   handleValidationErrors,
 ];
 
-// Валидация для долгосрочной аренды
+
 export const validateLongTermRental = [
   body('spotId').isString().notEmpty().withMessage('Spot ID is required'),
   body('rentalDays')
@@ -60,14 +60,14 @@ export const validateLongTermRental = [
   handleValidationErrors,
 ];
 
-// Валидация для промокода
+
 export const validatePromoCode = [
   body('code').isString().trim().isLength({ min: 3, max: 20 }).withMessage('Invalid promo code'),
   body('amount').isFloat({ min: 0 }).withMessage('Amount must be positive'),
   handleValidationErrors,
 ];
 
-// Валидация для создания промокода (админ)
+
 export const validatePromoCodeCreate = [
   body('code').isString().trim().isLength({ min: 3, max: 20 }).withMessage('Invalid promo code'),
   body('discount').isFloat({ min: 0 }).withMessage('Discount must be positive'),
@@ -77,13 +77,13 @@ export const validatePromoCodeCreate = [
   handleValidationErrors,
 ];
 
-// Валидация для пополнения кошелька
+
 export const validateWalletTopup = [
   body('amount').isFloat({ min: 100 }).withMessage('Minimum amount is 100₸'),
   handleValidationErrors,
 ];
 
-// Валидация для LPR событий
+
 export const validateLPREvent = [
   body('carPlate').isString().trim().isLength({ min: 3, max: 10 }).withMessage('Invalid car plate'),
   body('spotNumber').isString().trim().isLength({ min: 3, max: 10 }).withMessage('Invalid spot number'),

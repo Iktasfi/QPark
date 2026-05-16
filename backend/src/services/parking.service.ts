@@ -3,9 +3,7 @@ import { logger } from '../server';
 import { prisma } from '../lib/prisma';
 
 export class ParkingService {
-  /**
-   * Получить все места парковки
-   */
+
   async getAllSpots() {
     try {
       const spots = await prisma.parkingSpot.findMany({
@@ -25,9 +23,7 @@ export class ParkingService {
     }
   }
 
-  /**
-   * Получить место по номеру
-   */
+
   async getSpotByNumber(spotNumber: string) {
     try {
       const spot = await prisma.parkingSpot.findUnique({
@@ -42,9 +38,7 @@ export class ParkingService {
     }
   }
 
-  /**
-   * Получить свободные места
-   */
+
   async getAvailableSpots(type: 'SHORT_TERM' | 'LONG_TERM' = 'SHORT_TERM') {
     try {
       const spots = await prisma.parkingSpot.findMany({
@@ -62,9 +56,7 @@ export class ParkingService {
     }
   }
 
-  /**
-   * Обновить статус места
-   */
+
   async updateSpotStatus(spotId: string, status: SpotStatus) {
     try {
       const spot = await prisma.parkingSpot.update({
@@ -80,12 +72,10 @@ export class ParkingService {
     }
   }
 
-  /**
-   * Обработка LPR события - ВЪЕЗД
-   */
+
   async handleLPREntry(carPlate: string, spotNumber: string) {
     try {
-      // Найти бронирование по номеру машины
+
       const booking = await prisma.booking.findFirst({
         where: {
           spot: { currentUserPlate: carPlate },
@@ -102,7 +92,7 @@ export class ParkingService {
         };
       }
 
-      // Получить место
+
       const spot = await this.getSpotByNumber(spotNumber);
       if (!spot) {
         logger.warn(`⚠️  Spot not found: ${spotNumber}`);
@@ -112,7 +102,7 @@ export class ParkingService {
         };
       }
 
-      // Обновить место на OCCUPIED
+
       await prisma.parkingSpot.update({
         where: { id: spot.id },
         data: {
@@ -122,13 +112,13 @@ export class ParkingService {
         },
       });
 
-      // Обновить бронирование на CONFIRMED
+
       await prisma.booking.update({
         where: { id: booking.id },
         data: { status: 'CONFIRMED' },
       });
 
-      // Записать LPR событие
+
       await prisma.lPREvent.create({
         data: {
           carPlate,
@@ -150,12 +140,10 @@ export class ParkingService {
     }
   }
 
-  /**
-   * Обработка LPR события - ВЫЕЗД
-   */
+
   async handleLPRExit(carPlate: string, spotNumber: string) {
     try {
-      // Найти место
+
       const spot = await this.getSpotByNumber(spotNumber);
       if (!spot) {
         logger.warn(`⚠️  Spot not found: ${spotNumber}`);
@@ -165,7 +153,7 @@ export class ParkingService {
         };
       }
 
-      // Найти активное бронирование на этом месте
+
       const booking = await prisma.booking.findFirst({
         where: {
           spotId: spot.id,
@@ -182,7 +170,7 @@ export class ParkingService {
         };
       }
 
-      // Проверить, оплачено ли
+
       if (!booking.isPaid) {
         logger.warn(`⚠️  Booking not paid: ${booking.id}`);
         return {
@@ -191,7 +179,7 @@ export class ParkingService {
         };
       }
 
-      // Обновить место на FREE
+
       await prisma.parkingSpot.update({
         where: { id: spot.id },
         data: {
@@ -201,7 +189,7 @@ export class ParkingService {
         },
       });
 
-      // Записать LPR событие
+
       await prisma.lPREvent.create({
         data: {
           carPlate,
@@ -222,22 +210,20 @@ export class ParkingService {
     }
   }
 
-  /**
-   * Инициализировать все места парковки
-   */
+
   async initializeParkingSpots() {
     try {
-      // Проверить, есть ли уже места
+
       const count = await prisma.parkingSpot.count();
       if (count > 0) {
         logger.info(`ℹ️  Parking spots already initialized: ${count} spots`);
         return;
       }
 
-      // Создать 30 мест (15 коротких, 15 долгих)
+
       const spotsData = [];
 
-      // Короткие места (SP-01 до SP-15)
+
       for (let i = 1; i <= 15; i++) {
         spotsData.push({
           spotNumber: `SP-${String(i).padStart(2, '0')}`,
@@ -246,7 +232,7 @@ export class ParkingService {
         });
       }
 
-      // Длинные места (SP-16 до SP-30)
+
       for (let i = 16; i <= 30; i++) {
         spotsData.push({
           spotNumber: `SP-${String(i).padStart(2, '0')}`,
@@ -266,9 +252,7 @@ export class ParkingService {
     }
   }
 
-  /**
-   * Получить статистику парковки
-   */
+
   async getParkingStats() {
     try {
       const totalSpots = await prisma.parkingSpot.count();

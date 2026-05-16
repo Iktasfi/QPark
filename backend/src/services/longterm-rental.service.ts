@@ -3,16 +3,14 @@ import { logger } from '../server';
 import { prisma } from '../lib/prisma';
 
 export class LongTermRentalService {
-  /**
-   * Создать долгосрочную аренду
-   */
+
   async createLongTermRental(userId: string, spotId: string, rentalDays: number) {
     try {
       const now = new Date();
       const totalCost = getLongTermPrice(rentalDays);
       const endDate = new Date(now.getTime() + rentalDays * 24 * 60 * 60 * 1000);
 
-      // Проверить, свободно ли место
+
       const spot = await prisma.parkingSpot.findUnique({
         where: { id: spotId },
       });
@@ -21,7 +19,7 @@ export class LongTermRentalService {
         throw new Error('Spot is not available');
       }
 
-      // Создать аренду
+
       const rental = await prisma.longTermRental.create({
         data: {
           userId,
@@ -38,7 +36,7 @@ export class LongTermRentalService {
         },
       });
 
-      // Обновить статус места
+
       await prisma.parkingSpot.update({
         where: { id: spotId },
         data: { status: 'RESERVED' },
@@ -52,9 +50,7 @@ export class LongTermRentalService {
     }
   }
 
-  /**
-   * Получить активные аренды пользователя
-   */
+
   async getUserActiveRentals(userId: string) {
     try {
       const rentals = await prisma.longTermRental.findMany({
@@ -73,9 +69,7 @@ export class LongTermRentalService {
     }
   }
 
-  /**
-   * Завершить аренду
-   */
+
   async completeRental(rentalId: string) {
     try {
       const rental = await prisma.longTermRental.findUnique({
@@ -87,13 +81,13 @@ export class LongTermRentalService {
         throw new Error('Rental not found');
       }
 
-      // Обновить статус аренды
+
       const updatedRental = await prisma.longTermRental.update({
         where: { id: rentalId },
         data: { status: 'EXPIRED' },
       });
 
-      // Освободить место
+
       await prisma.parkingSpot.update({
         where: { id: rental.spotId },
         data: {
@@ -111,9 +105,7 @@ export class LongTermRentalService {
     }
   }
 
-  /**
-   * Отменить аренду
-   */
+
   async cancelRental(rentalId: string) {
     try {
       const rental = await prisma.longTermRental.findUnique({
@@ -125,13 +117,13 @@ export class LongTermRentalService {
         throw new Error('Rental not found');
       }
 
-      // Обновить статус аренды
+
       const updatedRental = await prisma.longTermRental.update({
         where: { id: rentalId },
         data: { status: 'CANCELLED' },
       });
 
-      // Освободить место
+
       await prisma.parkingSpot.update({
         where: { id: rental.spotId },
         data: { status: 'FREE' },
@@ -145,9 +137,7 @@ export class LongTermRentalService {
     }
   }
 
-  /**
-   * Получить все активные аренды
-   */
+
   async getAllActiveRentals() {
     try {
       const rentals = await prisma.longTermRental.findMany({
@@ -163,9 +153,7 @@ export class LongTermRentalService {
     }
   }
 
-  /**
-   * Проверить истекшие аренды и завершить их
-   */
+
   async checkExpiredRentals() {
     try {
       const expiredRentals = await prisma.longTermRental.findMany({

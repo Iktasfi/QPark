@@ -80,7 +80,6 @@ export default function AdminDashboard() {
       
       if (!response.ok) throw new Error('Ошибка выполнения действия');
       
-      // Обновить данные после действия
       await fetchParkingData();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Ошибка симуляции');
@@ -224,7 +223,7 @@ export default function AdminDashboard() {
         <p className="text-gray-600">Последнее обновление: {parkingData.lastUpdated}</p>
       </div>
 
-      {/* Статистика */}
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         <Card>
           <CardContent className="p-4">
@@ -283,7 +282,7 @@ export default function AdminDashboard() {
         </Card>
       </div>
 
-      {/* Управление */}
+
       <Card className="mb-8">
         <CardHeader>
           <CardTitle>Управление симуляцией</CardTitle>
@@ -303,7 +302,7 @@ export default function AdminDashboard() {
         </CardContent>
       </Card>
 
-      {/* Легенда */}
+
       <Card className="mb-8">
         <CardHeader>
           <CardTitle>Легенда статусов</CardTitle>
@@ -320,7 +319,7 @@ export default function AdminDashboard() {
         </CardContent>
       </Card>
 
-      {/* Таблицы парковки */}
+
       {renderParkingSection(parkingData.tables.shortTerm.title, parkingData.tables.shortTerm.table)}
       {renderParkingSection(parkingData.tables.longTerm.title, parkingData.tables.longTerm.table)}
     </div>

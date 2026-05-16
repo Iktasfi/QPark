@@ -7,12 +7,10 @@ export class AuthService {
   private readonly JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
   private readonly JWT_EXPIRE = process.env.JWT_EXPIRE || '7d';
 
-  /**
-   * Регистрация пользователя по номеру телефона
-   */
+
   async registerUser(phoneNumber: string, firstName?: string, lastName?: string) {
     try {
-      // Проверить, есть ли уже пользователь
+
       const existingUser = await prisma.user.findUnique({
         where: { phoneNumber },
       });
@@ -21,17 +19,17 @@ export class AuthService {
         throw new Error('User already exists');
       }
 
-      // Создать пользователя
+
       const user = await prisma.user.create({
         data: {
           phoneNumber,
           firstName,
           lastName,
-          walletBalance: 150, // Промокод FIRST - первые 150 тенге
+          walletBalance: 150,
         },
       });
 
-      // Создать транзакцию для промокода
+
       await prisma.transaction.create({
         data: {
           userId: user.id,
@@ -51,15 +49,12 @@ export class AuthService {
     }
   }
 
-  /**
-   * Firebase login — upsert: создать если нет, вернуть если есть
-   * Возвращает { user, token, isNew }
-   */
+
   async firebaseLogin(phoneNumber: string, firebaseUid: string) {
     try {
       let isNew = false
 
-      // Найти или создать пользователя
+
       let user = await prisma.user.findUnique({
         where: { phoneNumber },
         include: {
@@ -73,13 +68,13 @@ export class AuthService {
         user = await prisma.user.create({
           data: {
             phoneNumber,
-            walletBalance: 150, // бонус новому пользователю
+            walletBalance: 150,
             bonusPoints: 0,
           },
           include: { cars: true, transactions: true },
         })
 
-        // Транзакция на стартовый бонус
+
         await prisma.transaction.create({
           data: {
             userId: user.id,
@@ -104,9 +99,7 @@ export class AuthService {
     }
   }
 
-  /**
-   * Найти пользователя
-   */
+
   async findUserByPhone(phoneNumber: string) {
     try {
       const user = await prisma.user.findUnique({
@@ -120,9 +113,7 @@ export class AuthService {
     }
   }
 
-  /**
-   * Получить JWT токен
-   */
+
   generateToken(userId: string): string {
     return jwt.sign(
       { userId },
@@ -131,9 +122,7 @@ export class AuthService {
     );
   }
 
-  /**
-   * Проверить JWT токен
-   */
+
   verifyToken(token: string): { userId: string } | null {
     try {
       const decoded = jwt.verify(token, this.JWT_SECRET);
@@ -144,9 +133,7 @@ export class AuthService {
     }
   }
 
-  /**
-   * Обновить профиль пользователя
-   */
+
   async updateUserProfile(
     userId: string,
     data: {
@@ -169,9 +156,7 @@ export class AuthService {
     }
   }
 
-  /**
-   * Получить профиль пользователя (с машинами и транзакциями)
-   */
+
   async getUserProfile(userId: string) {
     try {
       const user = await prisma.user.findUnique({
@@ -188,9 +173,7 @@ export class AuthService {
     }
   }
 
-  /**
-   * Проверить и применить бан
-   */
+
   async checkAndApplyBan(userId: string) {
     try {
       const user = await prisma.user.findUnique({
@@ -202,7 +185,7 @@ export class AuthService {
       }
 
       const BAN_THRESHOLD = parseInt(process.env.BAN_THRESHOLD || '6');
-      const BAN_DURATION = parseInt(process.env.BAN_DURATION || '259200'); // 3 дня в секундах
+      const BAN_DURATION = parseInt(process.env.BAN_DURATION || '259200');
 
       if (user.noShowCount >= BAN_THRESHOLD) {
         const bannedUntil = new Date(Date.now() + BAN_DURATION * 1000);
@@ -229,9 +212,7 @@ export class AuthService {
     }
   }
 
-  /**
-   * Разблокировать пользователя (для админа)
-   */
+
   async unbanUser(userId: string) {
     try {
       const user = await prisma.user.update({
@@ -251,9 +232,7 @@ export class AuthService {
     }
   }
 
-  /**
-   * Проверить, забанен ли пользователь
-   */
+
   async isUserBanned(userId: string): Promise<boolean> {
     try {
       const user = await prisma.user.findUnique({
@@ -268,7 +247,7 @@ export class AuthService {
         return false;
       }
 
-      // Если срок бана истёк, разблокировать
+
       if (user.bannedUntil && user.bannedUntil < new Date()) {
         await this.unbanUser(userId);
         return false;

@@ -7,7 +7,6 @@ async function main() {
 
   const spots = []
 
-  // SP-01 to SP-15 → SHORT_TERM
   for (let i = 1; i <= 15; i++) {
     spots.push({
       spotNumber: `SP-${String(i).padStart(2, '0')}`,
@@ -16,7 +15,6 @@ async function main() {
     })
   }
 
-  // SP-16 to SP-30 → LONG_TERM
   for (let i = 16; i <= 30; i++) {
     spots.push({
       spotNumber: `SP-${String(i).padStart(2, '0')}`,

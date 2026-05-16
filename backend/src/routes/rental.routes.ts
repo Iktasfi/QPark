@@ -9,21 +9,18 @@ import { logger } from '../server';
 import { prisma } from '../lib/prisma';
 const router = Router();
 
-// Все маршруты требуют авторизации
+
 router.use(verifyToken);
 
-/**
- * POST /rentals
- * Создать долгосрочную аренду
- */
+
 router.post('/', requireCarPlate, validateLongTermRental, async (req: Request, res: Response) => {
   try {
     const { spotId, rentalDays } = req.body;
     const userId = req.userId!;
-    
+
     const totalCost = getLongTermPrice(rentalDays);
-    
-    // Проверить баланс
+
+
     if (req.user!.walletBalance < totalCost) {
       return res.status(402).json({
         error: 'Insufficient balance',
@@ -33,24 +30,24 @@ router.post('/', requireCarPlate, validateLongTermRental, async (req: Request, r
     }
 
     const rental = await longTermRentalService.createLongTermRental(userId, spotId, rentalDays);
-    
-    // Сразу списать оплату
+
+
     await paymentService.debitWallet(
       userId,
       totalCost,
       `Долгосрочная аренда: ${rentalDays} дней`
     );
 
-    // Обновить статус оплаты в аренде
+
     await prisma.longTermRental.update({
       where: { id: rental.id },
       data: { isPaid: true },
     });
 
-    // Отправить уведомление через Socket.io
+
     const { io } = await import('../server');
     io.emit('rental-created', rental);
-    
+
     res.status(201).json({
       rental,
       totalCost,
@@ -62,10 +59,7 @@ router.post('/', requireCarPlate, validateLongTermRental, async (req: Request, r
   }
 });
 
-/**
- * GET /rentals/active
- * Получить активные аренды пользователя
- */
+
 router.get('/active', async (req: Request, res: Response) => {
   try {
     const userId = req.userId!;
@@ -77,10 +71,7 @@ router.get('/active', async (req: Request, res: Response) => {
   }
 });
 
-/**
- * GET /rentals/all
- * Получить все активные аренды (админ)
- */
+
 router.get('/all', async (req: Request, res: Response) => {
   try {
     const rentals = await longTermRentalService.getAllActiveRentals();
@@ -91,16 +82,13 @@ router.get('/all', async (req: Request, res: Response) => {
   }
 });
 
-/**
- * POST /rentals/:id/cancel
- * Отменить аренду
- */
+
 router.post('/:id/cancel', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const userId = req.userId!;
 
-    // Проверить, принадлежит ли аренда пользователю
+
     const rental = await (await import('@prisma/client')).PrismaClient.prototype.longTermRental.findUnique({
       where: { id },
     });
@@ -114,11 +102,11 @@ router.post('/:id/cancel', async (req: Request, res: Response) => {
     }
 
     const cancelledRental = await longTermRentalService.cancelRental(id);
-    
-    // Отправить уведомление через Socket.io
+
+
     const { io } = await import('../server');
     io.emit('rental-cancelled', cancelledRental);
-    
+
     res.json({
       rental: cancelledRental,
       message: '✅ Rental cancelled',
@@ -129,10 +117,7 @@ router.post('/:id/cancel', async (req: Request, res: Response) => {
   }
 });
 
-/**
- * POST /rentals/check-expired
- * Проверить истекшие аренды (админ/системный)
- */
+
 router.post('/check-expired', async (req: Request, res: Response) => {
   try {
     const expiredCount = await longTermRentalService.checkExpiredRentals();
@@ -147,10 +132,7 @@ router.post('/check-expired', async (req: Request, res: Response) => {
   }
 });
 
-/**
- * POST /rentals/terminate-by-spot
- * Досрочное завершение долгосрочной аренды (без возврата средств)
- */
+
 router.post('/terminate-by-spot', async (req: Request, res: Response) => {
   try {
     const { spotNumber } = req.body;
