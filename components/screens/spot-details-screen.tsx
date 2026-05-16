@@ -314,7 +314,7 @@ export function SpotDetailsScreen() {
       </Button>
 
       {/* Bottom Navigation */}
-      <div className="absolute bottom-0 left-0 right-0 h-20 bg-white border-t border-gray-300 z-50 shadow-lg" style={{ borderTop: '1px solid #D1D5DB' }}>
+      <div className="absolute bottom-0 left-0 right-0 h-20 bg-white dark:bg-gray-900 border-t border-gray-300 dark:border-gray-700 z-50 shadow-lg">
         <div className="flex justify-around items-center h-full px-4">
           {[
             { id: "home", icon: "/Home_light.svg", activeIcon: "/Home_light_active.svg", label: "Home", active: false },
@@ -326,7 +326,7 @@ export function SpotDetailsScreen() {
             <button
               key={item.id}
               onClick={() => setCurrentScreen(item.id)}
-              className="flex flex-col items-center justify-center gap-0.5 p-3 transition-all hover:bg-gray-100 rounded-xl active:scale-95"
+              className="flex flex-col items-center justify-center gap-0.5 p-3 transition-all hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl active:scale-95"
             >
               <div className="w-8 h-8 flex items-center justify-center">
                 <img
@@ -334,10 +334,10 @@ export function SpotDetailsScreen() {
                   alt={item.label}
                   width={28}
                   height={28}
-                  className={item.active ? "opacity-100" : "opacity-80"}
+                  className={item.active ? "opacity-100" : "opacity-80 dark:invert"}
                 />
               </div>
-              <span className={`text-xs font-medium ${item.active ? "text-[#36549B] drop-shadow-sm" : "text-gray-900 drop-shadow-sm"}`}>
+              <span className={`text-xs font-medium ${item.active ? "text-[#36549B] dark:text-[#7B9FD4]" : "text-gray-900 dark:text-gray-300"} drop-shadow-sm`}>
                 {item.label}
               </span>
             </button>
@@ -349,7 +349,7 @@ export function SpotDetailsScreen() {
       {showConflictModal && activeBooking && (
         <div className="absolute inset-0 z-50 flex flex-col justify-end">
           <div className="absolute inset-0 bg-black/40" onClick={() => setShowConflictModal(false)} />
-          <div className="relative bg-white rounded-t-3xl px-5 pt-5 pb-10">
+          <div className="relative bg-white dark:bg-gray-900 rounded-t-3xl px-5 pt-5 pb-10">
             <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-gray-200" />
 
             {/* Icon + title */}
@@ -357,9 +357,9 @@ export function SpotDetailsScreen() {
               <div className="flex h-14 w-14 items-center justify-center rounded-full bg-red-50">
                 <AlertTriangle className="h-7 w-7 text-[#b94a4a]" />
               </div>
-              <h2 className="text-lg font-bold text-gray-900 text-center">You Already Have a Booking</h2>
-              <p className="text-sm text-gray-500 text-center">
-                Spot <span className="font-semibold text-gray-800">{activeBooking.spotId}</span> is already booked.
+              <h2 className="text-lg font-bold text-gray-900 dark:text-white text-center">You Already Have a Booking</h2>
+              <p className="text-sm text-gray-500 dark:text-gray-400 text-center">
+                Spot <span className="font-semibold text-gray-800 dark:text-gray-200">{activeBooking.spotId}</span> is already booked.
                 Complete or cancel your current booking to select a new spot.
               </p>
             </div>
@@ -405,22 +405,22 @@ export function SpotDetailsScreen() {
       {insufficientBalance && (
         <div className="absolute inset-0 z-50 flex flex-col justify-end">
           <div className="absolute inset-0 bg-black/40" onClick={() => setInsufficientBalance(null)} />
-          <div className="relative bg-white rounded-t-3xl px-5 pt-5 pb-10">
+          <div className="relative bg-white dark:bg-gray-900 rounded-t-3xl px-5 pt-5 pb-10">
             <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-gray-200" />
             <div className="flex flex-col items-center gap-3 mb-5">
               <div className="flex h-14 w-14 items-center justify-center rounded-full bg-red-50">
                 <Wallet className="h-7 w-7 text-[#b94a4a]" />
               </div>
-              <h2 className="text-lg font-bold text-gray-900 text-center">Insufficient Balance</h2>
-              <p className="text-sm text-gray-500 text-center">
+              <h2 className="text-lg font-bold text-gray-900 dark:text-white text-center">Insufficient Balance</h2>
+              <p className="text-sm text-gray-500 dark:text-gray-400 text-center">
                 You need{" "}
                 <span className="font-semibold text-gray-800">{insufficientBalance.need}₸</span>{" "}
                 but your wallet only has{" "}
                 <span className="font-semibold text-gray-800">{insufficientBalance.have}₸</span>.
                 {" "}Please top up to continue.
               </p>
-              <div className="w-full bg-gray-100 rounded-xl px-4 py-3 flex justify-between text-sm">
-                <span className="text-gray-500">Shortfall</span>
+              <div className="w-full bg-gray-100 dark:bg-gray-800 rounded-xl px-4 py-3 flex justify-between text-sm">
+                <span className="text-gray-500 dark:text-gray-400">Shortfall</span>
                 <span className="font-bold text-[#b94a4a]">−{insufficientBalance.need - insufficientBalance.have}₸</span>
               </div>
             </div>
