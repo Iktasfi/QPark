@@ -257,6 +257,10 @@ export function ParkingProvider({ children }: { children: ReactNode }) {
   const [isAdminMode, setIsAdminMode] = useState(false)
   const [darkMode, setDarkMode] = useState(false)
   const [language, setLanguage] = useState<Language>("en")
+
+  useEffect(() => {
+    document.documentElement.classList.toggle("dark", darkMode)
+  }, [darkMode])
   const [isRestoringSession, setIsRestoringSession] = useState(true)
   const t = translations[language]
   const spotsRef = useRef(spots)
