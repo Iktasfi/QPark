@@ -272,7 +272,7 @@ export function ParkingProvider({ children }: { children: ReactNode }) {
     if (!token) { setIsRestoringSession(false); return }
 
     const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), 3000)
+    const timeout = setTimeout(() => controller.abort(), 10000)
 
     fetch("/backend/auth/me", {
       headers: { Authorization: `Bearer ${token}` },
