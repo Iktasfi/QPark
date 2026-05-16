@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useRef, useEffect } from "react"
-import { useParking } from "@/lib/parking-context"
+import { useParking, mapDbUser } from "@/lib/parking-context"
 import Image from "next/image"
 import { auth } from "@/lib/firebase"
 import { RecaptchaVerifier, signInWithPhoneNumber, type ConfirmationResult } from "firebase/auth"
@@ -102,32 +102,36 @@ export function LoginScreen() {
         // backend offline — continue with Firebase data only
       }
 
-      // Step 3: Set user in context (real DB data if available, fallback to Firebase)
-      setUser({
-        id: dbUser?.id ?? firebaseUser.uid,
-        phone: dbUser?.phoneNumber ?? firebaseUser.phoneNumber ?? phone,
-        name: dbUser?.firstName
-          ? `${dbUser.firstName}${dbUser.lastName ? " " + dbUser.lastName : ""}`
-          : "User",
-        balance: dbUser?.walletBalance ?? 0,
-        bonusPoints: dbUser?.bonusPoints ?? 0,
-        noShowCount: dbUser?.noShowCount ?? 0,
-        isBanned: dbUser?.isBanned ?? false,
-        bannedUntil: dbUser?.bannedUntil ? new Date(dbUser.bannedUntil) : undefined,
-        cars: dbUser?.cars?.map((c: { id: string; brand: string; model: string; plateNumber: string }) => ({
-          id: c.id,
-          brand: c.brand,
-          model: c.model,
-          plateNumber: c.plateNumber,
-        })) ?? [],
-        transactions: dbUser?.transactions?.map((t: { id: string; type: string; amount: number; description: string; createdAt: string }) => ({
-          id: t.id,
-          type: t.type.toLowerCase() as "topup_stripe",
-          amount: t.amount,
-          description: t.description ?? "",
-          date: new Date(t.createdAt),
-        })) ?? [],
-      })
+      // Step 3: Set user in context — fetch /auth/me for complete profile (cars + transactions)
+      if (jwtToken) {
+        try {
+          const meRes = await fetch("/backend/auth/me", {
+            headers: { Authorization: `Bearer ${jwtToken}` },
+          })
+          if (meRes.ok) {
+            const meData = await meRes.json()
+            setUser(mapDbUser(meData))
+          } else if (dbUser) {
+            setUser(mapDbUser(dbUser))
+          }
+        } catch {
+          if (dbUser) setUser(mapDbUser(dbUser))
+        }
+      } else if (dbUser) {
+        setUser(mapDbUser(dbUser))
+      } else {
+        setUser({
+          id: firebaseUser.uid,
+          phone: firebaseUser.phoneNumber ?? phone,
+          name: "User",
+          balance: 0,
+          bonusPoints: 0,
+          noShowCount: 0,
+          isBanned: false,
+          cars: [],
+          transactions: [],
+        })
+      }
       setIsAuthenticated(true)
       if (isNew) {
         setIsNewUser(true)

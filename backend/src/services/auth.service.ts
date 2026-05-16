@@ -62,7 +62,10 @@ export class AuthService {
       // Найти или создать пользователя
       let user = await prisma.user.findUnique({
         where: { phoneNumber },
-        include: { cars: { where: { deletedAt: null }, orderBy: { createdAt: 'asc' } } },
+        include: {
+          cars: { where: { deletedAt: null }, orderBy: { createdAt: 'asc' } },
+          transactions: { orderBy: { createdAt: 'desc' }, take: 20 },
+        },
       })
 
       if (!user) {
@@ -73,7 +76,7 @@ export class AuthService {
             walletBalance: 150, // бонус новому пользователю
             bonusPoints: 0,
           },
-          include: { cars: true },
+          include: { cars: true, transactions: true },
         })
 
         // Транзакция на стартовый бонус
