@@ -1,7 +1,7 @@
 "use client"
 
-import { useState } from "react"
-import { useParking } from "@/lib/parking-context"
+import { useState, useEffect } from "react"
+import { useParking, mapDbUser } from "@/lib/parking-context"
 import { Input } from "@/components/ui/input"
 import { AlertTriangle, Trash2, LogOut, Settings, Bell, User, ChevronRight, Moon, Globe, Shield, HelpCircle, ChevronLeft, Pencil, X, Check } from "lucide-react"
 import Image from "next/image"
@@ -20,6 +20,16 @@ export function ProfileScreen() {
   const [showTermsOfService, setShowTermsOfService] = useState(false)
   const [showLanguageSelect, setShowLanguageSelect] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+
+  // Refresh user data from DB when profile screen loads
+  useEffect(() => {
+    const token = localStorage.getItem("qpark_token")
+    if (!token) return
+    fetch("/backend/auth/me", { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (data) setUser(mapDbUser(data)) })
+      .catch(() => {})
+  }, [])
 
   const languageNames = { en: "English", kk: "Қазақша", ru: "Русский" }
 

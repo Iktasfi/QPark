@@ -1,12 +1,22 @@
 "use client"
 
-import { useState } from "react"
-import { useParking } from "@/lib/parking-context"
+import { useState, useEffect } from "react"
+import { useParking, mapDbUser } from "@/lib/parking-context"
 import Image from "next/image"
 
 export function HomeScreen() {
-  const { setCurrentScreen, user, activeBooking } = useParking()
+  const { setCurrentScreen, user, setUser, activeBooking } = useParking()
   const [activeTab, setActiveTab] = useState("home")
+
+  // Always refresh user data from DB when home screen loads
+  useEffect(() => {
+    const token = localStorage.getItem("qpark_token")
+    if (!token) return
+    fetch("/backend/auth/me", { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (data) setUser(mapDbUser(data)) })
+      .catch(() => {})
+  }, [])
 
   const navItems = [
     { id: "home", icon: "/Home_light.svg", activeIcon: "/Home_light_active.svg", label: "Home", active: true },
