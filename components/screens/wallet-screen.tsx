@@ -46,7 +46,7 @@ export function WalletScreen() {
         <div className="text-center pt-6 pb-4">
           <h1 className={`text-2xl font-bold ${darkMode ? "text-white" : "text-[#1a1a2e]"}`}>{t.topUpBalance}</h1>
         </div>
-        <div className="flex-1 px-4 space-y-5 overflow-y-auto pb-24">
+        <div className="flex-1 px-4 space-y-5 overflow-y-auto content-bottom-pad">
           <div className="flex items-center gap-2 mb-2">
             <CreditCard className={`w-5 h-5 ${darkMode ? "text-blue-400" : "text-[#495E8E]"}`} />
             <h2 className={`text-lg font-bold ${darkMode ? "text-white" : "text-[#1a1a2e]"}`}>{t.selectAmount}</h2>
@@ -83,7 +83,7 @@ export function WalletScreen() {
         <div className="text-center pt-6 pb-4">
           <h1 className={`text-2xl font-bold ${darkMode ? "text-white" : "text-[#1a1a2e]"}`}>{t.payment}</h1>
         </div>
-        <div className="flex-1 px-4 overflow-y-auto pb-24">
+        <div className="flex-1 px-4 overflow-y-auto content-bottom-pad">
           <StripeTopUp
             amount={selectedAmount}
             darkMode={darkMode}
@@ -102,7 +102,7 @@ export function WalletScreen() {
         <p className={`text-sm ${darkMode ? "text-gray-400" : "text-gray-400"} mt-1`}>{t.manageBalance}</p>
       </div>
 
-      <div className="flex-1 px-4 space-y-4 overflow-y-auto pb-24">
+      <div className="flex-1 px-4 space-y-4 overflow-y-auto content-bottom-pad">
         <div className={`relative ${darkMode ? "bg-[#2a3654]" : "bg-[#495E8E]"} rounded-3xl p-5 overflow-hidden`}>
           <div className="relative z-10">
             <p className="text-white/80 text-sm font-medium">{t.currentBalance}</p>
@@ -169,8 +169,8 @@ export function WalletScreen() {
         </div>
       </div>
 
-      <div className={`absolute bottom-0 left-0 right-0 h-20 ${darkMode ? "bg-gray-800 border-gray-700" : "bg-white border-gray-200"} border-t z-10`}>
-        <div className="flex justify-around items-center h-full px-4">
+      <div className={`absolute bottom-0 left-0 right-0 bottom-nav ${darkMode ? "bg-gray-800 border-gray-700" : "bg-white border-gray-200"} border-t z-10`}>
+        <div className="flex justify-around items-center px-4" style={{height: '64px'}}>
           {navItems.map((item) => (
             <button
               key={item.id}

@@ -12,6 +12,15 @@ declare global {
   }
 }
 
+const termsEN = [
+  { title: "1. Acceptance of Terms", body: "By using QPark, you agree to these Terms of Service. If you do not agree, please do not use our application." },
+  { title: "2. Service Description", body: "QPark provides smart parking solutions including finding, reserving, and paying for parking spaces through our mobile application." },
+  { title: "3. User Responsibilities", body: "Users must provide accurate information, follow parking regulations, and ensure timely payment for services used." },
+  { title: "4. No-Show Policy", body: "Failure to use a reserved parking spot may result in penalties. After 6 no-shows, your account may be suspended." },
+  { title: "5. Limitation of Liability", body: "QPark is not responsible for car damage, theft, or any incidents occurring in parking facilities." },
+  { title: "6. Contact", body: "For questions, contact us at 231074@astanait.edu.kz or +7 708 239 51 19" },
+]
+
 export function LoginScreen() {
   const { setIsAuthenticated, setUser, setCurrentScreen, setIsNewUser } = useParking()
   const [step, setStep] = useState<"phone" | "otp">("phone")
@@ -21,6 +30,7 @@ export function LoginScreen() {
   const [isSending, setIsSending] = useState(false)
   const [isVerifying, setIsVerifying] = useState(false)
   const [error, setError] = useState("")
+  const [showTerms, setShowTerms] = useState(false)
 
   useEffect(() => {
     return () => {
@@ -224,7 +234,7 @@ export function LoginScreen() {
 
                 <p className="text-center text-xs text-gray-500">
                   By continuing, you agree to our{" "}
-                  <button className="text-[#296186] hover:underline font-medium">Terms of Service</button>
+                  <button onClick={() => setShowTerms(true)} className="text-[#296186] hover:underline font-medium">Terms of Service</button>
                 </p>
 
               </div>
@@ -276,6 +286,32 @@ export function LoginScreen() {
           </div>
         </div>
       </div>
+
+      {showTerms && (
+        <div className="absolute inset-0 bg-black/50 z-50 flex items-end">
+          <div className="bg-white rounded-t-3xl w-full max-h-[80%] flex flex-col">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+              <h3 className="text-lg font-bold text-gray-900">Terms of Service</h3>
+              <button onClick={() => setShowTerms(false)} className="p-1 rounded-full hover:bg-gray-100">
+                <span className="text-xl text-gray-500 leading-none">✕</span>
+              </button>
+            </div>
+            <div className="overflow-y-auto px-5 py-4 space-y-4 flex-1">
+              {termsEN.map((s) => (
+                <div key={s.title}>
+                  <p className="font-semibold text-sm text-gray-900 mb-1">{s.title}</p>
+                  <p className="text-sm text-gray-600 leading-relaxed">{s.body}</p>
+                </div>
+              ))}
+            </div>
+            <div className="px-5 py-4 border-t border-gray-100">
+              <button onClick={() => setShowTerms(false)} className="w-full rounded-xl bg-[#495E8E] py-3 font-semibold text-white">
+                Got it
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -42,7 +42,7 @@ const translations = {
     carParked: "Car is parked", spotReservedOutside: "Spot reserved — car outside",
     driveToExitLpr: "Drive to exit — LPR will open the barrier",
     driveInLpr: "Drive in — LPR will detect your plate",
-    parkingSpot: "Parking Spot", vehicle: "Vehicle",
+    parkingSpot: "Parking Spot", vehicle: "Car",
     entryMethod: "Entry Method", lprCamera: "LPR Camera", autoPlate: "Automatic plate recognition",
     costBreakdown: "Cost Breakdown", firstHourMin: "First hour (minimum)",
     extraTime: "Extra time", total: "Total",
@@ -66,7 +66,7 @@ const translations = {
     spotDetails: "Spot Details", free: "Free", bookedStatus: "Booked",
     hourlyRate: "Hourly rate", dailyRate: "Daily rate",
     minOneHour: "Minimum 1 hour", additionalMin: "min · 3₸/min after 1hr",
-    selectVehicle: "Select your vehicle", selectPeriodLabel: "Select rental period",
+    selectVehicle: "Select your car", selectPeriodLabel: "Select rental period",
     perDay: "per day", bookNowBtn: "Book Now", bookingLabel: "Booking...",
     youAlreadyBooked: "You Already Have a Booking",
     alreadyBookedMsg: "is already booked. Complete or cancel it to select a new spot.",
@@ -98,10 +98,15 @@ const translations = {
     deleteAccountTitle: "Delete Account?",
     deleteAccountMsg: "This action cannot be undone. All your data, including cars and booking history, will be permanently deleted.",
     delete: "Delete",
+    yourProfile: "Your Profile", yourCars: "Your Cars",
+    tellUsName: "Tell us your name", addYourCars: "Add your car(s)",
+    personalInfo: "Personal Info", firstNameLabel: "First Name", lastNameLabel: "Last Name",
+    addCar: "Add Car", skipAndContinue: "Skip & Continue", continueBtn: "Continue",
+    brandLabel: "Brand", modelLabel: "Model", plateLabel: "Plate Number", done: "Done",
   },
   kk: {
-    home: "Басты", map: "Карта", booking: "Брондау", wallet: "Әмиян", profile: "Профиль",
-    settings: "Параметрлер", appearance: "Сыртқы вид", darkMode: "Қараңғы режим",
+    home: "Басты", map: "Карта", booking: "Брондау", wallet: "Әмиян", profile: "Жеке бет",
+    settings: "Баптаулар", appearance: "Сыртқы түр", darkMode: "Қараңғы режим",
     language: "Тіл", notifications: "Хабарландырулар", pushNotifications: "Push хабарландырулар",
     securityPrivacy: "Қауіпсіздік және құпиялылық", privacyPolicy: "Құпиялылық саясаты",
     termsOfService: "Қызмет көрсету шарттары", about: "Қосымша туралы",
@@ -115,7 +120,7 @@ const translations = {
     topUpBalance: "Балансты толтыру", promoCodeAvailable: "Промокод қол жетімді",
     promoDescription: "FIRST - алғашқы тұрақ үшін 150₸ жеңілдік",
     active: "Белсенді", transactionHistory: "Транзакция тарихы",
-    selectAmount: "Сумманы таңдаңыз", payWithStripe: "Stripe арқылы төлеу",
+    selectAmount: "Соманы таңдаңыз", payWithStripe: "Stripe арқылы төлеу",
     poweredByStripe: "Stripe (Тест режимі)", walletTopUp: "Әмиянды толтыру",
     welcomeBack: "Қайта оралдыңыз,", bonusPointsLabel: "Бонус ұпайлар",
     shortTerm: "Қысқа мерзімді", longTerm: "Ұзақ мерзімді", spotsAvailable: "орын бар",
@@ -140,7 +145,7 @@ const translations = {
     driveInLpr: "Кіруге жүріңіз — LPR нөмірді анықтайды",
     parkingSpot: "Тұрақ орны", vehicle: "Көлік",
     entryMethod: "Кіру тәсілі", lprCamera: "LPR камера", autoPlate: "Автоматты нөмір тану",
-    costBreakdown: "Шығын бөлімі", firstHourMin: "Бірінші сағат (минимум)",
+    costBreakdown: "Шығын бөлімі", firstHourMin: "Бірінші сағат (ең аз)",
     extraTime: "Қосымша уақыт", total: "Жиыны",
     processing: "Өңделуде...", payAndExit: "Төлеу және шығу",
     extendWaiting: "+30 мин ұзарту · 75 ₸", cancelBooking: "Брондауды бас тарту",
@@ -169,9 +174,9 @@ const translations = {
     goToBooking: "Брондауға өту", viewMyBooking: "Брондауымды қарау",
     alreadyBookedComplete: "Жаңа орын таңдау үшін брондауды аяқтаңыз немесе бас тартыңыз.",
     period: "Мерзім", day: "күн", days: "күн", selected: "Таңдалды",
-    spotLabel: "Орын", noCarsAddFirst: "Тіркелген көлік жоқ. Алдымен Профильде қосыңыз.",
+    spotLabel: "Орын", noCarsAddFirst: "Тіркелген көлік жоқ. Алдымен Жеке бетте қосыңыз.",
     pricing: "Баға",
-    firstHourDetail: "Бірінші сағат: 150 ₸ (минимум)",
+    firstHourDetail: "Бірінші сағат: 150 ₸ (ең аз)",
     afterFirstHour: "Бірінші сағаттан кейін: 3 ₸/мин",
     arrivalWindow: "15 мин тегін күту уақыты",
     extendedWaitingInfo: "Күту ұзартылуы: +75 ₸, 30 мин",
@@ -194,9 +199,14 @@ const translations = {
     deleteAccountTitle: "Аккаунтты жою?",
     deleteAccountMsg: "Бұл әрекетті болдырмау мүмкін емес. Барлық деректеріңіз, соның ішінде көліктер мен брондау тарихы, біржола жойылады.",
     delete: "Жою",
+    yourProfile: "Профиліңіз", yourCars: "Сіздің көліктерім",
+    tellUsName: "Атыңызды жазыңыз", addYourCars: "Көлігіңізді қосыңыз",
+    personalInfo: "Жеке ақпарат", firstNameLabel: "Аты", lastNameLabel: "Тегі",
+    addCar: "Көлік қосу", skipAndContinue: "Өткізу", continueBtn: "Жалғастыру",
+    brandLabel: "Маркасы", modelLabel: "Моделі", plateLabel: "Нөмірі", done: "Дайын",
   },
   ru: {
-    home: "Главная", map: "Карта", booking: "Бронирование", wallet: "Кошелёк", profile: "Профиль",
+    home: "Главная", map: "Карта", booking: "Бронь", wallet: "Кошелёк", profile: "Профиль",
     settings: "Настройки", appearance: "Внешний вид", darkMode: "Тёмный режим",
     language: "Язык", notifications: "Уведомления", pushNotifications: "Push-уведомления",
     securityPrivacy: "Безопасность и конфиденциальность", privacyPolicy: "Политика конфиденциальности",
@@ -290,6 +300,11 @@ const translations = {
     deleteAccountTitle: "Удалить аккаунт?",
     deleteAccountMsg: "Это действие нельзя отменить. Все данные, включая автомобили и историю бронирований, будут удалены навсегда.",
     delete: "Удалить",
+    yourProfile: "Ваш профиль", yourCars: "Мои авто",
+    tellUsName: "Укажите ваше имя", addYourCars: "Добавьте ваш авто",
+    personalInfo: "Личные данные", firstNameLabel: "Имя", lastNameLabel: "Фамилия",
+    addCar: "Добавить авто", skipAndContinue: "Пропустить", continueBtn: "Продолжить",
+    brandLabel: "Марка", modelLabel: "Модель", plateLabel: "Номер", done: "Готово",
   },
 }
 
@@ -503,7 +518,7 @@ export function ParkingProvider({ children }: { children: ReactNode }) {
             })
             if (br.ok) {
               const restored = await br.json()
-              if (restored) setActiveBooking(restored)
+              setActiveBooking(restored ?? null)
             }
           } catch {}
         } else {
