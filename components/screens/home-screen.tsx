@@ -5,7 +5,10 @@ import { useParking, mapDbUser } from "@/lib/parking-context"
 import Image from "next/image"
 
 export function HomeScreen() {
-  const { setCurrentScreen, user, setUser, activeBooking, t } = useParking()
+  const { setCurrentScreen, user, setUser, activeBooking, t, spots } = useParking()
+
+  const freeShortTerm = spots.filter(s => s.type === "short-term" && s.status === "FREE").length
+  const freeLongTerm = spots.filter(s => s.type === "long-term" && s.status === "FREE").length
   const [activeTab, setActiveTab] = useState("home")
 
   useEffect(() => {
@@ -27,7 +30,7 @@ export function HomeScreen() {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-      <div className="px-6 py-4 pb-24">
+      <div className="px-6 py-4 content-bottom-pad">
         <div className="bg-[#495E8E] rounded-b-[20px] p-4 pb-6 mb-6 shadow-md flex flex-col">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-3">
@@ -78,15 +81,15 @@ export function HomeScreen() {
         <div className="mb-8">
           <div className="grid grid-cols-2 gap-6">
             <button onClick={() => setCurrentScreen("map")} className="bg-[#F0EDED] dark:bg-gray-800 rounded-[20px] p-5 text-left hover:bg-[#E5DCDC] dark:hover:bg-gray-700 transition-colors" style={{boxShadow: '0 10px 20px rgba(0,0,0,0.08)'}}>
-              <h4 className="text-[#333333] dark:text-white font-extrabold text-lg mb-3">{t.shortTerm}</h4>
-              <p className="text-gray-600 dark:text-gray-400 text-sm mb-4">12 {t.spotsAvailable}</p>
+              <h4 className="text-[#333333] dark:text-white font-extrabold text-sm leading-tight mb-3">{t.shortTerm}</h4>
+              <p className="text-gray-600 dark:text-gray-400 text-sm mb-4">{freeShortTerm} {t.spotsAvailable}</p>
               <div className="flex gap-2">
                 {[1,2,3].map(i => <div key={i} className="w-3 h-3 bg-green-500 rounded-full" />)}
               </div>
             </button>
             <button onClick={() => setCurrentScreen("map")} className="bg-[#F0EDED] dark:bg-gray-800 rounded-[20px] p-5 text-left hover:bg-[#E5DCDC] dark:hover:bg-gray-700 transition-colors" style={{boxShadow: '0 10px 20px rgba(0,0,0,0.08)'}}>
-              <h4 className="text-[#333333] dark:text-white font-extrabold text-lg mb-3">{t.longTerm}</h4>
-              <p className="text-gray-600 dark:text-gray-400 text-sm mb-4">8 {t.spotsAvailable}</p>
+              <h4 className="text-[#333333] dark:text-white font-extrabold text-sm leading-tight mb-3">{t.longTerm}</h4>
+              <p className="text-gray-600 dark:text-gray-400 text-sm mb-4">{freeLongTerm} {t.spotsAvailable}</p>
               <div className="flex gap-2">
                 {[1,2].map(i => <div key={i} className="w-3 h-3 bg-green-500 rounded-full" />)}
               </div>
@@ -137,8 +140,8 @@ export function HomeScreen() {
         </div>
       </div>
 
-      <div className="absolute bottom-0 left-0 right-0 h-20 bg-white dark:bg-gray-900 border-t border-gray-300 dark:border-gray-700 z-50 shadow-lg">
-        <div className="flex justify-around items-center h-full px-4">
+      <div className="absolute bottom-0 left-0 right-0 bottom-nav bg-white dark:bg-gray-900 border-t border-gray-300 dark:border-gray-700 z-50 shadow-lg">
+        <div className="flex justify-around items-center px-4" style={{height: '64px'}}>
           {navItems.map((item) => (
             <button key={item.id} onClick={() => setCurrentScreen(item.id)} className="flex flex-col items-center justify-center gap-0.5 p-3 transition-all hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl active:scale-95">
               <div className="w-8 h-8 flex items-center justify-center">

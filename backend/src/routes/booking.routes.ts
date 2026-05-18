@@ -51,7 +51,17 @@ router.get('/active', async (req: Request, res: Response) => {
 router.get('/restore', async (req: Request, res: Response) => {
   try {
     const userId = req.userId!;
+    const now = new Date();
+    const expiredCutoff = new Date(now.getTime() - 30 * 60 * 1000);
 
+    await prisma.booking.updateMany({
+      where: {
+        userId,
+        status: 'PENDING',
+        startTime: { lt: expiredCutoff },
+      },
+      data: { status: 'CANCELLED' },
+    });
 
     const booking = await prisma.booking.findFirst({
       where: { userId, status: { in: ['PENDING', 'CONFIRMED'] } },
@@ -72,7 +82,6 @@ router.get('/restore', async (req: Request, res: Response) => {
         waitingFee: 0,
       });
     }
-
 
     const rental = await prisma.longTermRental.findFirst({
       where: { userId, status: 'ACTIVE' },

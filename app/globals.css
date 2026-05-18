@@ -135,5 +135,26 @@
   }
   body {
     @apply bg-background text-foreground;
+    padding-top: env(safe-area-inset-top);
   }
+}
+
+/* Safe area utilities for iPhone notch / Dynamic Island / home indicator */
+.safe-top {
+  padding-top: env(safe-area-inset-top);
+}
+
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* Bottom nav: fixed height 64px + home indicator space */
+.bottom-nav {
+  height: calc(64px + env(safe-area-inset-bottom));
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* Content area bottom padding = nav height + home indicator */
+.content-bottom-pad {
+  padding-bottom: calc(64px + env(safe-area-inset-bottom) + 8px);
 }

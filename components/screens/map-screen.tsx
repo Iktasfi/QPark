@@ -61,7 +61,7 @@ export function MapScreen() {
         </div>
       </div>
 
-      <div className="px-4 py-4 pb-24 space-y-6">
+      <div className="px-4 py-4 content-bottom-pad space-y-6">
         <div>
           <div className="mb-3 flex items-center justify-between">
             <h2 className="font-semibold text-gray-900 dark:text-white">{t.shortTermSection}</h2>
@@ -125,8 +125,8 @@ export function MapScreen() {
         </div>
       </div>
 
-      <div className="absolute bottom-0 left-0 right-0 h-20 bg-white dark:bg-gray-900 border-t border-gray-300 dark:border-gray-700 z-50 shadow-lg">
-        <div className="flex justify-around items-center h-full px-4">
+      <div className="absolute bottom-0 left-0 right-0 bottom-nav bg-white dark:bg-gray-900 border-t border-gray-300 dark:border-gray-700 z-50 shadow-lg">
+        <div className="flex justify-around items-center px-4" style={{height: '64px'}}>
           {navItems.map((item) => (
             <button key={item.id} onClick={() => setCurrentScreen(item.id)} className="flex flex-col items-center justify-center gap-0.5 p-3 transition-all hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl active:scale-95">
               <div className="w-8 h-8 flex items-center justify-center">

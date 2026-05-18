@@ -9,11 +9,11 @@ import Image from "next/image"
 const privacyContent: Record<Language, { sections: { title: string; body: string }[] }> = {
   en: {
     sections: [
-      { title: "1. Information We Collect", body: "We collect information you provide directly, including your phone number, name, vehicle information, and payment details when you use our parking services." },
+      { title: "1. Information We Collect", body: "We collect information you provide directly, including your phone number, name, car information, and payment details when you use our parking services." },
       { title: "2. How We Use Your Information", body: "Your information is used to provide parking services, process payments, send notifications about your parking sessions, and improve our application." },
       { title: "3. Data Storage", body: "Your data is securely stored on encrypted servers. We retain your information only as long as necessary to provide our services." },
       { title: "4. Data Sharing", body: "We do not sell your personal information. We may share data with parking operators and payment processors only as necessary to provide services." },
-      { title: "5. Your Rights", body: "You have the right to access, correct, or delete your personal data. Contact us at privacy@qpark.kz to exercise these rights." },
+      { title: "5. Your Rights", body: "You have the right to access, correct, or delete your personal data. Contact us at 231074@astanait.edu.kz to exercise these rights." },
     ],
   },
   kk: {
@@ -22,7 +22,7 @@ const privacyContent: Record<Language, { sections: { title: string; body: string
       { title: "2. Ақпаратты пайдалану", body: "Сіздің ақпаратыңыз парковка қызметтерін ұсыну, төлемдерді өңдеу, сессиялар туралы хабарландырулар жіберу және қосымшамызды жетілдіру үшін пайдаланылады." },
       { title: "3. Деректерді сақтау", body: "Деректеріңіз шифрланған серверлерде қауіпсіз сақталады. Қызметтерімізді ұсыну үшін қажет болған уақытқа ғана сақталады." },
       { title: "4. Деректерді бөлісу", body: "Жеке ақпаратыңызды сатпаймыз. Тек қызмет ұсыну үшін қажет болған жағдайда парковка операторлары мен төлем өңдеушілермен бөлісеміз." },
-      { title: "5. Сіздің құқықтарыңыз", body: "Жеке деректеріңізге қол жеткізу, түзету немесе жою құқығыңыз бар. privacy@qpark.kz мекенжайына хабарласыңыз." },
+      { title: "5. Сіздің құқықтарыңыз", body: "Жеке деректеріңізге қол жеткізу, түзету немесе жою құқығыңыз бар. 231074@astanait.edu.kz мекенжайына хабарласыңыз." },
     ],
   },
   ru: {
@@ -31,7 +31,7 @@ const privacyContent: Record<Language, { sections: { title: string; body: string
       { title: "2. Использование информации", body: "Ваши данные используются для предоставления услуг парковки, обработки платежей, отправки уведомлений о сессиях и улучшения приложения." },
       { title: "3. Хранение данных", body: "Ваши данные надёжно хранятся на зашифрованных серверах. Мы храним их только столько, сколько необходимо для предоставления услуг." },
       { title: "4. Передача данных", body: "Мы не продаём вашу личную информацию. Данные могут передаваться операторам парковок и платёжным системам только при необходимости." },
-      { title: "5. Ваши права", body: "Вы имеете право на доступ, исправление или удаление ваших персональных данных. Свяжитесь с нами по адресу privacy@qpark.kz." },
+      { title: "5. Ваши права", body: "Вы имеете право на доступ, исправление или удаление ваших персональных данных. Свяжитесь с нами по адресу 231074@astanait.edu.kz." },
     ],
   },
 }
@@ -43,8 +43,8 @@ const termsContent: Record<Language, { sections: { title: string; body: string }
       { title: "2. Service Description", body: "QPark provides smart parking solutions including finding, reserving, and paying for parking spaces through our mobile application." },
       { title: "3. User Responsibilities", body: "Users must provide accurate information, follow parking regulations, and ensure timely payment for services used." },
       { title: "4. No-Show Policy", body: "Failure to use a reserved parking spot may result in penalties. After 6 no-shows, your account may be suspended." },
-      { title: "5. Limitation of Liability", body: "QPark is not responsible for vehicle damage, theft, or any incidents occurring in parking facilities." },
-      { title: "6. Contact", body: "For questions, contact us at support@qpark.kz or +7 708 239 51 19" },
+      { title: "5. Limitation of Liability", body: "QPark is not responsible for car damage, theft, or any incidents occurring in parking facilities." },
+      { title: "6. Contact", body: "For questions, contact us at 231074@astanait.edu.kz or +7 708 239 51 19" },
     ],
   },
   kk: {
@@ -54,7 +54,7 @@ const termsContent: Record<Language, { sections: { title: string; body: string }
       { title: "3. Пайдаланушы жауапкершілігі", body: "Пайдаланушылар дұрыс ақпарат беруі, парковка ережелерін сақтауы және қызметтер үшін уақытылы төлем жасауы керек." },
       { title: "4. Келмеу саясаты", body: "Брондалған орынды пайдаланбау айыппұлға алып келуі мүмкін. 6 рет келмегеннен кейін аккаунт тоқтатылуы мүмкін." },
       { title: "5. Жауапкершілікті шектеу", body: "QPark парковка орнында болған көлік зақымдану, ұрлық немесе басқа оқиғалар үшін жауапты емес." },
-      { title: "6. Байланыс", body: "Сұрақтар бойынша: support@qpark.kz немесе +7 708 239 51 19" },
+      { title: "6. Байланыс", body: "Сұрақтар бойынша: 231074@astanait.edu.kz немесе +7 708 239 51 19" },
     ],
   },
   ru: {
@@ -64,7 +64,7 @@ const termsContent: Record<Language, { sections: { title: string; body: string }
       { title: "3. Ответственность пользователя", body: "Пользователи обязаны предоставлять достоверную информацию, соблюдать правила парковки и своевременно оплачивать услуги." },
       { title: "4. Политика неявки", body: "Неиспользование забронированного места может повлечь штрафы. После 6 неявок аккаунт может быть заблокирован." },
       { title: "5. Ограничение ответственности", body: "QPark не несёт ответственности за повреждение, кражу транспортного средства или иные инциденты на парковке." },
-      { title: "6. Контакт", body: "По вопросам: support@qpark.kz или +7 708 239 51 19" },
+      { title: "6. Контакт", body: "По вопросам: 231074@astanait.edu.kz или +7 708 239 51 19" },
     ],
   },
 }
@@ -384,8 +384,8 @@ export function ProfileScreen() {
           </div>
         )}
 
-        <div className={`absolute bottom-0 left-0 right-0 h-20 ${darkMode ? "bg-gray-800 border-gray-700" : "bg-white border-gray-200"} border-t z-40`}>
-          <div className="flex justify-around items-center h-full px-4">
+        <div className={`absolute bottom-0 left-0 right-0 bottom-nav ${darkMode ? "bg-gray-800 border-gray-700" : "bg-white border-gray-200"} border-t z-40`}>
+          <div className="flex justify-around items-center px-4" style={{height: '64px'}}>
             {[
               { id: "home", icon: "/Home_light.svg", activeIcon: "/Home_light_active.svg", labelKey: "home" as const, active: false },
               { id: "map", icon: "/Map_light.svg", activeIcon: "/Map_light_active.svg", labelKey: "map" as const, active: false },
@@ -499,11 +499,11 @@ export function ProfileScreen() {
               <AlertTriangle className="w-6 h-6 text-white" />
               <div>
                 <p className="font-semibold text-white">{t.noShowCounter}</p>
-                <p className="text-sm text-white/70">{user?.noShowCount || 1} of 6 (ban at 6)</p>
+                <p className="text-sm text-white/70">{user?.noShowCount ?? 0} of 6 (ban at 6)</p>
               </div>
             </div>
             <span className="px-3 py-1 bg-white/20 rounded-full text-xs font-medium text-white">
-              {user?.noShowCount || 1}/6
+              {user?.noShowCount ?? 0}/6
             </span>
           </div>
         </div>
@@ -591,8 +591,8 @@ export function ProfileScreen() {
         </button>
       </div>
 
-      <div className={`absolute bottom-0 left-0 right-0 h-20 ${darkMode ? "bg-gray-800 border-gray-700" : "bg-white border-gray-200"} border-t z-50`}>
-        <div className="flex justify-around items-center h-full px-4">
+      <div className={`absolute bottom-0 left-0 right-0 bottom-nav ${darkMode ? "bg-gray-800 border-gray-700" : "bg-white border-gray-200"} border-t z-50`}>
+        <div className="flex justify-around items-center px-4" style={{height: '64px'}}>
           {[
             { id: "home", icon: "/Home_light.svg", activeIcon: "/Home_light_active.svg", labelKey: "home" as const, active: false },
             { id: "map", icon: "/Map_light.svg", activeIcon: "/Map_light_active.svg", labelKey: "map" as const, active: false },

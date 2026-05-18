@@ -66,9 +66,9 @@ export function ActiveBookingScreen() {
   }
   
   const calculateCost = () => {
-    if (isLongTerm) return 0 // Already paid
+    if (isLongTerm) return 0
     const minutes = Math.ceil(parkingDuration / 60)
-    if (minutes <= 60) return 150 // First hour minimum
+    if (minutes <= 60) return 150
     const extraMinutes = minutes - 60
     return 150 + (extraMinutes * 3)
   }
@@ -190,7 +190,7 @@ export function ActiveBookingScreen() {
         headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         body: JSON.stringify({ spotNumber: activeBooking?.spotId }),
       })
-    } catch { /* ignore — UI already cleared */ }
+    } catch {}
   }, [selectedSpot, activeBooking, updateSpot, setActiveBooking, setCurrentScreen])
 
   const handleTerminateRental = useCallback(async () => {
@@ -303,7 +303,7 @@ export function ActiveBookingScreen() {
   }
 
   return (
-    <div className="flex flex-col gap-4 p-4 pb-24">
+    <div className="flex flex-col gap-4 p-4 content-bottom-pad">
       <div className="flex items-center justify-between">
         <div className="w-16" />
         <div className="flex-1 text-center">
@@ -672,8 +672,8 @@ export function ActiveBookingScreen() {
         </div>
       )}
 
-      <div className="absolute bottom-0 left-0 right-0 h-20 bg-white dark:bg-gray-900 border-t border-gray-300 dark:border-gray-700 z-50 shadow-lg">
-        <div className="flex justify-around items-center h-full px-4">
+      <div className="absolute bottom-0 left-0 right-0 bottom-nav bg-white dark:bg-gray-900 border-t border-gray-300 dark:border-gray-700 z-50 shadow-lg">
+        <div className="flex justify-around items-center px-4" style={{height: '64px'}}>
           {[
             { id: "home", icon: "/Home_light.svg", activeIcon: "/Home_light_active.svg", label: t.home, active: false },
             { id: "map", icon: "/Map_light.svg", activeIcon: "/Map_light_active.svg", label: t.map, active: false },

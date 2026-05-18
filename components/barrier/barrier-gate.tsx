@@ -16,7 +16,7 @@ const OPEN_DURATION_MS = 4000
 export function BarrierGate() {
   const [gateEvent, setGateEvent] = useState<GateEvent | null>(null)
   const [isOpen, setIsOpen] = useState(false)
-  const [armAngle, setArmAngle] = useState(0) // 0 = closed, -90 = open
+  const [armAngle, setArmAngle] = useState(0)
   const [history, setHistory] = useState<(GateEvent & { time: string })[]>([])
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const animRef = useRef<ReturnType<typeof setInterval> | null>(null)

@@ -37,7 +37,7 @@ router.get('/spots', async (req: Request, res: Response) => {
           row.push({
             spotNumber: spot.spotNumber,
             icon: statusIcons[spot.status as keyof typeof statusIcons] || '⚪',
-            status: statusText[spot.status as keyof typeof statusText] || 'Неизвестно',
+            status: spot.status,
             carPlate: spot.currentUserPlate || '-',
             type: type
           });
@@ -76,11 +76,11 @@ router.get('/spots', async (req: Request, res: Response) => {
       title: '🚗 Парковка QPark - Текущий статус',
       lastUpdated: new Date().toLocaleString('ru-RU'),
       legend: {
-        '🟢': 'Свободно',
-        '🟡': 'Забронировано',
-        '🔴': 'Занято',
-        '🟠': 'Резерв',
-        '🔧': 'Ремонт'
+        'FREE': 'Свободно',
+        'BOOKED': 'Забронировано',
+        'OCCUPIED': 'Занято',
+        'RESERVED': 'Резерв',
+        'REPAIR': 'Ремонт'
       },
       statistics: stats,
       tables: {
