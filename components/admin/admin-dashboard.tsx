@@ -85,7 +85,11 @@ export function AdminDashboard() {
   const [dbBookings, setDbBookings] = useState<DbBooking[]>([])
   const [dbRentals, setDbRentals] = useState<DbRental[]>([])
   const [dbTransactions, setDbTransactions] = useState<DbTransaction[]>([])
-  const [activeTab, setActiveTab] = useState<"spots" | "users" | "bookings" | "transactions">("spots")
+  const [activeTab, setActiveTab] = useState<"spots" | "users" | "bookings" | "transactions" | "promo">("spots")
+  const [promoCodes, setPromoCodes] = useState<{id: string; code: string; discount: number; type: string; usedCount: number; maxUses: number | null; isActive: boolean; expiresAt: string | null}[]>([])
+  const [newPromo, setNewPromo] = useState({ code: "", discount: "", type: "FIXED", maxUses: "" })
+  const [promoLoading, setPromoLoading] = useState(false)
+  const [promoError, setPromoError] = useState("")
 
   const addLiveEvent = (type: LiveEvent["type"], data: Record<string, unknown>) => {
     const event: LiveEvent = {
@@ -177,6 +181,11 @@ export function AdminDashboard() {
           headers: { Authorization: `Bearer ${token}` },
         })
         if (txRes.ok) setDbTransactions(await txRes.json())
+      }
+      const token2 = typeof window !== "undefined" ? localStorage.getItem("qpark_token") : null
+      if (token2) {
+        const promoRes = await fetch("/backend/payment/promo/all", { headers: { Authorization: `Bearer ${token2}` } })
+        if (promoRes.ok) setPromoCodes(await promoRes.json())
       }
       setError(null)
     } catch (err) {
@@ -493,12 +502,13 @@ export function AdminDashboard() {
         </Card>
 
         <div className="flex flex-wrap gap-2 mb-6">
-          {(["spots", "users", "bookings", "transactions"] as const).map(tab => (
+          {(["spots", "users", "bookings", "transactions", "promo"] as const).map(tab => (
             <button key={tab} onClick={() => setActiveTab(tab)}
               className={`px-4 py-2 rounded-lg font-medium text-sm transition-colors ${activeTab === tab ? "bg-[#354469] text-white" : "bg-white text-gray-600 hover:bg-gray-100 border"}`}>
               {tab === "spots"        ? `Места (${parkingData.statistics.total})`
                : tab === "users"     ? `Пользователи (${dbUsers.length})`
                : tab === "bookings"  ? `Бронирования (${dbBookings.length + dbRentals.length})`
+               : tab === "promo"     ? `Промокоды (${promoCodes.length})`
                :                      `Транзакции (${dbTransactions.length})`}
             </button>
           ))}
@@ -671,6 +681,104 @@ export function AdminDashboard() {
               )}
             </CardContent>
           </Card>
+        )}
+
+        {activeTab === "promo" && (
+          <div className="space-y-4">
+            <Card>
+              <CardHeader><CardTitle>Создать промокод</CardTitle></CardHeader>
+              <CardContent className="space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs text-gray-500 mb-1 block">Код</label>
+                    <input value={newPromo.code} onChange={e => setNewPromo({...newPromo, code: e.target.value.toUpperCase()})}
+                      placeholder="SUMMER20" className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#354469]" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500 mb-1 block">Скидка</label>
+                    <input value={newPromo.discount} onChange={e => setNewPromo({...newPromo, discount: e.target.value})}
+                      placeholder="100" type="number" className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#354469]" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500 mb-1 block">Тип</label>
+                    <select value={newPromo.type} onChange={e => setNewPromo({...newPromo, type: e.target.value})}
+                      className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#354469]">
+                      <option value="FIXED">Фиксированная (₸)</option>
+                      <option value="PERCENTAGE">Процент (%)</option>
+                      <option value="FIRST_RIDE">Первая поездка</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500 mb-1 block">Макс. использований</label>
+                    <input value={newPromo.maxUses} onChange={e => setNewPromo({...newPromo, maxUses: e.target.value})}
+                      placeholder="Без лимита" type="number" className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#354469]" />
+                  </div>
+                </div>
+                {promoError && <p className="text-red-500 text-sm">{promoError}</p>}
+                <button
+                  disabled={promoLoading || !newPromo.code || !newPromo.discount}
+                  onClick={async () => {
+                    setPromoLoading(true); setPromoError("")
+                    try {
+                      const token = localStorage.getItem("qpark_token")
+                      const res = await fetch("/backend/payment/promo/create", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+                        body: JSON.stringify({ code: newPromo.code, discount: Number(newPromo.discount), type: newPromo.type, maxUses: newPromo.maxUses ? Number(newPromo.maxUses) : undefined }),
+                      })
+                      const data = await res.json()
+                      if (!res.ok) throw new Error(data.error)
+                      setPromoCodes(prev => [data, ...prev])
+                      setNewPromo({ code: "", discount: "", type: "FIXED", maxUses: "" })
+                    } catch (err) {
+                      setPromoError(err instanceof Error ? err.message : "Ошибка")
+                    } finally { setPromoLoading(false) }
+                  }}
+                  className="w-full py-2 bg-[#354469] text-white rounded-lg font-medium text-sm disabled:opacity-50"
+                >
+                  {promoLoading ? "Создание..." : "Создать промокод"}
+                </button>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader><CardTitle>Все промокоды ({promoCodes.length})</CardTitle></CardHeader>
+              <CardContent>
+                {promoCodes.length === 0 ? (
+                  <p className="text-gray-400 text-center py-8">Промокодов пока нет</p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b text-left text-gray-500">
+                          <th className="pb-2 pr-3">Код</th>
+                          <th className="pb-2 pr-3">Скидка</th>
+                          <th className="pb-2 pr-3">Тип</th>
+                          <th className="pb-2 pr-3">Использован</th>
+                          <th className="pb-2">Статус</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {promoCodes.map(p => (
+                          <tr key={p.id} className="border-b last:border-0 hover:bg-gray-50">
+                            <td className="py-2 pr-3 font-mono font-bold">{p.code}</td>
+                            <td className="py-2 pr-3">{p.discount}{p.type === "PERCENTAGE" ? "%" : "₸"}</td>
+                            <td className="py-2 pr-3 text-xs text-gray-500">{p.type}</td>
+                            <td className="py-2 pr-3 text-xs">{p.usedCount}{p.maxUses ? `/${p.maxUses}` : ""}</td>
+                            <td className="py-2">
+                              <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${p.isActive ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
+                                {p.isActive ? "Активен" : "Неактивен"}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
         )}
       </div>
     </div>
