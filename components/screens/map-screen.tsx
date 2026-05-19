@@ -36,7 +36,7 @@ export function MapScreen() {
   ]
 
   return (
-    <div className="relative mx-auto max-w-md min-h-screen bg-gray-50 dark:bg-gray-900 overflow-hidden">
+    <div className="relative mx-auto max-w-md h-screen bg-gray-50 dark:bg-gray-900 flex flex-col overflow-hidden">
       <div className="bg-white dark:bg-gray-800 shadow-sm px-4 py-3">
         <div className="flex items-center justify-between">
           <button onClick={() => setCurrentScreen("home")} className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
@@ -61,7 +61,7 @@ export function MapScreen() {
         </div>
       </div>
 
-      <div className="px-4 py-4 content-bottom-pad space-y-6">
+      <div className="flex-1 overflow-y-auto px-4 py-4 pb-24 space-y-6">
         <div>
           <div className="mb-3 flex items-center justify-between">
             <h2 className="font-semibold text-gray-900 dark:text-white">{t.shortTermSection}</h2>
