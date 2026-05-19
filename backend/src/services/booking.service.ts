@@ -4,7 +4,7 @@ import { prisma } from '../lib/prisma';
 
 export class BookingService {
 
-  async createShortTermBooking(userId: string, spotId: string) {
+  async createShortTermBooking(userId: string, spotId: string, plateNumber: string = '') {
     try {
       const now = new Date();
       const estimatedEndTime = new Date(now.getTime() + 15 * 60 * 1000);
@@ -13,6 +13,7 @@ export class BookingService {
         data: {
           userId,
           spotId,
+          plateNumber,
           startTime: now,
           estimatedEndTime,
           status: 'PENDING',
