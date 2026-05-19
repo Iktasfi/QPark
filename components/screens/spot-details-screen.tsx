@@ -146,7 +146,7 @@ export function SpotDetailsScreen() {
   }
 
   return (
-    <div className="flex flex-col gap-4 p-4 pb-24">
+    <div className="h-full overflow-y-auto flex flex-col gap-4 p-4 pb-28">
       <div className="flex items-center gap-3">
         <Button
           variant="ghost"

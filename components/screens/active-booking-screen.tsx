@@ -250,7 +250,7 @@ export function ActiveBookingScreen() {
               <div className="w-6 h-6 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
             </div>
           ) : history.length === 0 ? (
-            <div className="flex flex-col items-center justify-center gap-4 py-16">
+            <div className="flex flex-col items-center justify-center gap-4 py-8">
               <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted">
                 <Car className="h-8 w-8 text-muted-foreground" />
               </div>
