@@ -224,3 +224,25 @@ enum LPREventType {
   ENTRY
   EXIT
 }
+
+// ─── PROMO CODES ─────────────────────────────────────────
+model PromoCode {
+  id         String        @id @default(cuid())
+  code       String        @unique
+  discount   Float
+  type       PromoCodeType
+  maxUses    Int?
+  usedCount  Int           @default(0)
+  isActive   Boolean       @default(true)
+  expiresAt  DateTime?
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+
+  @@map("promo_codes")
+}
+
+enum PromoCodeType {
+  PERCENTAGE
+  FIXED
+  FIRST_RIDE
+}

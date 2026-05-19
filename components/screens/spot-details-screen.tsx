@@ -25,6 +25,10 @@ export function SpotDetailsScreen() {
   const [bookingError, setBookingError] = useState("")
   const [showConflictModal, setShowConflictModal] = useState(false)
   const [insufficientBalance, setInsufficientBalance] = useState<{ need: number; have: number } | null>(null)
+  const [promoCode, setPromoCode] = useState("")
+  const [promoApplied, setPromoApplied] = useState<{ discount: number; code: string } | null>(null)
+  const [promoError, setPromoError] = useState("")
+  const [promoLoading, setPromoLoading] = useState(false)
 
   if (!selectedSpot) {
     return (
@@ -36,6 +40,28 @@ export function SpotDetailsScreen() {
 
   const isLongTerm = selectedSpot.type === "long-term"
   const selectedCarData = user?.cars.find(c => c.id === selectedCar)
+
+  const handleApplyPromo = async () => {
+    if (!promoCode.trim()) return
+    setPromoLoading(true)
+    setPromoError("")
+    try {
+      const token = localStorage.getItem("qpark_token")
+      const res = await fetch("/backend/payment/promo/apply", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ code: promoCode.trim(), amount: 150 }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      setPromoApplied({ discount: data.discountAmount, code: promoCode.trim().toUpperCase() })
+      setPromoCode("")
+    } catch (err) {
+      setPromoError(err instanceof Error ? err.message : "Неверный промокод")
+    } finally {
+      setPromoLoading(false)
+    }
+  }
 
   const handleBookNow = async () => {
     if (!selectedCarData || !user) return
@@ -289,6 +315,32 @@ export function SpotDetailsScreen() {
           </div>
         </CardContent>
       </Card>
+
+      <div className="w-full space-y-2">
+        {promoApplied ? (
+          <div className="flex items-center justify-between px-3 py-2 bg-green-50 dark:bg-green-900/20 rounded-xl border border-green-200 dark:border-green-700">
+            <span className="text-green-700 dark:text-green-400 text-sm font-medium">🎉 {promoApplied.code} — скидка {promoApplied.discount}₸</span>
+            <button onClick={() => setPromoApplied(null)} className="text-green-600 text-xs underline">Убрать</button>
+          </div>
+        ) : (
+          <div className="flex gap-2">
+            <input
+              value={promoCode}
+              onChange={e => { setPromoCode(e.target.value.toUpperCase()); setPromoError("") }}
+              placeholder="Промокод"
+              className="flex-1 px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-[#354469]"
+            />
+            <button
+              onClick={handleApplyPromo}
+              disabled={promoLoading || !promoCode.trim()}
+              className="px-4 py-2 bg-[#354469] text-white rounded-xl text-sm font-medium disabled:opacity-50"
+            >
+              {promoLoading ? "..." : "Применить"}
+            </button>
+          </div>
+        )}
+        {promoError && <p className="text-red-500 text-xs">{promoError}</p>}
+      </div>
 
       {bookingError && (
         <p className="text-red-500 text-sm text-center px-2">{bookingError}</p>

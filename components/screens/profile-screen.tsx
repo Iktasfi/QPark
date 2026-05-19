@@ -83,6 +83,10 @@ export function ProfileScreen() {
   const [showTermsOfService, setShowTermsOfService] = useState(false)
   const [showLanguageSelect, setShowLanguageSelect] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [promoCode, setPromoCode] = useState("")
+  const [promoLoading, setPromoLoading] = useState(false)
+  const [promoMessage, setPromoMessage] = useState<{ text: string; success: boolean } | null>(null)
+  const [showPromoInput, setShowPromoInput] = useState(false)
 
   useEffect(() => {
     const token = localStorage.getItem("qpark_token")
@@ -170,6 +174,28 @@ export function ProfileScreen() {
   const handleCancelEditName = () => {
     setEditedName(user?.name || "")
     setIsEditingName(false)
+  }
+
+  const handleApplyPromo = async () => {
+    if (!promoCode.trim()) return
+    setPromoLoading(true)
+    setPromoMessage(null)
+    try {
+      const token = localStorage.getItem("qpark_token")
+      const res = await fetch("/backend/payment/promo/apply", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ code: promoCode.trim(), amount: 0 }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      setPromoMessage({ text: `✅ Промокод применён! Скидка: ${data.discountAmount}₸`, success: true })
+      setPromoCode("")
+    } catch (err) {
+      setPromoMessage({ text: err instanceof Error ? err.message : "Неверный промокод", success: false })
+    } finally {
+      setPromoLoading(false)
+    }
   }
 
   if (showSettings) {
@@ -506,6 +532,49 @@ export function ProfileScreen() {
               {user?.noShowCount ?? 0}/6
             </span>
           </div>
+        </div>
+
+        <div className={`${darkMode ? "bg-[#5a6b87]" : "bg-[#7A8BA8]"} rounded-3xl p-4 mb-4 shadow-lg`}>
+          <button
+            onClick={() => { setShowPromoInput(!showPromoInput); setPromoMessage(null) }}
+            className="flex items-center justify-between w-full"
+          >
+            <div className="flex items-center gap-3">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-white">
+                <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" />
+                <rect x="9" y="3" width="6" height="4" rx="1" />
+                <path d="M9 12h6M9 16h4" />
+              </svg>
+              <p className="font-semibold text-white">Промокод</p>
+            </div>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={`text-white transition-transform ${showPromoInput ? "rotate-180" : ""}`}>
+              <path d="M6 9l6 6 6-6" />
+            </svg>
+          </button>
+          {showPromoInput && (
+            <div className="mt-3 pt-3 border-t border-white/20 space-y-2">
+              <div className="flex gap-2">
+                <input
+                  value={promoCode}
+                  onChange={e => setPromoCode(e.target.value.toUpperCase())}
+                  placeholder="Введите промокод"
+                  className="flex-1 px-3 py-2 rounded-xl bg-white/10 border border-white/20 text-white placeholder:text-white/50 text-sm focus:outline-none focus:border-white/50"
+                />
+                <button
+                  onClick={handleApplyPromo}
+                  disabled={promoLoading || !promoCode.trim()}
+                  className="px-4 py-2 bg-white text-[#495E8E] rounded-xl font-semibold text-sm disabled:opacity-50"
+                >
+                  {promoLoading ? "..." : "Применить"}
+                </button>
+              </div>
+              {promoMessage && (
+                <p className={`text-sm ${promoMessage.success ? "text-green-300" : "text-red-300"}`}>
+                  {promoMessage.text}
+                </p>
+              )}
+            </div>
+          )}
         </div>
 
         <div className={`${darkMode ? "bg-[#5a6b87]" : "bg-[#7A8BA8]"} rounded-3xl p-4 mb-4 shadow-lg`}>
