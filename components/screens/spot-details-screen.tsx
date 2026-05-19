@@ -47,7 +47,7 @@ export function SpotDetailsScreen() {
     setPromoError("")
     try {
       const token = localStorage.getItem("qpark_token")
-      const res = await fetch("/backend/payment/promo/apply", {
+      const res = await fetch("/backend/payments/promo/apply", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ code: promoCode.trim(), amount: 150 }),
