@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from 'react'
 import Image from 'next/image'
 import { auth } from '@/lib/firebase'
 import { RecaptchaVerifier, signInWithPhoneNumber, type ConfirmationResult } from 'firebase/auth'
-import { useParking } from '@/lib/parking-context'
+import { ParkingProvider, useParking } from '@/lib/parking-context'
 
 declare global {
   interface Window {
@@ -12,7 +12,7 @@ declare global {
   }
 }
 
-export default function AuthPage() {
+function AuthPage() {
   const { setIsAuthenticated, setUser } = useParking()
   const [step, setStep] = useState(1)
   const [phoneNumber, setPhoneNumber] = useState('+7')
@@ -252,5 +252,13 @@ export default function AuthPage() {
         </div>
       )}
     </div>
+  )
+}
+
+export default function AuthPageWrapper() {
+  return (
+    <ParkingProvider>
+      <AuthPage />
+    </ParkingProvider>
   )
 }
