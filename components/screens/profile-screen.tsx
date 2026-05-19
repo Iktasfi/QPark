@@ -185,7 +185,7 @@ export function ProfileScreen() {
       const res = await fetch("/backend/payments/promo/apply", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ code: promoCode.trim(), amount: 0 }),
+        body: JSON.stringify({ code: promoCode.trim(), amount: 150 }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
