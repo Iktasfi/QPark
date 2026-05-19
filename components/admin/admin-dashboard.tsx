@@ -179,7 +179,7 @@ export function AdminDashboard() {
       }
       const token2 = typeof window !== "undefined" ? localStorage.getItem("qpark_token") : null
       if (token2) {
-        const promoRes = await fetch("/backend/payment/promo/all", { headers: { Authorization: `Bearer ${token2}` } })
+        const promoRes = await fetch("/backend/payments/promo/all", { headers: { Authorization: `Bearer ${token2}` } })
         if (promoRes.ok) setPromoCodes(await promoRes.json())
       }
       setError(null)
@@ -671,7 +671,7 @@ export function AdminDashboard() {
                   setPromoLoading(true); setPromoError("")
                   try {
                     const token = localStorage.getItem("qpark_token")
-                    const res = await fetch("/backend/payment/promo/create", {
+                    const res = await fetch("/backend/payments/promo/create", {
                       method: "POST",
                       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
                       body: JSON.stringify({ code: newPromo.code, discount: Number(newPromo.discount), type: newPromo.type, maxUses: newPromo.maxUses ? Number(newPromo.maxUses) : undefined }),
