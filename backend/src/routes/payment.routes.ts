@@ -99,10 +99,41 @@ router.post('/promo/apply', validatePromoCode, async (req: Request, res: Respons
 router.get('/promo/codes', async (req: Request, res: Response) => {
   try {
     const promoCodes = await promoCodeService.getActivePromoCodes();
-
     res.json(promoCodes);
   } catch (error) {
     logger.error('❌ Error fetching promo codes:', error);
+    res.status(500).json({ error: 'Failed to fetch promo codes' });
+  }
+});
+
+
+router.post('/promo/create', async (req: Request, res: Response) => {
+  try {
+    const { code, discount, type, maxUses, expiresAt } = req.body;
+    if (!code || !discount || !type) {
+      return res.status(400).json({ error: 'code, discount and type are required' });
+    }
+    const promo = await promoCodeService.createPromoCode({
+      code,
+      discount: Number(discount),
+      type,
+      maxUses: maxUses ? Number(maxUses) : undefined,
+      expiresAt: expiresAt ? new Date(expiresAt) : undefined,
+    });
+    res.status(201).json(promo);
+  } catch (error) {
+    logger.error('❌ Error creating promo code:', error);
+    res.status(400).json({ error: error instanceof Error ? error.message : 'Failed to create promo code' });
+  }
+});
+
+
+router.get('/promo/all', async (req: Request, res: Response) => {
+  try {
+    const promoCodes = await promoCodeService.getAllPromoCodes();
+    res.json(promoCodes);
+  } catch (error) {
+    logger.error('❌ Error fetching all promo codes:', error);
     res.status(500).json({ error: 'Failed to fetch promo codes' });
   }
 });
