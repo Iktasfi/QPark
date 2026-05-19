@@ -78,12 +78,13 @@ router.get('/transactions', async (req: Request, res: Response) => {
 });
 
 
-router.post('/promo/apply', validatePromoCode, async (req: Request, res: Response) => {
+router.post('/promo/apply', async (req: Request, res: Response) => {
   try {
     const { code, amount } = req.body;
     const userId = req.userId!;
+    if (!code) return res.status(400).json({ error: 'Promo code is required' });
 
-    const result = await promoCodeService.applyPromoCode(userId, code, amount);
+    const result = await promoCodeService.applyPromoCode(userId, code, Number(amount) || 0);
 
     res.json({
       ...result,
