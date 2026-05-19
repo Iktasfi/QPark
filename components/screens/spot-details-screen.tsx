@@ -355,7 +355,7 @@ export function SpotDetailsScreen() {
         {isBooking ? t.bookingLabel : t.bookNowBtn}
       </Button>
 
-      <div className="absolute bottom-0 left-0 right-0 h-20 bg-white dark:bg-gray-900 border-t border-gray-300 dark:border-gray-700 z-50 shadow-lg">
+      <div className="fixed bottom-0 left-0 right-0 h-20 bg-white dark:bg-gray-900 border-t border-gray-300 dark:border-gray-700 z-50 shadow-lg">
         <div className="flex justify-around items-center h-full px-4">
           {[
             { id: "home", icon: "/Home_light.svg", activeIcon: "/Home_light_active.svg", label: t.home, active: false },

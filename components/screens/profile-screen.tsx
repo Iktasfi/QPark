@@ -410,7 +410,7 @@ export function ProfileScreen() {
           </div>
         )}
 
-        <div className={`absolute bottom-0 left-0 right-0 bottom-nav ${darkMode ? "bg-gray-800 border-gray-700" : "bg-white border-gray-200"} border-t z-40`}>
+        <div className={`fixed bottom-0 left-0 right-0 bottom-nav ${darkMode ? "bg-gray-800 border-gray-700" : "bg-white border-gray-200"} border-t z-40`}>
           <div className="flex justify-around items-center px-4" style={{height: '64px'}}>
             {[
               { id: "home", icon: "/Home_light.svg", activeIcon: "/Home_light_active.svg", labelKey: "home" as const, active: false },
@@ -660,7 +660,7 @@ export function ProfileScreen() {
         </button>
       </div>
 
-      <div className={`absolute bottom-0 left-0 right-0 bottom-nav ${darkMode ? "bg-gray-800 border-gray-700" : "bg-white border-gray-200"} border-t z-50`}>
+      <div className={`fixed bottom-0 left-0 right-0 bottom-nav ${darkMode ? "bg-gray-800 border-gray-700" : "bg-white border-gray-200"} border-t z-50`}>
         <div className="flex justify-around items-center px-4" style={{height: '64px'}}>
           {[
             { id: "home", icon: "/Home_light.svg", activeIcon: "/Home_light_active.svg", labelKey: "home" as const, active: false },

@@ -169,7 +169,7 @@ export function WalletScreen() {
         </div>
       </div>
 
-      <div className={`absolute bottom-0 left-0 right-0 bottom-nav ${darkMode ? "bg-gray-800 border-gray-700" : "bg-white border-gray-200"} border-t z-10`}>
+      <div className={`fixed bottom-0 left-0 right-0 bottom-nav ${darkMode ? "bg-gray-800 border-gray-700" : "bg-white border-gray-200"} border-t z-10`}>
         <div className="flex justify-around items-center px-4" style={{height: '64px'}}>
           {navItems.map((item) => (
             <button
