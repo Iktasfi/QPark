@@ -432,7 +432,7 @@ export function AdminDashboard() {
               ))}
             </div>
             <div className="flex gap-2">
-              <Input placeholder="Номер машины" value={carPlate} onChange={(e) => setCarPlate(e.target.value)} className="text-sm rounded-xl" />
+              <input placeholder="Номер машины" value={carPlate} onChange={(e) => setCarPlate(e.target.value)} className="flex-1 px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#354469]/30 focus:border-[#354469]" />
               <button onClick={handleRefresh} className="px-3 py-2 bg-[#354469] text-white rounded-xl text-xs font-medium hover:bg-[#2a3654] transition-colors whitespace-nowrap">
                 🔄 Обновить
               </button>
