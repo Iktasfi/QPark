@@ -216,13 +216,30 @@ router.post('/lpr/exit-lpr', async (req: Request, res: Response) => {
 
     if (spot.type === 'SHORT_TERM') {
 
-      const booking = await prisma.booking.findFirst({
-        where: { spotId: spot.id, status: { in: ['PENDING', 'CONFIRMED', 'COMPLETED'] } },
+      const normalize = (p: string) => p.replace(/\s/g, '').toUpperCase();
+
+      // Ищем оплаченную бронь для этого места
+      const paidBooking = await prisma.booking.findFirst({
+        where: {
+          spotId: spot.id,
+          isPaid: true,
+          status: 'COMPLETED',
+        },
         orderBy: { createdAt: 'desc' },
       });
 
+      if (paidBooking) {
+        // Проверяем что номер совпадает с бронью
+        const plateOk = paidBooking.plateNumber
+          ? normalize(paidBooking.plateNumber) === normalize(carPlate)
+          : true;
 
-      if (booking?.isPaid) {
+        if (!plateOk) {
+          io.emit('lpr-gate-denied', { carPlate, spotNumber, reason: 'Номер не совпадает с оплаченной бронью' });
+          logger.warn(`⛔ LPR exit denied (plate mismatch): ${carPlate} vs ${paidBooking.plateNumber} at ${spotNumber}`);
+          return res.json({ success: false, message: 'Plate does not match paid booking' });
+        }
+
         await prisma.parkingSpot.update({
           where: { spotNumber },
           data: { status: 'FREE', currentUserPlate: null, currentUserId: null },
@@ -233,17 +250,19 @@ router.post('/lpr/exit-lpr', async (req: Request, res: Response) => {
         return res.json({ success: true, message: 'Gate opened', newStatus: 'FREE' });
       }
 
+      // Нет оплаченной брони — отказываем
+      const unpaidBooking = await prisma.booking.findFirst({
+        where: { spotId: spot.id, status: { in: ['PENDING', 'CONFIRMED'] } },
+        orderBy: { createdAt: 'desc' },
+      });
 
-      if (spot.status === 'FREE') {
-        io.emit('lpr-gate-open', { carPlate, spotNumber, type: 'exit' });
-        logger.info(`✅ LPR exit (spot free): ${carPlate} from ${spotNumber}`);
-        return res.json({ success: true, message: 'Gate opened', newStatus: 'FREE' });
-      }
+      const reason = unpaidBooking
+        ? 'Оплатите парковку в приложении перед выездом'
+        : 'Активная бронь не найдена';
 
-
-      io.emit('lpr-gate-denied', { carPlate, spotNumber, reason: 'Pay in the app before exiting' });
+      io.emit('lpr-gate-denied', { carPlate, spotNumber, reason });
       logger.warn(`⛔ LPR exit denied (unpaid): ${carPlate} at ${spotNumber}`);
-      return res.json({ success: false, message: 'Payment required — please pay in the app first' });
+      return res.json({ success: false, message: reason });
     }
 
 
