@@ -6,6 +6,14 @@ import { prisma } from '../lib/prisma';
 
 const router = Router();
 
+// Cyrillic lookalike → Latin (for license plate normalization)
+const CYR_TO_LAT: Record<string, string> = {
+  'А':'A','В':'B','Е':'E','К':'K','М':'M','Н':'H','О':'O','Р':'P','С':'C','Т':'T','У':'Y','Х':'X',
+  'а':'A','в':'B','е':'E','к':'K','м':'M','н':'H','о':'O','р':'P','с':'C','т':'T','у':'Y','х':'X',
+};
+const normalizePlate = (p: string) =>
+  p.toUpperCase().replace(/\s/g, '').split('').map(c => CYR_TO_LAT[c] ?? c).join('');
+
 
 router.get('/spots', async (req: Request, res: Response) => {
   try {
@@ -133,9 +141,8 @@ router.post('/lpr/entry', async (req: Request, res: Response) => {
     }
 
 
-    const normalize = (p: string) => p.replace(/\s/g, '').toUpperCase();
     const plateMatches = spot.currentUserPlate
-      ? normalize(spot.currentUserPlate) === normalize(carPlate)
+      ? normalizePlate(spot.currentUserPlate) === normalizePlate(carPlate)
       : true;
 
     let success = false;
@@ -216,8 +223,6 @@ router.post('/lpr/exit-lpr', async (req: Request, res: Response) => {
 
     if (spot.type === 'SHORT_TERM') {
 
-      const normalize = (p: string) => p.replace(/\s/g, '').toUpperCase();
-
       // Ищем оплаченную бронь для этого места
       const paidBooking = await prisma.booking.findFirst({
         where: {
@@ -231,7 +236,7 @@ router.post('/lpr/exit-lpr', async (req: Request, res: Response) => {
       if (paidBooking) {
         // Проверяем что номер совпадает с бронью
         const plateOk = paidBooking.plateNumber
-          ? normalize(paidBooking.plateNumber) === normalize(carPlate)
+          ? normalizePlate(paidBooking.plateNumber) === normalizePlate(carPlate)
           : true;
 
         if (!plateOk) {
@@ -292,8 +297,7 @@ router.post('/lpr/scan', async (req: Request, res: Response) => {
     }
 
     const { io } = await import('../server');
-    const normalize = (p: string) => p.replace(/\s/g, '').toUpperCase();
-    const normPlate = normalize(carPlate);
+    const normPlate = normalizePlate(carPlate);
 
     // 1. Ищем место где сейчас стоит эта машина (OCCUPIED)
     const occupiedSpot = await prisma.parkingSpot.findFirst({
@@ -304,7 +308,7 @@ router.post('/lpr/scan', async (req: Request, res: Response) => {
     });
 
     if (occupiedSpot && occupiedSpot.currentUserPlate &&
-        normalize(occupiedSpot.currentUserPlate) === normPlate) {
+        normalizePlate(occupiedSpot.currentUserPlate) === normPlate) {
       // Машина сейчас на парковке → ВЫЕЗД
       const spotNumber = occupiedSpot.spotNumber;
       let newStatus: string;
@@ -338,7 +342,7 @@ router.post('/lpr/scan', async (req: Request, res: Response) => {
     });
 
     if (bookedSpot && bookedSpot.currentUserPlate &&
-        normalize(bookedSpot.currentUserPlate) === normPlate) {
+        normalizePlate(bookedSpot.currentUserPlate) === normPlate) {
       const spotNumber = bookedSpot.spotNumber;
       await prisma.parkingSpot.update({
         where: { spotNumber },
