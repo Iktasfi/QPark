@@ -1,6 +1,7 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { createPortal } from "react-dom"
 import { useParking } from "@/lib/parking-context"
 import { Wallet, ArrowDownLeft, ArrowUpRight, Sparkles, CreditCard } from "lucide-react"
 import { StripeTopUp } from "@/components/stripe-topup"
@@ -9,6 +10,9 @@ export function WalletScreen() {
   const { user, setUser, setCurrentScreen, darkMode, t } = useParking()
   const [view, setView] = useState<"main" | "topup">("main")
   const [selectedAmount, setSelectedAmount] = useState<number | null>(null)
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => { setMounted(true) }, [])
 
   const topUpAmounts = [500, 1000, 2000, 5000]
 
@@ -78,9 +82,9 @@ export function WalletScreen() {
   }
 
   if (view === "topup" && selectedAmount) {
-    return (
+    const paymentOverlay = (
       <div
-        style={{ position: "fixed", inset: 0, zIndex: 9999, overflowY: "auto", WebkitOverflowScrolling: "touch" } as React.CSSProperties}
+        style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 99999, overflowY: "auto" }}
         className={darkMode ? "bg-gray-900" : "bg-[#F8F9FC]"}
       >
         <div className="text-center pt-6 pb-4">
@@ -96,6 +100,7 @@ export function WalletScreen() {
         </div>
       </div>
     )
+    return mounted ? createPortal(paymentOverlay, document.body) : paymentOverlay
   }
 
   return (
