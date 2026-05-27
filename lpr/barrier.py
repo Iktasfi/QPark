@@ -47,6 +47,42 @@ def get_state():
         return dict(_state)
 
 
+def norm(plate):
+    cyr = {'А':'A','В':'B','Е':'E','К':'K','М':'M','Н':'H','О':'O','Р':'P','С':'C','Т':'T','У':'Y','Х':'X'}
+    return ''.join(cyr.get(c, c) for c in plate.upper().replace(' ', ''))
+
+def scan_backend_fallback(plate):
+    """Fallback: query spots directly, then call old lpr/entry or lpr/exit-lpr."""
+    try:
+        spots_r = requests.get(BACKEND_URL + "/parking/spots/simple", timeout=6)
+        spots = spots_r.json()
+        norm_plate = norm(plate)
+
+        # EXIT: find OCCUPIED spot matching this plate
+        for spot in spots:
+            cp = spot.get('carPlate', '-')
+            if spot['status'] == 'OCCUPIED' and cp != '-' and norm(cp) == norm_plate:
+                r = requests.post(BACKEND_URL + "/parking/lpr/exit-lpr",
+                    json={"carPlate": plate, "spotNumber": spot['spotNumber']}, timeout=6)
+                data = r.json()
+                if data.get('success'):
+                    return {'success': True, 'direction': 'exit', 'spotNumber': spot['spotNumber']}
+
+        # ENTRY: find BOOKED spot (matching plate or no plate set)
+        for spot in spots:
+            cp = spot.get('carPlate', '-')
+            plate_ok = (cp == '-') or (norm(cp) == norm_plate)
+            if spot['status'] == 'BOOKED' and plate_ok:
+                r = requests.post(BACKEND_URL + "/parking/lpr/entry",
+                    json={"carPlate": plate, "spotNumber": spot['spotNumber']}, timeout=6)
+                data = r.json()
+                if data.get('success'):
+                    return {'success': True, 'direction': 'entry', 'spotNumber': spot['spotNumber']}
+
+        return {'success': False, 'message': 'Booking not found'}
+    except Exception as e:
+        return {'success': False, 'message': str(e)}
+
 def scan_backend(plate):
     try:
         r = requests.post(
@@ -54,7 +90,12 @@ def scan_backend(plate):
             json={"carPlate": plate},
             timeout=6
         )
-        return r.json()
+        data = r.json()
+        # If /lpr/scan not deployed yet, fall back to old endpoints
+        if r.status_code == 404 or data.get('error') == 'Not found':
+            print("  [fallback] /lpr/scan not found, using spot query...")
+            return scan_backend_fallback(plate)
+        return data
     except requests.exceptions.ConnectionError:
         return {"success": False, "message": "No connection"}
     except Exception as e:
@@ -181,7 +222,7 @@ def draw_ui(frame, is_scanning):
 
         d = state["direction"].upper()
         s = state["spot"]
-        label = ("ВЪЕЗД ▼" if d == "ENTRY" else "ВЫЕЗД ▲" if d == "EXIT" else "ОТКАЗ")
+        label = ("ENTRY >>>" if d == "ENTRY" else "EXIT <<<" if d == "EXIT" else "DENIED")
         info  = f"{label}   {s}"
         tw3   = cv2.getTextSize(info, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2)[0][0]
         cv2.putText(frame, info, (w // 2 - tw3 // 2, by2 - 10),
