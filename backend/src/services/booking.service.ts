@@ -9,11 +9,15 @@ export class BookingService {
       const now = new Date();
       const estimatedEndTime = new Date(now.getTime() + 15 * 60 * 1000);
 
+      // Get user's car plate if not provided
+      const user = await prisma.user.findUnique({ where: { id: userId }, select: { carPlate: true } });
+      const plate = plateNumber || user?.carPlate || '';
+
       const booking = await prisma.booking.create({
         data: {
           userId,
           spotId,
-          plateNumber,
+          plateNumber: plate,
           startTime: now,
           estimatedEndTime,
           status: 'PENDING',
@@ -27,7 +31,7 @@ export class BookingService {
 
       await prisma.parkingSpot.update({
         where: { id: spotId },
-        data: { status: 'BOOKED' },
+        data: { status: 'BOOKED', currentUserPlate: plate, currentUserId: userId },
       });
 
       logger.info(`✅ Short-term booking created: ${booking.id}`);
