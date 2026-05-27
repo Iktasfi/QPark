@@ -1,22 +1,26 @@
 """
-QPark LPR — Камера + ввод номера вручную
-=========================================
+QPark LPR — EasyOCR камера
+===========================
 Запуск:
     C:\Users\User\AppData\Local\Programs\Python\Python311\python.exe barrier.py
 
 Управление:
-    ENTER  — ввести госномер вручную
+    SPACE  — сканировать номер с камеры
     Q      — выход
 
 Установка (один раз):
-    pip install opencv-python requests
+    pip install opencv-python easyocr requests numpy
 """
 
 import cv2
+import easyocr
 import requests
 import time
 import threading
 import sys
+import re
+import platform
+import numpy as np
 from datetime import datetime
 
 # ─── НАСТРОЙКИ ──────────────────────────────────
@@ -24,31 +28,33 @@ BACKEND_URL   = "https://qpark-production.up.railway.app"
 CAMERA_INDEX  = 0      # 0 — встроенная, 1 — внешняя USB
 # ────────────────────────────────────────────────
 
-# Состояние отображения на экране
+_CAP_BACKEND = cv2.CAP_AVFOUNDATION if platform.system() == "Darwin" else cv2.CAP_ANY
+
 _state = {
-    "status":    "IDLE",   # IDLE | CHECKING | OPEN_ENTRY | OPEN_EXIT | DENIED
+    "status":    "IDLE",
     "plate":     "",
-    "message":   "",
+    "direction": "",
     "spot":      "",
+    "message":   "",
     "until":     0.0,
     "lock":      threading.Lock(),
 }
 
-def set_state(status, plate="", message="", spot="", duration=4.0):
+def set_state(status, plate="", direction="", spot="", message="", duration=5.0):
     with _state["lock"]:
-        _state["status"]  = status
-        _state["plate"]   = plate
-        _state["message"] = message
-        _state["spot"]    = spot
-        _state["until"]   = time.time() + duration
+        _state["status"]    = status
+        _state["plate"]     = plate
+        _state["direction"] = direction
+        _state["spot"]      = spot
+        _state["message"]   = message
+        _state["until"]     = time.time() + duration
 
 def get_state():
     with _state["lock"]:
         return dict(_state)
 
 
-def scan_plate(car_plate: str) -> dict:
-    """Отправить номер — бэкенд сам решает въезд или выезд."""
+def scan_backend(car_plate: str) -> dict:
     try:
         resp = requests.post(
             BACKEND_URL + "/parking/lpr/scan",
@@ -59,170 +65,207 @@ def scan_plate(car_plate: str) -> dict:
     except requests.exceptions.ConnectionError:
         return {"success": False, "message": "Нет соединения с сервером"}
     except requests.exceptions.Timeout:
-        return {"success": False, "message": "Сервер не отвечает (таймаут)"}
+        return {"success": False, "message": "Сервер не отвечает"}
     except Exception as e:
         return {"success": False, "message": str(e)}
 
 
-def process_in_thread(plate: str):
-    """Запрос к бэкенду в отдельном потоке чтобы не замораживать камеру."""
-    print(f"\n🔍 Проверяю номер: {plate} ...")
-    set_state("CHECKING", plate, "Проверка...", duration=10.0)
+def process_plate(plate: str):
+    print(f"\n[{datetime.now().strftime('%H:%M:%S')}] 🚗 Номер: {plate}")
+    set_state("SCANNING", plate, message="Проверка...", duration=10.0)
 
-    result = scan_plate(plate)
-    print(f"📡 Ответ сервера: {result}")
+    result = scan_backend(plate)
+    print(f"📡 Ответ: {result}")
 
     if result.get("success"):
         direction = result.get("direction", "entry")
         spot      = result.get("spotNumber", "")
-        if direction == "entry":
-            msg = f"ВЪЕЗД РАЗРЕШЁН ▼  {spot}"
-            print(f"✅ {msg}")
-            set_state("OPEN_ENTRY", plate, msg, spot, duration=6.0)
-        else:
-            msg = f"ВЫЕЗД РАЗРЕШЁН ▲  {spot}"
-            print(f"✅ {msg}")
-            set_state("OPEN_EXIT", plate, msg, spot, duration=6.0)
-
-        # Симуляция шлагбаума
+        msg       = result.get("message", "")
+        print(f"✅ {msg}")
+        set_state(
+            "OPEN_ENTRY" if direction == "entry" else "OPEN_EXIT",
+            plate, direction, spot, msg, duration=6.0
+        )
         print("🔓 ШЛАГБАУМ ОТКРЫТ")
         time.sleep(5.0)
         print("🔒 Шлагбаум закрыт\n")
+        set_state("IDLE")
     else:
         msg = result.get("message", "Доступ запрещён")
         print(f"❌ ОТКАЗ: {msg}\n")
-        set_state("DENIED", plate, msg, duration=4.0)
+        set_state("DENIED", plate, message=msg, duration=4.0)
 
 
-def draw_overlay(frame, input_mode: bool, typed: str):
-    """Рисует интерфейс поверх кадра."""
+def clean_plate(raw: str) -> str:
+    return re.sub(r"[^A-Z0-9А-ЯЁ]", "", raw.upper())
+
+def is_valid(plate: str) -> bool:
+    return 4 <= len(plate) <= 12
+
+
+def draw_ui(frame, scanning: bool):
     h, w = frame.shape[:2]
     now   = time.time()
     state = get_state()
     active = now < state["until"]
     status = state["status"] if active else "IDLE"
 
-    # Цвета
+    # Цвета по статусу
     COLORS = {
-        "IDLE":       (100, 100, 100),
-        "CHECKING":   (0, 200, 255),
-        "OPEN_ENTRY": (0, 220, 80),
-        "OPEN_EXIT":  (255, 180, 0),
-        "DENIED":     (0, 50, 220),
+        "IDLE":       (60, 60, 60),
+        "SCANNING":   (0, 200, 255),
+        "OPEN_ENTRY": (0, 200, 60),
+        "OPEN_EXIT":  (0, 160, 255),
+        "DENIED":     (40, 40, 220),
     }
-    col = COLORS.get(status, (100, 100, 100))
+    col = COLORS.get(status, (60, 60, 60))
 
-    # Верхняя полоска
-    cv2.rectangle(frame, (0, 0), (w, 52), (15, 20, 35), -1)
-    cv2.putText(frame, "QPark LPR  |  ВЪЕЗД / ВЫЕЗД",
-                (12, 34), cv2.FONT_HERSHEY_DUPLEX, 0.8, (200, 200, 200), 1, cv2.LINE_AA)
-    cv2.putText(frame, datetime.now().strftime("%H:%M:%S"),
-                (w - 115, 34), cv2.FONT_HERSHEY_DUPLEX, 0.65, (130, 130, 130), 1, cv2.LINE_AA)
+    # ── Верхняя полоса ────────────────────────────
+    cv2.rectangle(frame, (0, 0), (w, 48), (10, 15, 25), -1)
+    cv2.putText(frame, "QPARK LPR SYSTEM",
+                (14, 32), cv2.FONT_HERSHEY_DUPLEX, 0.8, (200, 200, 200), 1, cv2.LINE_AA)
+    ts = datetime.now().strftime("%H:%M:%S")
+    cv2.putText(frame, ts, (w - 110, 32),
+                cv2.FONT_HERSHEY_DUPLEX, 0.65, (130, 130, 130), 1, cv2.LINE_AA)
 
-    # Нижняя подсказка
-    if not input_mode:
-        hint = "Нажмите ENTER чтобы ввести номер  |  Q — выход"
-        tw = cv2.getTextSize(hint, cv2.FONT_HERSHEY_SIMPLEX, 0.55, 1)[0][0]
-        cv2.rectangle(frame, (0, h-38), (w, h), (15, 20, 35), -1)
-        cv2.putText(frame, hint, (w//2 - tw//2, h-12),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.55, (180, 180, 180), 1, cv2.LINE_AA)
+    # ── Прицельная рамка ─────────────────────────
+    bw = int(w * 0.65)
+    bh = int(h * 0.25)
+    cx, cy = w // 2, int(h * 0.55)
+    x1, y1 = cx - bw // 2, cy - bh // 2
+    x2, y2 = cx + bw // 2, cy + bh // 2
+    c = 30  # длина уголка
 
-    # Режим ввода номера
-    if input_mode:
-        cv2.rectangle(frame, (0, h//2 - 70), (w, h//2 + 70), (15, 20, 35), -1)
-        label = "Введите госномер:"
-        tw = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 1)[0][0]
-        cv2.putText(frame, label, (w//2 - tw//2, h//2 - 30),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (180, 180, 255), 1, cv2.LINE_AA)
+    frame_col = (0, 255, 200) if scanning else col if (active and status != "IDLE") else (200, 200, 0)
+    thick = 3
 
-        display = typed + "|"
-        tw2 = cv2.getTextSize(display, cv2.FONT_HERSHEY_DUPLEX, 1.8, 3)[0][0]
-        cv2.putText(frame, display, (w//2 - tw2//2, h//2 + 30),
-                    cv2.FONT_HERSHEY_DUPLEX, 1.8, (255, 255, 255), 3, cv2.LINE_AA)
+    for (px, py, dx, dy) in [(x1,y1,1,1),(x2,y1,-1,1),(x1,y2,1,-1),(x2,y2,-1,-1)]:
+        cv2.line(frame, (px, py), (px+dx*c, py), frame_col, thick, cv2.LINE_AA)
+        cv2.line(frame, (px, py), (px, py+dy*c), frame_col, thick, cv2.LINE_AA)
 
-        hint2 = "ENTER — отправить    ESC — отмена"
-        tw3 = cv2.getTextSize(hint2, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)[0][0]
-        cv2.putText(frame, hint2, (w//2 - tw3//2, h//2 + 60),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (130, 130, 130), 1, cv2.LINE_AA)
+    # Подсвечиваем зону
+    roi  = frame[y1:y2, x1:x2].copy()
+    fill = np.zeros_like(roi)
+    fill[:] = frame_col
+    frame[y1:y2, x1:x2] = cv2.addWeighted(fill, 0.06, roi, 0.94, 0)
 
-    # Статусный баннер (после ответа сервера)
+    # ── Нижняя подсказка ─────────────────────────
+    cv2.rectangle(frame, (0, h-40), (w, h), (10, 15, 25), -1)
+    hint = "SCANNING..." if scanning else "SPACE = сканировать  |  Q = выход"
+    hint_col = (0, 220, 255) if scanning else (160, 160, 160)
+    tw = cv2.getTextSize(hint, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 1)[0][0]
+    cv2.putText(frame, hint, (w//2 - tw//2, h-12),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.6, hint_col, 1, cv2.LINE_AA)
+
+    # ── Статусный баннер ─────────────────────────
     if active and status != "IDLE":
-        banner_h = 120
-        by1 = h//2 - banner_h//2
-        by2 = h//2 + banner_h//2
+        baner_h = 130
+        by1 = h//2 - baner_h//2
+        by2 = h//2 + baner_h//2
 
-        overlay = frame.copy()
-        cv2.rectangle(overlay, (0, by1), (w, by2), col, -1)
-        cv2.addWeighted(overlay, 0.85, frame, 0.15, 0, frame)
+        ov = frame.copy()
+        cv2.rectangle(ov, (0, by1), (w, by2), col, -1)
+        cv2.addWeighted(ov, 0.88, frame, 0.12, 0, frame)
 
-        plate_text = state["plate"]
-        tw4 = cv2.getTextSize(plate_text, cv2.FONT_HERSHEY_DUPLEX, 2.2, 4)[0][0]
-        cv2.putText(frame, plate_text, (w//2 - tw4//2, by1 + 72),
-                    cv2.FONT_HERSHEY_DUPLEX, 2.2, (255, 255, 255), 4, cv2.LINE_AA)
+        plate_txt = state["plate"]
+        fs = 2.4
+        tw2 = cv2.getTextSize(plate_txt, cv2.FONT_HERSHEY_DUPLEX, fs, 4)[0][0]
+        cv2.putText(frame, plate_txt, (w//2 - tw2//2, by1 + 75),
+                    cv2.FONT_HERSHEY_DUPLEX, fs, (255,255,255), 4, cv2.LINE_AA)
 
-        msg = state["message"]
-        tw5 = cv2.getTextSize(msg, cv2.FONT_HERSHEY_SIMPLEX, 0.65, 2)[0][0]
-        cv2.putText(frame, msg, (w//2 - tw5//2, by2 - 10),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.65, (255, 255, 255), 2, cv2.LINE_AA)
+        # Направление + место
+        direction = state["direction"].upper() if state["direction"] else ""
+        spot      = state["spot"]
+        dir_label = f"{'▼ ВЪЕЗД' if direction == 'ENTRY' else '▲ ВЫЕЗД' if direction == 'EXIT' else ''}"
+        info = f"{dir_label}  {spot}  {datetime.now().strftime('%H:%M:%S')}"
+        tw3  = cv2.getTextSize(info, cv2.FONT_HERSHEY_SIMPLEX, 0.65, 2)[0][0]
+        cv2.putText(frame, info, (w//2 - tw3//2, by2 - 10),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.65, (255,255,255), 2, cv2.LINE_AA)
+
+    elif scanning:
+        # "SCANNING..." анимация
+        txt = "SCANNING..."
+        tw4 = cv2.getTextSize(txt, cv2.FONT_HERSHEY_DUPLEX, 1.2, 2)[0][0]
+        cv2.putText(frame, txt, (w//2 - tw4//2, cy + bh//2 + 50),
+                    cv2.FONT_HERSHEY_DUPLEX, 1.2, (0, 220, 255), 2, cv2.LINE_AA)
 
 
 def main():
     print("=== QPark LPR ===")
-    print(f"Сервер: {BACKEND_URL}")
-    print("Нажмите ENTER в окне камеры чтобы ввести номер\n")
+    print("Инициализация EasyOCR (первый раз ~30 сек.)...")
 
-    cap = cv2.VideoCapture(CAMERA_INDEX)
+    reader = easyocr.Reader(["en", "ru"], gpu=False, verbose=False)
+    print("✅ EasyOCR готов\n")
+
+    cap = cv2.VideoCapture(CAMERA_INDEX, _CAP_BACKEND)
     if not cap.isOpened():
-        # Попробуем камеру 1
-        cap = cv2.VideoCapture(1)
+        cap = cv2.VideoCapture(1, _CAP_BACKEND)
         if not cap.isOpened():
-            print("❌ Камера не найдена! Проверьте подключение.")
+            print("❌ Камера не найдена!")
             sys.exit(1)
 
     cap.set(cv2.CAP_PROP_FRAME_WIDTH,  1280)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+    print("✅ Камера готова")
+    print("👉 Нажмите SPACE чтобы сканировать номер\n")
 
-    input_mode = False
-    typed      = ""
+    scanning = False
 
     while True:
         ret, frame = cap.read()
         if not ret:
-            print("❌ Ошибка чтения кадра")
             break
 
-        draw_overlay(frame, input_mode, typed)
+        h, w = frame.shape[:2]
+        draw_ui(frame, scanning)
         cv2.imshow("QPark LPR", frame)
 
         key = cv2.waitKey(30) & 0xFF
 
-        if not input_mode:
-            if key == 13:              # ENTER — начать ввод
-                input_mode = True
-                typed = ""
-            elif key == ord("q") or key == ord("Q") or key == 27:
-                break
+        if key == ord(" ") and not scanning:
+            scanning = True
+            state = get_state()
+            if state["status"] in ("OPEN_ENTRY", "OPEN_EXIT", "DENIED", "IDLE"):
+                # Берём зону прицела и запускаем OCR
+                bw = int(w * 0.65)
+                bh = int(h * 0.25)
+                cx, cy = w // 2, int(h * 0.55)
+                x1 = max(0, cx - bw//2)
+                y1 = max(0, cy - bh//2)
+                x2 = min(w, cx + bw//2)
+                y2 = min(h, cy + bh//2)
+                crop = frame[y1:y2, x1:x2].copy()
 
-        else:
-            if key == 27:              # ESC — отмена
-                input_mode = False
-                typed = ""
-            elif key == 13:            # ENTER — отправить
-                plate = typed.strip().upper().replace(" ", "")
-                if len(plate) >= 4:
-                    input_mode = False
-                    typed = ""
-                    threading.Thread(
-                        target=process_in_thread,
-                        args=(plate,),
-                        daemon=True
-                    ).start()
-                else:
-                    typed = ""        # слишком короткий — сбросить
-            elif key == 8:             # BACKSPACE
-                typed = typed[:-1]
-            elif 32 <= key <= 126:     # Обычные символы
-                typed += chr(key).upper()
+                def do_scan(img):
+                    global scanning
+                    gray     = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+                    clahe    = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8,8))
+                    enhanced = clahe.apply(gray)
+
+                    results = reader.readtext(
+                        enhanced,
+                        allowlist="ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+                    )
+
+                    best_plate, best_conf = "", 0.0
+                    for (_, text, conf) in results:
+                        p = clean_plate(text)
+                        if is_valid(p) and conf > 0.3 and conf > best_conf:
+                            best_plate, best_conf = p, conf
+
+                    scanning = False
+
+                    if best_plate:
+                        print(f"🔎 OCR: {best_plate}  ({best_conf:.0%})")
+                        process_plate(best_plate)
+                    else:
+                        print("⚠️  Номер не распознан — попробуйте ещё раз")
+                        set_state("DENIED", message="Номер не распознан", duration=2.5)
+
+                threading.Thread(target=do_scan, args=(crop,), daemon=True).start()
+
+        elif key == ord("q") or key == ord("Q") or key == 27:
+            break
 
     cap.release()
     cv2.destroyAllWindows()
