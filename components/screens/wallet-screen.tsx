@@ -79,11 +79,14 @@ export function WalletScreen() {
 
   if (view === "topup" && selectedAmount) {
     return (
-      <div className={`relative flex flex-col h-full ${darkMode ? "bg-gray-900" : "bg-[#F8F9FC]"}`}>
+      <div
+        style={{ position: "fixed", inset: 0, zIndex: 9999, overflowY: "auto", WebkitOverflowScrolling: "touch" } as React.CSSProperties}
+        className={darkMode ? "bg-gray-900" : "bg-[#F8F9FC]"}
+      >
         <div className="text-center pt-6 pb-4">
           <h1 className={`text-2xl font-bold ${darkMode ? "text-white" : "text-[#1a1a2e]"}`}>{t.payment}</h1>
         </div>
-        <div className="flex-1 px-4 overflow-y-auto content-bottom-pad">
+        <div className="px-4 pb-10">
           <StripeTopUp
             amount={selectedAmount}
             darkMode={darkMode}
