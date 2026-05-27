@@ -16,7 +16,12 @@ from datetime import datetime
 BACKEND_URL  = "https://qpark-production.up.railway.app"
 CAMERA_INDEX = 0
 
-_CAP_BACKEND = cv2.CAP_AVFOUNDATION if platform.system() == "Darwin" else cv2.CAP_ANY
+if platform.system() == "Darwin":
+    _CAP_BACKEND = cv2.CAP_AVFOUNDATION
+elif platform.system() == "Windows":
+    _CAP_BACKEND = cv2.CAP_DSHOW
+else:
+    _CAP_BACKEND = cv2.CAP_ANY
 
 _state = {
     "status":    "IDLE",
@@ -190,11 +195,28 @@ def main():
     reader = easyocr.Reader(["en", "ru"], gpu=False, verbose=False)
     print("EasyOCR ready")
 
-    cap = cv2.VideoCapture(CAMERA_INDEX, _CAP_BACKEND)
-    if not cap.isOpened():
-        cap = cv2.VideoCapture(1, _CAP_BACKEND)
-    if not cap.isOpened():
-        print("Camera not found!")
+    # Try different indices and backends for Windows compatibility
+    cap = None
+    for idx in [0, 1, 2]:
+        test = cv2.VideoCapture(idx, _CAP_BACKEND)
+        if test.isOpened():
+            cap = test
+            print(f"Camera found at index {idx}")
+            break
+        test.release()
+
+    if cap is None:
+        # Last resort: no backend flag
+        for idx in [0, 1]:
+            test = cv2.VideoCapture(idx)
+            if test.isOpened():
+                cap = test
+                print(f"Camera found at index {idx} (no backend)")
+                break
+            test.release()
+
+    if cap is None:
+        print("ERROR: Camera not found! Check camera connection.")
         sys.exit(1)
 
     cap.set(cv2.CAP_PROP_FRAME_WIDTH,  1280)
