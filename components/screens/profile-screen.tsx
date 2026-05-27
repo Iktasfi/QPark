@@ -496,7 +496,7 @@ export function ProfileScreen() {
         </div>
 
         <div className="flex gap-3">
-          <div className="flex-1 bg-white/10 rounded-2xl p-4 backdrop-blur-sm border border-white/20">
+          <button onClick={() => setCurrentScreen("wallet")} className="flex-1 bg-white/10 rounded-2xl p-4 backdrop-blur-sm border border-white/20 hover:bg-white/20 transition-colors text-left active:scale-95">
             <div className="flex items-center gap-2 mb-1">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-white/70">
                 <rect x="2" y="4" width="20" height="16" rx="2" />
@@ -504,8 +504,8 @@ export function ProfileScreen() {
               </svg>
               <p className="text-white font-bold text-xl">{user?.balance || 1500}₸</p>
             </div>
-            <p className="text-white/70 text-xs">{t.balance}</p>
-          </div>
+            <p className="text-white/70 text-xs">{t.balance} →</p>
+          </button>
           <div className="flex-1 bg-white/10 rounded-2xl p-4 backdrop-blur-sm border border-white/20">
             <div className="flex items-center gap-2 mb-1">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-white/70">

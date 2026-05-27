@@ -42,7 +42,7 @@ export function WalletScreen() {
 
   if (view === "topup" && !selectedAmount) {
     return (
-      <div className={`relative flex flex-col h-full ${darkMode ? "bg-gray-900" : "bg-[#F8F9FC]"} overflow-hidden`}>
+      <div className={`relative flex flex-col h-full ${darkMode ? "bg-gray-900" : "bg-[#F8F9FC]"}`}>
         <div className="text-center pt-6 pb-4">
           <h1 className={`text-2xl font-bold ${darkMode ? "text-white" : "text-[#1a1a2e]"}`}>{t.topUpBalance}</h1>
         </div>
@@ -79,7 +79,7 @@ export function WalletScreen() {
 
   if (view === "topup" && selectedAmount) {
     return (
-      <div className={`relative flex flex-col h-full ${darkMode ? "bg-gray-900" : "bg-[#F8F9FC]"} overflow-hidden`}>
+      <div className={`relative flex flex-col h-full ${darkMode ? "bg-gray-900" : "bg-[#F8F9FC]"}`}>
         <div className="text-center pt-6 pb-4">
           <h1 className={`text-2xl font-bold ${darkMode ? "text-white" : "text-[#1a1a2e]"}`}>{t.payment}</h1>
         </div>
