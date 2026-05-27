@@ -300,15 +300,12 @@ router.post('/lpr/scan', async (req: Request, res: Response) => {
     const normPlate = normalizePlate(carPlate);
 
     // 1. Ищем место где сейчас стоит эта машина (OCCUPIED)
-    const occupiedSpot = await prisma.parkingSpot.findFirst({
-      where: {
-        status: 'OCCUPIED',
-        currentUserPlate: { not: null },
-      },
+    const occupiedSpots = await prisma.parkingSpot.findMany({
+      where: { status: 'OCCUPIED', currentUserPlate: { not: null } },
     });
+    const occupiedSpot = occupiedSpots.find(s => s.currentUserPlate && normalizePlate(s.currentUserPlate) === normPlate);
 
-    if (occupiedSpot && occupiedSpot.currentUserPlate &&
-        normalizePlate(occupiedSpot.currentUserPlate) === normPlate) {
+    if (occupiedSpot) {
       // Машина сейчас на парковке → ВЫЕЗД
       const spotNumber = occupiedSpot.spotNumber;
       let newStatus: string;
@@ -334,15 +331,12 @@ router.post('/lpr/scan', async (req: Request, res: Response) => {
     }
 
     // 2. Ищем бронь/аренду для въезда (BOOKED или RESERVED)
-    const bookedSpot = await prisma.parkingSpot.findFirst({
-      where: {
-        status: { in: ['BOOKED', 'RESERVED'] },
-        currentUserPlate: { not: null },
-      },
+    const bookedSpots = await prisma.parkingSpot.findMany({
+      where: { status: { in: ['BOOKED', 'RESERVED'] }, currentUserPlate: { not: null } },
     });
+    const bookedSpot = bookedSpots.find(s => s.currentUserPlate && normalizePlate(s.currentUserPlate) === normPlate);
 
-    if (bookedSpot && bookedSpot.currentUserPlate &&
-        normalizePlate(bookedSpot.currentUserPlate) === normPlate) {
+    if (bookedSpot) {
       const spotNumber = bookedSpot.spotNumber;
       await prisma.parkingSpot.update({
         where: { spotNumber },
