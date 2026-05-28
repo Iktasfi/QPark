@@ -480,8 +480,18 @@ export function AdminDashboard() {
                 ))}
               </select>
             </div>
-            {renderParkingSection(parkingData.tables.shortTerm.title, filterSpotsByLocation(parkingData.tables.shortTerm.table))}
-            {renderParkingSection(parkingData.tables.longTerm.title, filterSpotsByLocation(parkingData.tables.longTerm.table))}
+            {(() => {
+              const allSpots = [
+                ...parkingData.tables.shortTerm.table.flat(),
+                ...parkingData.tables.longTerm.table.flat(),
+              ]
+              const filtered = filterSpotsByLocation([allSpots])
+              return (
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+                  {filtered.flat().map(spot => renderSpotCard(spot))}
+                </div>
+              )
+            })()}
           </>
         )}
 
