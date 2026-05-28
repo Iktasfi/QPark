@@ -1,5 +1,7 @@
 "use client"
 
+const RAILWAY = 'https://qpark-production.up.railway.app'
+
 import { useState, useEffect, useRef } from "react"
 import {
   ArrowLeft, Car, Check, Clock, AlertCircle, Wrench,
@@ -165,8 +167,8 @@ export function AdminDashboard() {
   const fetchParkingData = async () => {
     try {
       const [spotsRes, dbRes] = await Promise.all([
-        fetch("/backend/parking/spots"),
-        fetch("/backend/admin/dashboard"),
+        fetch(`${RAILWAY}/parking/spots"),
+        fetch(`${RAILWAY}/admin/dashboard"),
       ])
       if (!spotsRes.ok) throw new Error("Ошибка загрузки данных")
       const data = await spotsRes.json()
@@ -179,11 +181,11 @@ export function AdminDashboard() {
       }
       const token = typeof window !== "undefined" ? localStorage.getItem("qpark_token") : null
       if (token) {
-        const txRes = await fetch("/backend/payments/admin/transactions", { headers: { Authorization: `Bearer ${token}` } })
+        const txRes = await fetch(`${RAILWAY}/payments/admin/transactions", { headers: { Authorization: `Bearer ${token}` } })
         if (txRes.ok) setDbTransactions(await txRes.json())
       }
       if (token) {
-        const promoRes = await fetch("/backend/payments/promo/all", { headers: { Authorization: `Bearer ${token}` } })
+        const promoRes = await fetch(`${RAILWAY}/payments/promo/all", { headers: { Authorization: `Bearer ${token}` } })
         if (promoRes.ok) setPromoCodes(await promoRes.json())
       }
       setError(null)
@@ -217,7 +219,7 @@ export function AdminDashboard() {
     const englishStatus = statusConfig[russianStatus]?.englishKey ?? russianStatus
     setActionLoading(`status-${spotNumber}`)
     try {
-      const response = await fetch("/backend/parking/set-status", {
+      const response = await fetch(`${RAILWAY}/parking/set-status", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ spotNumber, status: englishStatus }),
@@ -720,7 +722,7 @@ export function AdminDashboard() {
                   setPromoLoading(true); setPromoError("")
                   try {
                     const token = localStorage.getItem("qpark_token")
-                    const res = await fetch("/backend/payments/promo/create", {
+                    const res = await fetch(`${RAILWAY}/payments/promo/create", {
                       method: "POST",
                       headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
                       body: JSON.stringify({ code: newPromo.code, discount: Number(newPromo.discount), type: newPromo.type, maxUses: newPromo.maxUses ? Number(newPromo.maxUses) : undefined }),
