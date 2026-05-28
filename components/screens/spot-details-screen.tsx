@@ -9,10 +9,7 @@ import { Separator } from "@/components/ui/separator"
 import { ArrowLeft, MapPin, Clock, Calendar, Car, Check, AlertTriangle, Wallet } from "lucide-react"
 import { cn } from "@/lib/utils"
 
-const calcShortTermPrice = (minutes: number) => {
-  if (minutes <= 60) return 150
-  return 150 + Math.ceil((minutes - 60) * 3)
-}
+const calcShortTermPrice = (minutes: number) => Math.max(1, minutes) * 3
 
 const formatDuration = (minutes: number) => {
   if (minutes < 60) return `${minutes} мин`
@@ -197,8 +194,8 @@ export function SpotDetailsScreen() {
             </div>
             <div className="text-right">
               <p className="text-sm text-muted-foreground">от</p>
-              <p className="text-xl font-bold text-[#36549B]">150 ₸</p>
-              <p className="text-xs text-muted-foreground">мин. 1 час</p>
+              <p className="text-xl font-bold text-[#36549B]">3 ₸/мин</p>
+              <p className="text-xs text-muted-foreground">от 15 мин</p>
             </div>
           </div>
         </CardContent>
@@ -220,7 +217,7 @@ export function SpotDetailsScreen() {
             >
               <Clock className="h-6 w-6 text-[#36549B]" />
               <span className="text-sm font-semibold text-foreground">Краткосрочная</span>
-              <span className="text-xs text-muted-foreground">от 150 ₸/час</span>
+              <span className="text-xs text-muted-foreground">3 ₸/мин</span>
               {bookingType === "short-term" && (
                 <div className="flex h-5 w-5 items-center justify-center rounded-full bg-primary">
                   <Check className="h-3 w-3 text-primary-foreground" />
@@ -328,7 +325,7 @@ export function SpotDetailsScreen() {
               ))}
             </div>
             <p className="text-xs text-muted-foreground">
-              Первый час — 150 ₸ · После: 3 ₸/мин · 15 мин на подъезд бесплатно
+              3 ₸/мин · 30 мин на подъезд · при неявке возврат 50%
             </p>
           </CardContent>
         </Card>

@@ -34,7 +34,7 @@ export function ActiveBookingScreen() {
   const isLongTerm = selectedSpot?.type === "long-term" || activeBooking?.type === "long-term"
   const isArrived = !isLongTerm && selectedSpot?.status === "OCCUPIED"
   const elapsedSec = activeBooking ? Math.floor((now - new Date(activeBooking.startTime).getTime()) / 1000) : 0
-  const timer = Math.max(0, 15 * 60 + extraWaitSeconds - elapsedSec)
+  const timer = Math.max(0, 30 * 60 - elapsedSec)
 
   const arrivedAtLocalRef = useRef<number | null>(null)
   useEffect(() => {
@@ -68,9 +68,7 @@ export function ActiveBookingScreen() {
   const calculateCost = () => {
     if (isLongTerm) return 0
     const minutes = Math.ceil(parkingDuration / 60)
-    if (minutes <= 60) return 150
-    const extraMinutes = minutes - 60
-    return 150 + (extraMinutes * 3)
+    return Math.max(1, minutes) * 3
   }
   
   const handlePayAndExit = async () => {
@@ -453,15 +451,13 @@ export function ActiveBookingScreen() {
             <h3 className="mb-3 font-medium text-foreground">{t.costBreakdown}</h3>
             <div className="space-y-2 text-sm">
               <div className="flex justify-between">
-                <span className="text-muted-foreground">{t.firstHourMin}</span>
-                <span className="text-foreground">150 &#8376;</span>
+                <span className="text-muted-foreground">Тариф</span>
+                <span className="text-foreground">3 ₸/мин</span>
               </div>
-              {parkingDuration > 3600 && (
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">{t.extraTime} ({Math.ceil((parkingDuration - 3600) / 60)} min)</span>
-                  <span className="text-foreground">{Math.ceil((parkingDuration - 3600) / 60) * 3} &#8376;</span>
-                </div>
-              )}
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Время</span>
+                <span className="text-foreground">{Math.ceil(parkingDuration / 60)} мин</span>
+              </div>
               <Separator />
               <div className="flex justify-between font-medium">
                 <span className="text-foreground">{t.total}</span>
@@ -485,19 +481,6 @@ export function ActiveBookingScreen() {
           </Button>
         )}
         
-        {!isArrived && !isLongTerm && timer < 300 && (
-          <Button
-            variant="outline"
-            size="lg"
-            className="w-full hover:bg-orange-50 hover:border-orange-400 hover:text-orange-600 border-orange-300 text-orange-600"
-            onClick={handleExtendWaiting}
-            disabled={isExtendingWaiting}
-          >
-            <Clock className="h-5 w-5 mr-2" />
-            {isExtendingWaiting ? t.processing : t.extendWaiting}
-          </Button>
-        )}
-
         {!isArrived && !isLongTerm && (
           <Button
             variant="outline"
