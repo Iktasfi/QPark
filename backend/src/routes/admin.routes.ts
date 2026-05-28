@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import authService from '../services/auth.service';
+import promoCodeService from '../services/promocode.service';
 import { logger } from '../server';
 import { prisma } from '../lib/prisma';
 
@@ -166,6 +167,58 @@ router.get('/lpr-events', async (req: Request, res: Response) => {
     res.json(events);
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch LPR events' });
+  }
+});
+
+router.get('/promo/all', async (req: Request, res: Response) => {
+  try {
+    const promoCodes = await promoCodeService.getAllPromoCodes();
+    res.json(promoCodes);
+  } catch (error) {
+    logger.error('❌ Error fetching promo codes:', error);
+    res.status(500).json({ error: 'Failed to fetch promo codes' });
+  }
+});
+
+router.post('/promo/create', async (req: Request, res: Response) => {
+  try {
+    const { code, discount, type, maxUses, expiresAt } = req.body;
+    if (!code || !discount || !type) {
+      return res.status(400).json({ error: 'code, discount and type are required' });
+    }
+    const promo = await promoCodeService.createPromoCode({
+      code,
+      discount: Number(discount),
+      type,
+      maxUses: maxUses ? Number(maxUses) : undefined,
+      expiresAt: expiresAt ? new Date(expiresAt) : undefined,
+    });
+    res.status(201).json(promo);
+  } catch (error) {
+    logger.error('❌ Error creating promo code:', error);
+    res.status(400).json({ error: error instanceof Error ? error.message : 'Failed to create promo code' });
+  }
+});
+
+router.delete('/promo/:id', async (req: Request, res: Response) => {
+  try {
+    await promoCodeService.deletePromoCode(req.params.id);
+    res.json({ success: true });
+  } catch (error) {
+    logger.error('❌ Error deleting promo code:', error);
+    res.status(500).json({ error: 'Failed to delete promo code' });
+  }
+});
+
+router.patch('/promo/:id/toggle', async (req: Request, res: Response) => {
+  try {
+    const promo = await prisma.promoCode.findUnique({ where: { id: req.params.id } });
+    if (!promo) return res.status(404).json({ error: 'Not found' });
+    const updated = await promoCodeService.updatePromoCode(req.params.id, { isActive: !promo.isActive });
+    res.json(updated);
+  } catch (error) {
+    logger.error('❌ Error toggling promo code:', error);
+    res.status(500).json({ error: 'Failed to toggle promo code' });
   }
 });
 
