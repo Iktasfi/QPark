@@ -36,9 +36,17 @@ def health():
 
 @app.route("/ocr", methods=["POST"])
 def ocr():
+    """
+    Принимает base64 фото и (опционально) номер места для поиска.
+    Возвращает весь распознанный текст + найден ли нужный номер.
+
+    Body: { "image": "data:image/jpeg;base64,...", "spot": "SP-07" }
+    """
     data = request.get_json(silent=True)
     if not data or "image" not in data:
         return jsonify({"error": "image required"}), 400
+
+    spot_to_find = data.get("spot", "")  # Например "SP-07"
 
     # Декодируем base64
     try:
@@ -53,40 +61,64 @@ def ocr():
     except Exception as e:
         return jsonify({"error": f"Ошибка декодирования: {e}"}), 400
 
-    # Улучшаем контраст для лучшего OCR
+    # Улучшаем контраст
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
     enhanced = clahe.apply(gray)
 
-    # Запускаем OCR на улучшенном и оригинальном изображении
+    # OCR — читаем весь текст (буквы + цифры)
     reader = get_reader()
-    plates = []
+    all_texts = []
 
     for source in [enhanced, img]:
         try:
             results = reader.readtext(
                 source,
-                allowlist="ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+                allowlist="ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 -"
             )
             for (_, text, confidence) in results:
-                plate = clean_plate(text)
-                if 5 <= len(plate) <= 10 and confidence > 0.3:
-                    plates.append({"plate": plate, "confidence": round(confidence, 3)})
+                cleaned = re.sub(r"[^A-Z0-9]", "", text.upper())
+                if cleaned and confidence > 0.25:
+                    all_texts.append({"text": cleaned, "confidence": round(confidence, 3)})
         except Exception:
             pass
 
-    # Убираем дубликаты, сортируем по уверенности
+    # Убираем дубликаты
     seen = set()
-    unique = []
-    for p in sorted(plates, key=lambda x: -x["confidence"]):
-        if p["plate"] not in seen:
-            seen.add(p["plate"])
-            unique.append(p)
+    unique_texts = []
+    for t in sorted(all_texts, key=lambda x: -x["confidence"]):
+        if t["text"] not in seen:
+            seen.add(t["text"])
+            unique_texts.append(t)
 
-    best = unique[0]["plate"] if unique else None
-    print(f"🔍 OCR результат: {unique} | лучший: {best}")
+    # Ищем номер места в распознанном тексте
+    # SP-07 → ищем "SP07", "07", "7" и т.д.
+    spot_found = False
+    matched_text = None
+    if spot_to_find:
+        spot_norm = re.sub(r"[^A-Z0-9]", "", spot_to_find.upper())       # "SP07"
+        spot_digits = re.sub(r"[^0-9]", "", spot_norm).lstrip("0") or "0" # "7"
+        spot_digits_padded = re.sub(r"[^0-9]", "", spot_norm)             # "07"
 
-    return jsonify({"plates": unique, "best": best})
+        for t in unique_texts:
+            txt = t["text"]
+            if (txt == spot_norm or            # точное "SP07"
+                txt == spot_digits_padded or   # "07"
+                txt == spot_digits or          # "7"
+                spot_norm in txt or            # "SP07" внутри длинного текста
+                spot_digits_padded in txt):    # "07" внутри
+                spot_found = True
+                matched_text = txt
+                break
+
+    print(f"🔍 OCR тексты: {[t['text'] for t in unique_texts]}")
+    print(f"🅿️  Место '{spot_to_find}' → {'НАЙДЕНО (' + matched_text + ')' if spot_found else 'НЕ НАЙДЕНО'}")
+
+    return jsonify({
+        "texts": unique_texts,
+        "spot_found": spot_found,
+        "matched_text": matched_text,
+    })
 
 
 if __name__ == "__main__":

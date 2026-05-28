@@ -345,7 +345,8 @@ router.get('/history', async (req: Request, res: Response) => {
 });
 
 // ─── OCR helper ────────────────────────────────────────────
-async function runOCR(photoUrl: string, bookedPlate: string): Promise<'CONFIRMED' | 'WRONG_SPOT' | null> {
+// Проверяет что на фото виден номер места (например "07" или "SP-07")
+async function runOCR(photoUrl: string, spotId: string): Promise<'CONFIRMED' | 'WRONG_SPOT' | null> {
   const ocrUrl = process.env.OCR_SERVICE_URL;
   if (!ocrUrl) return null; // OCR не настроен — ручная проверка
 
@@ -353,22 +354,29 @@ async function runOCR(photoUrl: string, bookedPlate: string): Promise<'CONFIRMED
     const res = await fetch(`${ocrUrl}/ocr`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ image: photoUrl }),
+      body: JSON.stringify({ image: photoUrl, spot: spotId }),
       signal: AbortSignal.timeout(20000),
     });
     if (!res.ok) return null;
 
-    const data = await res.json() as { best?: string | null };
-    if (!data.best) return null;
+    const data = await res.json() as { spot_found?: boolean; matched_text?: string | null; texts?: {text: string}[] };
 
-    const norm = (s: string) => s.replace(/\s+/g, '').toUpperCase();
-    const detected = norm(data.best);
-    const booked   = norm(bookedPlate);
+    logger.info(`🔍 OCR: spot="${spotId}" found=${data.spot_found} matched="${data.matched_text}"`);
 
-    // Совпадение если одно содержит другое (OCR иногда читает часть номера)
-    const isMatch = detected === booked || detected.includes(booked) || booked.includes(detected);
-    logger.info(`🔍 OCR: detected="${detected}" booked="${booked}" match=${isMatch}`);
-    return isMatch ? 'CONFIRMED' : 'WRONG_SPOT';
+    if (data.spot_found) return 'CONFIRMED';
+
+    // Если нашли ДРУГОЙ номер места — WRONG_SPOT
+    // Ищем паттерны вида "SP01", "02", "03" в текстах
+    const spotDigits = spotId.replace(/[^0-9]/g, '').replace(/^0+/, '') || '0';
+    const otherSpotFound = data.texts?.some(t => {
+      const n = t.text.replace(/^0+/, '') || '0';
+      return n !== spotDigits && /^\d{1,2}$/.test(n) && parseInt(n) >= 1 && parseInt(n) <= 50;
+    });
+
+    if (otherSpotFound) return 'WRONG_SPOT';
+
+    // Номер места не найден вообще — оставляем на ручную проверку
+    return null;
   } catch {
     logger.warn('⚠️  OCR service unavailable, falling back to manual review');
     return null;
@@ -393,7 +401,7 @@ router.post('/:id/photo', async (req: Request, res: Response) => {
       if (!rental) return res.status(404).json({ error: 'Booking not found' });
 
       // Для долгосрочной аренды тоже запускаем OCR
-      const ocrStatus = await runOCR(photoUrl, rental.plateNumber);
+      const ocrStatus = await runOCR(photoUrl, rental.spotId);
       const finalStatus = ocrStatus ?? 'UPLOADED';
 
       const updated = await prisma.longTermRental.update({
@@ -413,7 +421,7 @@ router.post('/:id/photo', async (req: Request, res: Response) => {
         where: { id },
         data: { photoUrl, photoUploadedAt: new Date(), photoStatus: 'UPLOADED' },
       }),
-      runOCR(photoUrl, booking.plateNumber),
+      runOCR(photoUrl, booking.spotId),
     ]);
 
     const finalStatus = ocrStatus ?? 'UPLOADED';
