@@ -7,6 +7,7 @@ import { validateBooking } from '../middleware/validation.middleware';
 import { getExtendBookingCost } from '../utils/pricing';
 import { logger } from '../server';
 import { prisma } from '../lib/prisma';
+import { uploadPhotoToCloudinary } from '../utils/cloudinary';
 
 const router = Router();
 
@@ -395,6 +396,17 @@ router.post('/:id/photo', async (req: Request, res: Response) => {
 
     if (!photoUrl) return res.status(400).json({ error: 'photoUrl is required' });
 
+    // Загружаем фото в Cloudinary (если настроен), иначе сохраняем base64
+    let storedUrl = photoUrl;
+    if (process.env.CLOUDINARY_CLOUD_NAME) {
+      try {
+        storedUrl = await uploadPhotoToCloudinary(photoUrl, 'qpark/photos');
+        logger.info(`📸 Фото загружено в Cloudinary: ${storedUrl}`);
+      } catch (err) {
+        logger.warn('⚠️ Cloudinary недоступен, сохраняем base64');
+      }
+    }
+
     const booking = await prisma.booking.findFirst({
       where: { id, userId },
     });
@@ -403,13 +415,12 @@ router.post('/:id/photo', async (req: Request, res: Response) => {
       const rental = await prisma.longTermRental.findFirst({ where: { id, userId } });
       if (!rental) return res.status(404).json({ error: 'Booking not found' });
 
-      // Для долгосрочной аренды тоже запускаем OCR
-      const ocrStatus = await runOCR(photoUrl, rental.spotId);
+      const ocrStatus = await runOCR(storedUrl, rental.spotId);
       const finalStatus = ocrStatus ?? 'UPLOADED';
 
       const updated = await prisma.longTermRental.update({
         where: { id },
-        data: { photoUrl, photoUploadedAt: new Date(), photoStatus: finalStatus },
+        data: { photoUrl: storedUrl, photoUploadedAt: new Date(), photoStatus: finalStatus },
       });
       return res.json({ success: true, photoStatus: updated.photoStatus, autoVerified: !!ocrStatus });
     }
@@ -422,9 +433,9 @@ router.post('/:id/photo', async (req: Request, res: Response) => {
     const [, ocrStatus] = await Promise.all([
       prisma.booking.update({
         where: { id },
-        data: { photoUrl, photoUploadedAt: new Date(), photoStatus: 'UPLOADED' },
+        data: { photoUrl: storedUrl, photoUploadedAt: new Date(), photoStatus: 'UPLOADED' },
       }),
-      runOCR(photoUrl, booking.spotId),
+      runOCR(storedUrl, booking.spotId),
     ]);
 
     const finalStatus = ocrStatus ?? 'UPLOADED';
