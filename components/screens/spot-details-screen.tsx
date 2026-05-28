@@ -9,13 +9,17 @@ import { Separator } from "@/components/ui/separator"
 import { ArrowLeft, MapPin, Clock, Calendar, Car, Check, AlertTriangle, Wallet } from "lucide-react"
 import { cn } from "@/lib/utils"
 
-const shortTermOptions = [
-  { minutes: 20,  label: "20 мин",  price: 150 },
-  { minutes: 30,  label: "30 мин",  price: 150 },
-  { minutes: 45,  label: "45 мин",  price: 150 },
-  { minutes: 60,  label: "1 час",   price: 150 },
-  { minutes: 120, label: "2 часа",  price: 330 },
-]
+const calcShortTermPrice = (minutes: number) => {
+  if (minutes <= 60) return 150
+  return 150 + Math.ceil((minutes - 60) * 3)
+}
+
+const formatDuration = (minutes: number) => {
+  if (minutes < 60) return `${minutes} мин`
+  const h = Math.floor(minutes / 60)
+  const m = minutes % 60
+  return m > 0 ? `${h} ч ${m} мин` : `${h} ч`
+}
 
 const rentalOptions = [
   { days: 1,  price: 700,  perDay: 700 },
@@ -29,7 +33,7 @@ export function SpotDetailsScreen() {
   const { selectedSpot, user, setUser, setCurrentScreen, setActiveBooking, updateSpot, activeBooking, t } = useParking()
   const [selectedCar, setSelectedCar]           = useState(user?.cars[0]?.id || "")
   const [bookingType, setBookingType]           = useState<"short-term" | "long-term" | null>(null)
-  const [selectedDuration, setSelectedDuration] = useState<number | null>(null)
+  const [selectedDuration, setSelectedDuration] = useState<number>(60)
   const [selectedRentalDays, setSelectedRentalDays] = useState<number | null>(null)
   const [isBooking, setIsBooking]               = useState(false)
   const [bookingError, setBookingError]         = useState("")
@@ -56,7 +60,7 @@ export function SpotDetailsScreen() {
       return rentalOptions.find(o => o.days === selectedRentalDays)?.price || 0
     }
     if (bookingType === "short-term") {
-      return shortTermOptions.find(o => o.minutes === selectedDuration)?.price || 150
+      return calcShortTermPrice(selectedDuration)
     }
     return 150
   }
@@ -160,7 +164,7 @@ export function SpotDetailsScreen() {
   }
 
   const canBook = !!selectedCar && !!bookingType
-    && (bookingType === "short-term" ? !!selectedDuration : !!selectedRentalDays)
+    && (bookingType === "short-term" ? selectedDuration > 0 : !!selectedRentalDays)
     && !isBooking && !!user?.cars?.length
 
   return (
@@ -294,31 +298,40 @@ export function SpotDetailsScreen() {
               Длительность
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-2">
-            {shortTermOptions.map((opt) => (
+          <CardContent>
+            {/* Custom time picker */}
+            <div className="flex items-center justify-between mb-4">
               <button
-                key={opt.minutes}
-                onClick={() => setSelectedDuration(opt.minutes)}
-                className={cn(
-                  "flex w-full items-center justify-between rounded-lg border-2 p-3 transition-all",
-                  selectedDuration === opt.minutes
-                    ? "border-primary bg-primary/5"
-                    : "border-border hover:border-primary/50"
-                )}
-              >
-                <p className="font-medium text-foreground">{opt.label}</p>
-                <div className="flex items-center gap-2">
-                  <p className="font-bold text-[#36549B]">{opt.price} ₸</p>
-                  {selectedDuration === opt.minutes && (
-                    <div className="flex h-5 w-5 items-center justify-center rounded-full bg-primary">
-                      <Check className="h-3 w-3 text-primary-foreground" />
-                    </div>
-                  )}
-                </div>
+                onClick={() => setSelectedDuration(Math.max(15, selectedDuration - 15))}
+                className="flex h-11 w-11 items-center justify-center rounded-xl border-2 border-border text-xl font-bold text-foreground hover:border-primary hover:bg-primary/5 transition-all">
+                −
               </button>
-            ))}
-            <p className="text-xs text-muted-foreground pt-1">
-              После первого часа: 3 ₸/мин · 15 мин на подъезд бесплатно
+              <div className="text-center">
+                <p className="text-3xl font-bold text-foreground">{formatDuration(selectedDuration)}</p>
+                <p className="text-sm font-semibold text-[#36549B] mt-1">{calcShortTermPrice(selectedDuration)} ₸</p>
+              </div>
+              <button
+                onClick={() => setSelectedDuration(Math.min(480, selectedDuration + 15))}
+                className="flex h-11 w-11 items-center justify-center rounded-xl border-2 border-border text-xl font-bold text-foreground hover:border-primary hover:bg-primary/5 transition-all">
+                +
+              </button>
+            </div>
+            {/* Quick picks */}
+            <div className="flex gap-2 mb-3">
+              {[30, 60, 90, 120].map(m => (
+                <button key={m} onClick={() => setSelectedDuration(m)}
+                  className={cn(
+                    "flex-1 py-1.5 rounded-lg text-xs font-medium border transition-all",
+                    selectedDuration === m
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-border text-muted-foreground hover:border-primary/50"
+                  )}>
+                  {formatDuration(m)}
+                </button>
+              ))}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Первый час — 150 ₸ · После: 3 ₸/мин · 15 мин на подъезд бесплатно
             </p>
           </CardContent>
         </Card>
@@ -384,12 +397,10 @@ export function SpotDetailsScreen() {
                   {bookingType === "short-term" ? "Краткосрочная" : "Долгосрочная"}
                 </span>
               </div>
-              {bookingType === "short-term" && selectedDuration && (
+              {bookingType === "short-term" && (
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Время</span>
-                  <span className="font-medium text-foreground">
-                    {shortTermOptions.find(o => o.minutes === selectedDuration)?.label}
-                  </span>
+                  <span className="font-medium text-foreground">{formatDuration(selectedDuration)}</span>
                 </div>
               )}
               {bookingType === "long-term" && selectedRentalDays && (
