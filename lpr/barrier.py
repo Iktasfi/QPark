@@ -150,13 +150,18 @@ def process_plate(plate: str, spot_number: str, direction: str):
 # ДЕМО-РЕЖИМ — ввод номера вручную
 # ─────────────────────────────────────────────
 def run_demo(spot_number: str, direction: str):
+    auto = direction == "auto"
     print(f"\n=== QPark LPR ДЕМО-РЕЖИМ ===")
-    print(f"Место: {spot_number} | Направление: {direction}")
-    print("Введите номер автомобиля (или 'q' для выхода):\n")
+    print(f"Место: {spot_number} | Направление: {'авто (спрашивать каждый раз)' if auto else direction}")
+    if auto:
+        print("Команды: 'e <номер>' — въезд, 'x <номер>' — выезд, 'q' — выход")
+    else:
+        print("Введите номер автомобиля (или 'q' для выхода):")
+    print()
 
     while True:
         try:
-            raw = input("Номер >> ").strip()
+            raw = input(">> ").strip()
         except (EOFError, KeyboardInterrupt):
             print("\nВыход.")
             break
@@ -164,12 +169,22 @@ def run_demo(spot_number: str, direction: str):
         if raw.lower() == "q":
             break
 
-        plate = clean_plate(raw)
+        if auto:
+            parts = raw.split(None, 1)
+            if len(parts) != 2 or parts[0].lower() not in ("e", "x"):
+                print("  ⚠️  Формат: 'e 123ABC01' для въезда, 'x 123ABC01' для выезда")
+                continue
+            dir_choice = "entry" if parts[0].lower() == "e" else "exit"
+            plate = clean_plate(parts[1])
+        else:
+            dir_choice = direction
+            plate = clean_plate(raw)
+
         if not plate:
             print("  ⚠️  Пустой номер, пропускаем")
             continue
 
-        process_plate(plate, spot_number, direction)
+        process_plate(plate, spot_number, dir_choice)
 
 
 # ─────────────────────────────────────────────
@@ -367,7 +382,7 @@ def run_camera(spot_number: str, direction: str):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="QPark LPR Barrier Controller")
     parser.add_argument("--spot",  default=SPOT_NUMBER, help="Номер места (напр. SP-01)")
-    parser.add_argument("--dir",   default=DIRECTION,   choices=["entry", "exit"], help="Направление")
+    parser.add_argument("--dir",   default="auto",   choices=["entry", "exit", "auto"], help="Направление (auto = спрашивать каждый раз)")
     parser.add_argument("--demo",  action="store_true",  help="Демо-режим (без камеры)")
     parser.add_argument("--cam",   type=int, default=CAMERA_INDEX, help="Индекс камеры")
     args = parser.parse_args()
