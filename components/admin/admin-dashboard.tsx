@@ -466,18 +466,19 @@ export function AdminDashboard() {
         {activeTab === "spots" && (
           <>
             {/* Location selector */}
-            <div className="flex flex-wrap gap-2 mb-5">
-              {mockLocations.map(loc => (
-                <button key={loc.id} onClick={() => setSelectedLocationId(loc.id)}
-                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all"
-                  style={selectedLocationId === loc.id
-                    ? { background: "#354469", color: "#ffffff", border: "1px solid rgba(255,255,255,0.2)" }
-                    : { background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.5)", border: "1px solid rgba(255,255,255,0.1)" }}>
-                  <span className="w-1.5 h-1.5 rounded-full" style={{ background: selectedLocationId === loc.id ? "#22c55e" : "rgba(255,255,255,0.2)" }} />
-                  {loc.name}
-                  <span className="text-xs opacity-60">· {loc.address}</span>
-                </button>
-              ))}
+            <div className="flex items-center gap-3 mb-5">
+              <span className="text-white/40 text-sm shrink-0">Локация:</span>
+              <select
+                value={selectedLocationId}
+                onChange={e => setSelectedLocationId(Number(e.target.value))}
+                className="px-4 py-2.5 rounded-xl text-sm font-medium text-white border border-white/10 focus:outline-none focus:border-white/30"
+                style={{ background: "#354469" }}>
+                {mockLocations.map(loc => (
+                  <option key={loc.id} value={loc.id}>
+                    {loc.name} — {loc.address}
+                  </option>
+                ))}
+              </select>
             </div>
             {renderParkingSection(parkingData.tables.shortTerm.title, filterSpotsByLocation(parkingData.tables.shortTerm.table))}
             {renderParkingSection(parkingData.tables.longTerm.title, filterSpotsByLocation(parkingData.tables.longTerm.table))}
