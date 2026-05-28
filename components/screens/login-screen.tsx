@@ -1,6 +1,7 @@
 "use client"
 
-import { useState, useRef, useEffect } from "react"
+import { useState, useEffect } from "react"
+import { Capacitor } from "@capacitor/core"
 import { useParking, mapDbUser } from "@/lib/parking-context"
 import Image from "next/image"
 import { auth } from "@/lib/firebase"
@@ -174,21 +175,28 @@ export function LoginScreen() {
     }
   }
 
+  const isNative = Capacitor.isNativePlatform()
+
   return (
-    <div className="relative mx-auto h-[844px] w-[390px] overflow-hidden rounded-[3rem] border-[12px] border-foreground/90 bg-gray-50 shadow-2xl">
+    <div className={isNative
+      ? "relative w-full h-full bg-gray-50 overflow-hidden"
+      : "relative mx-auto h-[844px] w-[390px] overflow-hidden rounded-[3rem] border-[12px] border-foreground/90 bg-gray-50 shadow-2xl"
+    }>
       <div id="recaptcha-container" />
 
-      <div className="flex h-12 items-center justify-between bg-white px-6 text-sm">
-        <span className="font-medium">9:41</span>
-        <div className="absolute left-1/2 top-3 h-6 w-28 -translate-x-1/2 rounded-full bg-foreground/90" />
-        <div className="flex items-center gap-1">
-          <div className="h-3 w-4 rounded-sm border border-foreground/70">
-            <div className="ml-0.5 mt-0.5 h-2 w-2.5 rounded-sm bg-foreground/70" />
+      {!isNative && (
+        <div className="flex h-12 items-center justify-between bg-white px-6 text-sm">
+          <span className="font-medium">9:41</span>
+          <div className="absolute left-1/2 top-3 h-6 w-28 -translate-x-1/2 rounded-full bg-foreground/90" />
+          <div className="flex items-center gap-1">
+            <div className="h-3 w-4 rounded-sm border border-foreground/70">
+              <div className="ml-0.5 mt-0.5 h-2 w-2.5 rounded-sm bg-foreground/70" />
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
-      <div className="h-[calc(100%-48px)] overflow-y-auto bg-gray-50">
+      <div className={isNative ? "h-full overflow-y-auto bg-gray-50" : "h-[calc(100%-48px)] overflow-y-auto bg-gray-50"}>
         <div className="bg-white rounded-b-3xl px-6 py-8 shadow-md">
           <div className="flex flex-col items-center">
             <div className="w-16 h-16 rounded-full flex items-center justify-center mb-4">

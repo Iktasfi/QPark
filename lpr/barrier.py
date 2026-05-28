@@ -66,7 +66,7 @@ FRAME_SKIP    = 5                            # Обрабатывать кажд
 # ─────────────────────────────────────────────
 GPIO_AVAILABLE = False
 try:
-    import RPi.GPIO as GPIO
+    import RPi.GPIO as GPIO  # type: ignore[import]
     GPIO.setmode(GPIO.BCM)
     GPIO.setup(BARRIER_PIN, GPIO.OUT, initial=GPIO.LOW)
     GPIO_AVAILABLE = True
