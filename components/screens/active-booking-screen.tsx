@@ -59,6 +59,7 @@ export function ActiveBookingScreen() {
 
   // Photo confirmation state
   const [photoStatus, setPhotoStatus] = useState<"idle" | "pending" | "uploading" | "uploaded" | "confirmed" | "wrong_spot">("idle")
+  const [photoError, setPhotoError] = useState<string | null>(null)
   const [photoTimer, setPhotoTimer] = useState(7 * 60) // 7 minutes
   const [photoTimerActive, setPhotoTimerActive] = useState(false)
   const photoTimerStartRef = useRef<number | null>(null)
@@ -119,7 +120,7 @@ export function ActiveBookingScreen() {
       else setPhotoStatus("uploaded")
     } catch (err) {
       setPhotoStatus("pending")
-      alert(err instanceof Error ? err.message : "Ошибка загрузки фото")
+      setPhotoError(err instanceof Error ? err.message : "Ошибка загрузки фото")
     }
   }
 
@@ -476,18 +477,23 @@ export function ActiveBookingScreen() {
             </div>
 
             {(photoStatus === "pending" || photoStatus === "wrong_spot" || photoTimer === 0) && (
-              <label className="flex items-center justify-center gap-2 w-full py-3 rounded-xl font-semibold text-sm text-white cursor-pointer bg-[#354469] hover:bg-[#354469]/90 transition-colors">
-                <Camera className="h-4 w-4" />
-                {photoStatus === "uploading" ? "Загрузка..." : "Сделать фото"}
-                <input
-                  type="file"
-                  accept="image/*"
-                  capture="environment"
-                  className="hidden"
-                  onChange={handlePhotoUpload}
-                  disabled={photoStatus === "uploading"}
-                />
-              </label>
+              <>
+                <label className="flex items-center justify-center gap-2 w-full py-3 rounded-xl font-semibold text-sm text-white cursor-pointer bg-[#354469] hover:bg-[#354469]/90 transition-colors">
+                  <Camera className="h-4 w-4" />
+                  {photoStatus === "uploading" ? "Загрузка..." : "Сделать фото"}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    className="hidden"
+                    onChange={(e) => { setPhotoError(null); handlePhotoUpload(e) }}
+                    disabled={photoStatus === "uploading"}
+                  />
+                </label>
+                {photoError && (
+                  <p className="text-xs text-red-600 text-center mt-1">{photoError}</p>
+                )}
+              </>
             )}
           </CardContent>
         </Card>

@@ -29,7 +29,7 @@ import numpy as np
 from datetime import datetime
 
 # На macOS используем AVFoundation для доступа к камере
-_CAP_BACKEND = cv2.CAP_AVFOUNDATION if platform.system() == "Darwin" else cv2.CAP_ANY
+_CAP_BACKEND = cv2.CAP_ANY
 
 # Общее состояние шлагбаума (обновляется из потока process_plate)
 _barrier_state = {
@@ -311,25 +311,42 @@ def run_camera(spot_number: str, direction: str):
     print("Инициализация EasyOCR (первый запуск занимает ~30 сек.)...")
 
     reader = easyocr.Reader(["en", "ru"], gpu=False, verbose=False)
-    cap    = cv2.VideoCapture(CAMERA_INDEX, _CAP_BACKEND)
 
+    # Пробуем открыть камеру; если не получается — пробуем индекс 0
+    cap = cv2.VideoCapture(CAMERA_INDEX, _CAP_BACKEND)
+    if not cap.isOpened() and CAMERA_INDEX != 0:
+        print(f"⚠️  Камера {CAMERA_INDEX} недоступна, пробую камеру 0...")
+        cap = cv2.VideoCapture(0, _CAP_BACKEND)
     if not cap.isOpened():
-        print(f"❌ Не удаётся открыть камеру {CAMERA_INDEX}")
+        print(f"❌ Не удаётся открыть камеру")
         sys.exit(1)
 
     cap.set(cv2.CAP_PROP_FRAME_WIDTH,  1280)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+
+    # AVFoundation на Mac требует прогрева — читаем несколько кадров
+    print("⏳ Прогрев камеры...")
+    for _ in range(30):
+        cap.read()
+        time.sleep(0.05)
+
     print(f"✅ Камера готова. Текущий режим: {current_dir.upper()}\n")
 
     last_plate   = ""
     last_scan_ts = 0.0
     frame_count  = 0
 
+    read_errors = 0
     while True:
         ret, frame = cap.read()
         if not ret:
-            print("❌ Ошибка чтения кадра")
-            break
+            read_errors += 1
+            if read_errors > 10:
+                print("❌ Камера перестала отвечать")
+                break
+            time.sleep(0.1)
+            continue
+        read_errors = 0
 
         frame_h, frame_w = frame.shape[:2]
         frame_count += 1
@@ -405,13 +422,15 @@ def run_camera(spot_number: str, direction: str):
 # ─────────────────────────────────────────────
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="QPark LPR Barrier Controller")
-    parser.add_argument("--spot",  default=SPOT_NUMBER, help="Номер места (напр. SP-01)")
-    parser.add_argument("--dir",   default="auto",   choices=["entry", "exit", "auto"], help="Направление (auto = спрашивать каждый раз)")
-    parser.add_argument("--demo",  action="store_true",  help="Демо-режим (без камеры)")
-    parser.add_argument("--cam",   type=int, default=CAMERA_INDEX, help="Индекс камеры")
+    parser.add_argument("--spot",    default=SPOT_NUMBER, help="Номер места (напр. SP-01)")
+    parser.add_argument("--dir",     default="auto",   choices=["entry", "exit", "auto"], help="Направление (auto = спрашивать каждый раз)")
+    parser.add_argument("--demo",    action="store_true",  help="Демо-режим (без камеры)")
+    parser.add_argument("--cam",     type=int, default=CAMERA_INDEX, help="Индекс камеры")
+    parser.add_argument("--backend", default=BACKEND_URL, help="URL бэкенда (напр. http://localhost:3001)")
     args = parser.parse_args()
 
     CAMERA_INDEX = args.cam
+    BACKEND_URL  = args.backend
 
     if args.demo:
         run_demo(args.spot, args.dir)
