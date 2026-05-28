@@ -183,7 +183,13 @@ export function AdminDashboard() {
         if (txRes.ok) setDbTransactions(await txRes.json())
       }
       const promoRes = await fetch("/backend/admin/promo/all")
-      if (promoRes.ok) setPromoCodes(await promoRes.json())
+      if (promoRes.ok) {
+        setPromoCodes(await promoRes.json())
+      } else {
+        // fallback to payment route if admin route not deployed yet
+        const promoFallback = await fetch("/backend/payments/promo/all", token ? { headers: { Authorization: `Bearer ${token}` } } : {})
+        if (promoFallback.ok) setPromoCodes(await promoFallback.json())
+      }
       setError(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : "Произошла ошибка")
@@ -718,11 +724,19 @@ export function AdminDashboard() {
                   setPromoLoading(true); setPromoError("")
                   try {
                     const token = localStorage.getItem("qpark_token")
-                    const res = await fetch("/backend/admin/promo/create", {
+                    // try new admin route first (no auth), fall back to payments route
+                    let res = await fetch("/backend/admin/promo/create", {
                       method: "POST",
                       headers: { "Content-Type": "application/json" },
                       body: JSON.stringify({ code: newPromo.code, discount: Number(newPromo.discount), type: newPromo.type, maxUses: newPromo.maxUses ? Number(newPromo.maxUses) : undefined }),
                     })
+                    if (res.status === 404) {
+                      res = await fetch("/backend/payments/promo/create", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+                        body: JSON.stringify({ code: newPromo.code, discount: Number(newPromo.discount), type: newPromo.type, maxUses: newPromo.maxUses ? Number(newPromo.maxUses) : undefined }),
+                      })
+                    }
                     const data = await res.json()
                     if (!res.ok) throw new Error(data.error)
                     setPromoCodes(prev => [data, ...prev])
