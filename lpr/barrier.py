@@ -298,8 +298,16 @@ def _draw_hud(frame: np.ndarray, spot_number: str, direction: str,
 
 
 def run_camera(spot_number: str, direction: str):
+    # Если direction == "auto" — начинаем с entry, переключаем клавишами e/x
+    current_dir = "entry" if direction == "auto" else direction
+    auto_mode   = direction == "auto"
+
     print(f"\n=== QPark LPR КАМЕРА ===")
-    print(f"Место: {spot_number} | Направление: {direction}")
+    print(f"Место: {spot_number} | Направление: {current_dir}")
+    if auto_mode:
+        print("Клавиши: [e] — въезд  [x] — выезд  [q] — выход")
+    else:
+        print("Нажмите 'q' для выхода.")
     print("Инициализация EasyOCR (первый запуск занимает ~30 сек.)...")
 
     reader = easyocr.Reader(["en", "ru"], gpu=False, verbose=False)
@@ -311,7 +319,7 @@ def run_camera(spot_number: str, direction: str):
 
     cap.set(cv2.CAP_PROP_FRAME_WIDTH,  1280)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
-    print("✅ Камера готова. Нажмите 'q' для выхода.\n")
+    print(f"✅ Камера готова. Текущий режим: {current_dir.upper()}\n")
 
     last_plate   = ""
     last_scan_ts = 0.0
@@ -360,15 +368,31 @@ def run_camera(spot_number: str, direction: str):
                 last_scan_ts = time.time()
                 threading.Thread(
                     target=process_plate,
-                    args=(best_plate, spot_number, direction),
+                    args=(best_plate, spot_number, current_dir),
                     daemon=True,
                 ).start()
 
-        _draw_hud(frame, spot_number, direction, last_plate, last_scan_ts, frame_w, frame_h)
+        # Подсказка режима в левом нижнем углу (авто-режим)
+        if auto_mode:
+            dir_color = (0, 220, 80) if current_dir == "entry" else (0, 100, 255)
+            dir_label = "ВЪЕЗД [e]  |  выезд [x]" if current_dir == "entry" else "въезд [e]  |  ВЫЕЗД [x]"
+            cv2.putText(frame, dir_label, (14, frame_h - 18),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, dir_color, 2, cv2.LINE_AA)
+
+        _draw_hud(frame, spot_number, current_dir, last_plate, last_scan_ts, frame_w, frame_h)
 
         cv2.imshow("QPark LPR", frame)
-        if cv2.waitKey(1) & 0xFF == ord("q"):
+        key = cv2.waitKey(1) & 0xFF
+        if key == ord("q"):
             break
+        elif auto_mode and key == ord("e"):
+            current_dir = "entry"
+            last_plate  = ""   # сбросить cooldown при смене режима
+            print(f"→ Режим: ВЪЕЗД")
+        elif auto_mode and key == ord("x"):
+            current_dir = "exit"
+            last_plate  = ""
+            print(f"→ Режим: ВЫЕЗД")
 
     cap.release()
     cv2.destroyAllWindows()
