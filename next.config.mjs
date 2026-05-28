@@ -10,7 +10,7 @@ const nextConfig = {
     return [
       {
         source: '/backend/:path*',
-        destination: '/api/backend/:path*',
+        destination: `${process.env.BACKEND_URL || 'https://qpark-production.up.railway.app'}/:path*`,
       },
     ]
   },
