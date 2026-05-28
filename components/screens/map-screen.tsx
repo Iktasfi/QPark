@@ -7,9 +7,9 @@ import { cn } from "@/lib/utils"
 import { Car, Wrench, Clock, Check, AlertCircle, ArrowLeft, Search, MapPin } from "lucide-react"
 
 const locations = [
-  { id: 1, name: "Парковка №1", address: "Улы Дала, 1, Астана",       spots: 30 },
-  { id: 2, name: "Парковка №2", address: "Сыганак, 5, Астана",         spots: 25 },
-  { id: 3, name: "Парковка №3", address: "Кабанбай батыр, 12, Астана", spots: 20 },
+  { id: 1, name: "Парковка №1", address: "Улы Дала, 1, Астана",       spots: 30, range: [1, 30] },
+  { id: 2, name: "Парковка №2", address: "Сыганак, 5, Астана",         spots: 25, range: [1, 25] },
+  { id: 3, name: "Парковка №3", address: "Кабанбай батыр, 12, Астана", spots: 20, range: [1, 20] },
 ]
 
 export function MapScreen() {
@@ -30,6 +30,12 @@ export function MapScreen() {
     l => l.name.toLowerCase().includes(searchQuery.toLowerCase())
       || l.address.toLowerCase().includes(searchQuery.toLowerCase())
   )
+
+  const [min, max] = selectedLocation.range
+  const visibleSpots = spots.filter(s => {
+    const num = parseInt(s.number)
+    return num >= min && num <= max
+  })
 
   const handleSpotClick = (spotId: string) => {
     const spot = spots.find(s => s.id === spotId)
@@ -135,12 +141,12 @@ export function MapScreen() {
           <div className="flex items-center gap-1.5">
             <span className="w-2 h-2 rounded-full bg-green-500" />
             <span className="text-xs text-gray-500 dark:text-gray-400">
-              {spots.filter(s => s.status === "FREE").length} свободно
+              {visibleSpots.filter(s => s.status === "FREE").length} свободно
             </span>
           </div>
         </div>
         <div className="grid grid-cols-5 gap-2">
-          {spots.map((spot) => {
+          {visibleSpots.map((spot) => {
             const config = statusConfig[spot.status]
             const Icon = config.icon
             const isClickable = spot.status === "FREE"
