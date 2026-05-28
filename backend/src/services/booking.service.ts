@@ -7,7 +7,7 @@ export class BookingService {
   async createShortTermBooking(userId: string, spotId: string, plateNumber: string = '') {
     try {
       const now = new Date();
-      const estimatedEndTime = new Date(now.getTime() + 15 * 60 * 1000);
+      const estimatedEndTime = new Date(now.getTime() + 30 * 60 * 1000);
 
       // Get user's car plate if not provided
       const user = await prisma.user.findUnique({ where: { id: userId }, select: { carPlate: true } });

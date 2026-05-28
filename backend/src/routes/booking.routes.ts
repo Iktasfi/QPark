@@ -344,4 +344,165 @@ router.get('/history', async (req: Request, res: Response) => {
   }
 });
 
+// ─── PHOTO UPLOAD ──────────────────────────────────────────
+router.post('/:id/photo', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const userId = req.userId!;
+    const { photoUrl } = req.body;
+
+    if (!photoUrl) return res.status(400).json({ error: 'photoUrl is required' });
+
+    const booking = await prisma.booking.findFirst({
+      where: { id, userId },
+    });
+
+    if (!booking) {
+      const rental = await prisma.longTermRental.findFirst({ where: { id, userId } });
+      if (!rental) return res.status(404).json({ error: 'Booking not found' });
+
+      const updated = await prisma.longTermRental.update({
+        where: { id },
+        data: { photoUrl, photoUploadedAt: new Date(), photoStatus: 'UPLOADED' },
+      });
+      return res.json({ success: true, photoStatus: updated.photoStatus });
+    }
+
+    const photoTimerStart = booking.photoTimerStart ?? new Date();
+    const elapsed = (Date.now() - photoTimerStart.getTime()) / 1000 / 60;
+    if (elapsed > 7) return res.status(400).json({ error: 'Photo upload time expired (7 minutes)' });
+
+    const updated = await prisma.booking.update({
+      where: { id },
+      data: { photoUrl, photoUploadedAt: new Date(), photoStatus: 'UPLOADED' },
+    });
+
+    const { io } = await import('../server');
+    io.emit('photo-uploaded', { bookingId: id, spotId: booking.spotId });
+
+    res.json({ success: true, photoStatus: updated.photoStatus });
+  } catch (error) {
+    logger.error('❌ Error uploading photo:', error);
+    res.status(500).json({ error: 'Failed to upload photo' });
+  }
+});
+
+
+// ─── PHOTO CONFIRM (admin) ─────────────────────────────────
+router.post('/:id/photo/confirm', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { type = 'booking' } = req.body;
+
+    if (type === 'rental') {
+      await prisma.longTermRental.update({
+        where: { id },
+        data: { photoStatus: 'CONFIRMED' },
+      });
+    } else {
+      await prisma.booking.update({
+        where: { id },
+        data: { photoStatus: 'CONFIRMED' },
+      });
+    }
+
+    const { io } = await import('../server');
+    io.emit('photo-confirmed', { bookingId: id, type });
+
+    res.json({ success: true });
+  } catch (error) {
+    logger.error('❌ Error confirming photo:', error);
+    res.status(500).json({ error: 'Failed to confirm photo' });
+  }
+});
+
+
+// ─── PHOTO WRONG SPOT (admin) ──────────────────────────────
+router.post('/:id/photo/wrong-spot', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { type = 'booking' } = req.body;
+
+    let userId: string;
+
+    if (type === 'rental') {
+      const rental = await prisma.longTermRental.update({
+        where: { id },
+        data: { photoStatus: 'WRONG_SPOT' },
+      });
+      userId = rental.userId;
+    } else {
+      const booking = await prisma.booking.update({
+        where: { id },
+        data: { photoStatus: 'WRONG_SPOT' },
+      });
+      userId = booking.userId;
+    }
+
+    // Fine 200₸
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (user) {
+      await prisma.user.update({
+        where: { id: userId },
+        data: { walletBalance: user.walletBalance - 200 },
+      });
+      await prisma.transaction.create({
+        data: {
+          userId,
+          amount: -200,
+          type: 'PAYMENT',
+          description: 'Штраф за неправильное место (200₸)',
+          balanceBefore: user.walletBalance,
+          balanceAfter: user.walletBalance - 200,
+        },
+      });
+    }
+
+    const { io } = await import('../server');
+    io.emit('photo-wrong-spot', { bookingId: id, userId, type });
+
+    res.json({ success: true, fine: 200 });
+  } catch (error) {
+    logger.error('❌ Error processing wrong spot:', error);
+    res.status(500).json({ error: 'Failed to process wrong spot' });
+  }
+});
+
+
+// ─── PENDING PHOTOS (admin) ────────────────────────────────
+router.get('/admin/pending-photos', async (req: Request, res: Response) => {
+  try {
+    const bookings = await prisma.booking.findMany({
+      where: { photoStatus: 'UPLOADED' },
+      include: { spot: true, user: true },
+      orderBy: { photoUploadedAt: 'asc' },
+    });
+    const rentals = await prisma.longTermRental.findMany({
+      where: { photoStatus: 'UPLOADED' },
+      include: { spot: true, user: true },
+      orderBy: { photoUploadedAt: 'asc' },
+    });
+
+    const result = [
+      ...bookings.map(b => ({
+        id: b.id, type: 'booking', photoUrl: b.photoUrl,
+        photoUploadedAt: b.photoUploadedAt, spotNumber: b.spot.spotNumber,
+        plateNumber: b.plateNumber, userId: b.userId,
+        userName: b.user?.firstName ?? b.user?.phoneNumber ?? '—',
+      })),
+      ...rentals.map(r => ({
+        id: r.id, type: 'rental', photoUrl: r.photoUrl,
+        photoUploadedAt: r.photoUploadedAt, spotNumber: r.spot.spotNumber,
+        plateNumber: r.plateNumber, userId: r.userId,
+        userName: r.user?.firstName ?? r.user?.phoneNumber ?? '—',
+      })),
+    ].sort((a, b) => new Date(a.photoUploadedAt!).getTime() - new Date(b.photoUploadedAt!).getTime());
+
+    res.json(result);
+  } catch (error) {
+    logger.error('❌ Error fetching pending photos:', error);
+    res.status(500).json({ error: 'Failed to fetch pending photos' });
+  }
+});
+
 export default router;

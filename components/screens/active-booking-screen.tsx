@@ -57,6 +57,68 @@ export function ActiveBookingScreen() {
   const [isTerminating, setIsTerminating] = useState(false)
   const [showTerminateConfirm, setShowTerminateConfirm] = useState(false)
 
+  // Photo confirmation state
+  const [photoStatus, setPhotoStatus] = useState<"idle" | "pending" | "uploading" | "uploaded" | "confirmed" | "wrong_spot">("idle")
+  const [photoTimer, setPhotoTimer] = useState(7 * 60) // 7 minutes
+  const [photoTimerActive, setPhotoTimerActive] = useState(false)
+  const photoTimerStartRef = useRef<number | null>(null)
+
+  // Start 7-min photo timer when arrived
+  useEffect(() => {
+    if (isArrived && photoStatus === "idle") {
+      setPhotoStatus("pending")
+      setPhotoTimerActive(true)
+      photoTimerStartRef.current = Date.now()
+    }
+  }, [isArrived])
+
+  useEffect(() => {
+    if (!photoTimerActive || photoStatus === "uploaded" || photoStatus === "confirmed") return
+    if (photoTimer <= 0) { setPhotoTimerActive(false); return }
+    const id = setInterval(() => setPhotoTimer(p => Math.max(0, p - 1)), 1000)
+    return () => clearInterval(id)
+  }, [photoTimerActive, photoStatus, photoTimer])
+
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file || !activeBooking) return
+    setPhotoStatus("uploading")
+    try {
+      // Compress to JPEG base64
+      const photoUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = (ev) => {
+          const img = new Image()
+          img.onload = () => {
+            const canvas = document.createElement("canvas")
+            const MAX = 800
+            const ratio = Math.min(MAX / img.width, MAX / img.height, 1)
+            canvas.width = img.width * ratio
+            canvas.height = img.height * ratio
+            canvas.getContext("2d")!.drawImage(img, 0, 0, canvas.width, canvas.height)
+            resolve(canvas.toDataURL("image/jpeg", 0.7))
+          }
+          img.onerror = reject
+          img.src = ev.target?.result as string
+        }
+        reader.onerror = reject
+        reader.readAsDataURL(file)
+      })
+
+      const token = localStorage.getItem("qpark_token")
+      const res = await fetch(`/backend/bookings/${activeBooking.id}/photo`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ photoUrl }),
+      })
+      if (!res.ok) { const d = await res.json(); throw new Error(d.error) }
+      setPhotoStatus("uploaded")
+    } catch (err) {
+      setPhotoStatus("pending")
+      alert(err instanceof Error ? err.message : "Ошибка загрузки фото")
+    }
+  }
+
   const selectedCar = user?.cars.find(c => c.plateNumber === activeBooking?.plateNumber)
   
   const formatTime = (seconds: number) => {
@@ -362,6 +424,78 @@ export function ActiveBookingScreen() {
                 <p className="text-sm text-muted-foreground">{t.currentCost}</p>
                 <p className="text-2xl font-bold text-[#36549B]">{calculateCost()} &#8376;</p>
               </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Photo confirmation section — appears after barrier opens */}
+      {isArrived && photoStatus !== "idle" && photoStatus !== "confirmed" && (
+        <Card className={cn(
+          "border-2",
+          photoStatus === "wrong_spot" ? "border-red-400 bg-red-50" :
+          photoStatus === "uploaded" ? "border-yellow-400 bg-yellow-50" :
+          photoTimer === 0 ? "border-red-400 bg-red-50" :
+          "border-orange-400 bg-orange-50"
+        )}>
+          <CardContent className="p-4 space-y-3">
+            <div className="flex items-center gap-3">
+              <Camera className={cn("h-6 w-6", photoStatus === "wrong_spot" ? "text-red-500" : photoStatus === "uploaded" ? "text-yellow-600" : "text-orange-600")} />
+              <div className="flex-1">
+                {photoStatus === "wrong_spot" ? (
+                  <>
+                    <p className="font-semibold text-red-700">Неверное место!</p>
+                    <p className="text-sm text-red-600">Перепаркуйтесь на {activeBooking?.spotId} в течение 10 мин. Штраф 200 ₸</p>
+                  </>
+                ) : photoStatus === "uploaded" ? (
+                  <>
+                    <p className="font-semibold text-yellow-700">Фото отправлено</p>
+                    <p className="text-sm text-yellow-600">Ожидаем подтверждения администратора...</p>
+                  </>
+                ) : photoTimer === 0 ? (
+                  <>
+                    <p className="font-semibold text-red-700">Время истекло!</p>
+                    <p className="text-sm text-red-600">Загрузите фото вашей машины на месте {activeBooking?.spotId}</p>
+                  </>
+                ) : (
+                  <>
+                    <p className="font-semibold text-orange-700">Сфотографируйте машину на месте</p>
+                    <p className="text-sm text-orange-600">У вас {formatTime(photoTimer)} чтобы подтвердить место {activeBooking?.spotId}</p>
+                  </>
+                )}
+              </div>
+              {(photoStatus === "pending" || photoTimer === 0) && (
+                <span className={cn("text-lg font-bold", photoTimer < 60 ? "text-red-600" : "text-orange-600")}>
+                  {formatTime(photoTimer)}
+                </span>
+              )}
+            </div>
+
+            {(photoStatus === "pending" || photoStatus === "wrong_spot" || photoTimer === 0) && (
+              <label className="flex items-center justify-center gap-2 w-full py-3 rounded-xl font-semibold text-sm text-white cursor-pointer bg-[#354469] hover:bg-[#354469]/90 transition-colors">
+                <Camera className="h-4 w-4" />
+                {photoStatus === "uploading" ? "Загрузка..." : "Сделать фото"}
+                <input
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  className="hidden"
+                  onChange={handlePhotoUpload}
+                  disabled={photoStatus === "uploading"}
+                />
+              </label>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {isArrived && photoStatus === "confirmed" && (
+        <Card className="border-green-400 bg-green-50">
+          <CardContent className="p-4 flex items-center gap-3">
+            <Check className="h-6 w-6 text-green-600" />
+            <div>
+              <p className="font-semibold text-green-700">Место подтверждено</p>
+              <p className="text-sm text-green-600">Администратор подтвердил ваше место</p>
             </div>
           </CardContent>
         </Card>

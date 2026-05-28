@@ -72,10 +72,15 @@ model Booking {
   startTime        DateTime
   estimatedEndTime DateTime
   actualEndTime    DateTime?
+  arrivedAt        DateTime?
   status           BookingStatus @default(PENDING)
   isPaid           Boolean       @default(false)
   totalCost        Float         @default(0)
   minutesExtended  Int           @default(0)
+  photoUrl         String?
+  photoUploadedAt  DateTime?
+  photoStatus      PhotoStatus?
+  photoTimerStart  DateTime?
   createdAt        DateTime      @default(now())
   updatedAt        DateTime      @updatedAt
 
@@ -88,18 +93,23 @@ model Booking {
 
 // ─── LONG TERM RENTALS ────────────────────────────────────
 model LongTermRental {
-  id          String       @id @default(cuid())
-  userId      String
-  spotId      String
-  plateNumber String
-  rentalDays  Int
-  totalCost   Float
-  startDate   DateTime
-  endDate     DateTime
-  isPaid      Boolean      @default(false)
-  status      RentalStatus @default(ACTIVE)
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
+  id              String       @id @default(cuid())
+  userId          String
+  spotId          String
+  plateNumber     String
+  rentalDays      Int
+  totalCost       Float
+  startDate       DateTime
+  endDate         DateTime
+  arrivedAt       DateTime?
+  isPaid          Boolean      @default(false)
+  status          RentalStatus @default(ACTIVE)
+  photoUrl        String?
+  photoUploadedAt DateTime?
+  photoStatus     PhotoStatus?
+  photoTimerStart DateTime?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
 
   user                User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
   spot                ParkingSpot          @relation(fields: [spotId], references: [id], onDelete: Cascade)
@@ -223,6 +233,13 @@ enum TransactionType {
 enum LPREventType {
   ENTRY
   EXIT
+}
+
+enum PhotoStatus {
+  PENDING
+  UPLOADED
+  CONFIRMED
+  WRONG_SPOT
 }
 
 // ─── PROMO CODES ─────────────────────────────────────────

@@ -169,14 +169,25 @@ router.post('/lpr/entry', async (req: Request, res: Response) => {
       const isExiting = spot.status === 'OCCUPIED';
       const toggledStatus = isExiting ? 'RESERVED' : 'OCCUPIED';
       const eventType = isExiting ? 'exit' : 'entry';
+      const now = new Date();
 
       await prisma.parkingSpot.update({
         where: { spotNumber },
-        data: {
-          status: toggledStatus,
-          currentUserPlate: carPlate,
-        },
+        data: { status: toggledStatus, currentUserPlate: carPlate },
       });
+
+      // On first entry: set photo timer on rental
+      if (!isExiting) {
+        const rental = await prisma.longTermRental.findFirst({
+          where: { spotId: spot.id, status: 'ACTIVE', plateNumber: { contains: normalizePlate(carPlate) } },
+        });
+        if (rental && !rental.arrivedAt) {
+          await prisma.longTermRental.update({
+            where: { id: rental.id },
+            data: { arrivedAt: now, photoTimerStart: now, photoStatus: 'PENDING' },
+          });
+        }
+      }
 
       io.emit('lpr-gate-open', { carPlate, spotNumber, type: eventType });
       io.emit('spot-status-changed', { spotNumber, status: toggledStatus, carPlate });
@@ -189,10 +200,23 @@ router.post('/lpr/entry', async (req: Request, res: Response) => {
     }
 
     if (success && newStatus) {
+      const now = new Date();
       await prisma.parkingSpot.update({
         where: { spotNumber },
         data: { status: newStatus, currentUserPlate: carPlate },
       });
+
+      // Set photo timer on the active booking
+      const activeBooking = await prisma.booking.findFirst({
+        where: { spotId: spot.id, status: { in: ['PENDING', 'CONFIRMED'] } },
+      });
+      if (activeBooking) {
+        await prisma.booking.update({
+          where: { id: activeBooking.id },
+          data: { arrivedAt: now, photoTimerStart: now, photoStatus: 'PENDING' },
+        });
+      }
+
       io.emit('lpr-gate-open', { carPlate, spotNumber, type: 'entry' });
       io.emit('spot-status-changed', { spotNumber, status: newStatus, carPlate });
       logger.info(`✅ LPR entry: ${carPlate} → ${spotNumber} (${spot.type})`);

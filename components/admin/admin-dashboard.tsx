@@ -85,7 +85,8 @@ export function AdminDashboard() {
   const [dbBookings, setDbBookings] = useState<DbBooking[]>([])
   const [dbRentals, setDbRentals] = useState<DbRental[]>([])
   const [dbTransactions, setDbTransactions] = useState<DbTransaction[]>([])
-  const [activeTab, setActiveTab] = useState<"spots" | "users" | "bookings" | "transactions" | "promo" | "locations">("spots")
+  const [activeTab, setActiveTab] = useState<"spots" | "users" | "bookings" | "transactions" | "promo" | "locations" | "photos">("spots")
+  const [pendingPhotos, setPendingPhotos] = useState<{id: string; type: string; photoUrl: string | null; photoUploadedAt: string | null; spotNumber: string; plateNumber: string; userName: string}[]>([])
   const [showAddLocation, setShowAddLocation] = useState(false)
   const [showB2BForm, setShowB2BForm] = useState(false)
   const [locationForm, setLocationForm] = useState({ name: "", address: "", spots: "" })
@@ -187,6 +188,10 @@ export function AdminDashboard() {
       if (token) {
         const promoRes = await fetch(`${RAILWAY}/payments/promo/all`, { headers: { Authorization: `Bearer ${token}` } })
         if (promoRes.ok) setPromoCodes(await promoRes.json())
+      }
+      if (token) {
+        const photosRes = await fetch(`${RAILWAY}/bookings/admin/pending-photos`, { headers: { Authorization: `Bearer ${token}` } })
+        if (photosRes.ok) setPendingPhotos(await photosRes.json())
       }
       setError(null)
     } catch (err) {
@@ -318,6 +323,7 @@ export function AdminDashboard() {
     { id: "bookings",     label: "Бронирования", count: dbBookings.length + dbRentals.length },
     { id: "transactions", label: "Транзакции",   count: dbTransactions.length },
     { id: "promo",        label: "Промокоды",    count: promoCodes.length },
+    { id: "photos",       label: "📷 Фото",      count: pendingPhotos.length },
     { id: "locations",    label: "Локации",      count: mockLocations.length },
   ]
 
@@ -783,6 +789,68 @@ export function AdminDashboard() {
                       ))}
                     </tbody>
                   </table>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {activeTab === "photos" && (
+          <div className="space-y-4">
+            <div className={CARD} style={CARD_BG}>
+              <p className="text-white/70 text-sm font-semibold mb-4">Ожидают подтверждения фото ({pendingPhotos.length})</p>
+              {pendingPhotos.length === 0 ? (
+                <p className="text-white/30 text-center py-10 text-sm">Новых фото нет</p>
+              ) : (
+                <div className="space-y-4">
+                  {pendingPhotos.map(p => (
+                    <div key={p.id} className="rounded-xl border border-white/10 p-4 space-y-3" style={{ background: "rgba(255,255,255,0.04)" }}>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-white font-semibold text-sm">{p.spotNumber} · {p.plateNumber}</p>
+                          <p className="text-white/40 text-xs">{p.userName} · {p.photoUploadedAt ? new Date(p.photoUploadedAt).toLocaleString("ru-RU") : "—"}</p>
+                        </div>
+                        <span className="text-xs px-2 py-0.5 rounded-full font-medium text-yellow-300 bg-yellow-500/20">
+                          {p.type === "rental" ? "Долгосроч." : "Краткосроч."}
+                        </span>
+                      </div>
+                      {p.photoUrl && (
+                        <img
+                          src={p.photoUrl}
+                          alt="Фото машины"
+                          className="w-full rounded-xl object-cover max-h-56"
+                        />
+                      )}
+                      <div className="flex gap-2">
+                        <button
+                          onClick={async () => {
+                            const token = localStorage.getItem("qpark_token")
+                            const res = await fetch(`${RAILWAY}/bookings/${p.id}/photo/confirm`, {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+                              body: JSON.stringify({ type: p.type }),
+                            })
+                            if (res.ok) setPendingPhotos(prev => prev.filter(x => x.id !== p.id))
+                          }}
+                          className="flex-1 py-2 rounded-xl text-sm font-semibold text-white bg-green-600 hover:bg-green-700 transition-colors">
+                          ✓ Подтвердить место
+                        </button>
+                        <button
+                          onClick={async () => {
+                            const token = localStorage.getItem("qpark_token")
+                            const res = await fetch(`${RAILWAY}/bookings/${p.id}/photo/wrong-spot`, {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+                              body: JSON.stringify({ type: p.type }),
+                            })
+                            if (res.ok) setPendingPhotos(prev => prev.filter(x => x.id !== p.id))
+                          }}
+                          className="flex-1 py-2 rounded-xl text-sm font-semibold text-white bg-red-600 hover:bg-red-700 transition-colors">
+                          ✗ Неверное место (−200₸)
+                        </button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
