@@ -181,9 +181,9 @@ export function AdminDashboard() {
       if (token) {
         const txRes = await fetch("/backend/payments/admin/transactions", { headers: { Authorization: `Bearer ${token}` } })
         if (txRes.ok) setDbTransactions(await txRes.json())
-        const promoRes = await fetch("/backend/admin/promo/all")
-        if (promoRes.ok) setPromoCodes(await promoRes.json())
       }
+      const promoRes = await fetch("/backend/admin/promo/all")
+      if (promoRes.ok) setPromoCodes(await promoRes.json())
       setError(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : "Произошла ошибка")
