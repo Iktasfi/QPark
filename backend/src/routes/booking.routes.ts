@@ -411,10 +411,10 @@ router.post('/:id/photo', async (req: Request, res: Response) => {
       where: { id, userId },
     });
 
-    // Fallback: если ID фейковый — ищем активное бронирование этого пользователя
+    // Fallback: если ID фейковый — ищем любое незавершённое бронирование пользователя
     if (!booking) {
       booking = await prisma.booking.findFirst({
-        where: { userId, status: { in: ['PENDING', 'CONFIRMED'] } },
+        where: { userId, status: { notIn: ['COMPLETED', 'CANCELLED'] } },
         orderBy: { createdAt: 'desc' },
       });
     }
