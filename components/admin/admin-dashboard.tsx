@@ -181,11 +181,11 @@ export function AdminDashboard() {
       }
       const token = typeof window !== "undefined" ? localStorage.getItem("qpark_token") : null
       if (token) {
-        const txRes = await fetch(`${RAILWAY}/payments/admin/transactions", { headers: { Authorization: `Bearer ${token}` } })
+        const txRes = await fetch(`${RAILWAY}/payments/admin/transactions`, { headers: { Authorization: `Bearer ${token}` } })
         if (txRes.ok) setDbTransactions(await txRes.json())
       }
       if (token) {
-        const promoRes = await fetch(`${RAILWAY}/payments/promo/all", { headers: { Authorization: `Bearer ${token}` } })
+        const promoRes = await fetch(`${RAILWAY}/payments/promo/all`, { headers: { Authorization: `Bearer ${token}` } })
         if (promoRes.ok) setPromoCodes(await promoRes.json())
       }
       setError(null)
@@ -722,7 +722,7 @@ export function AdminDashboard() {
                   setPromoLoading(true); setPromoError("")
                   try {
                     const token = localStorage.getItem("qpark_token")
-                    const res = await fetch(`${RAILWAY}/payments/promo/create", {
+                    const res = await fetch(`${RAILWAY}/payments/promo/create`, {
                       method: "POST",
                       headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
                       body: JSON.stringify({ code: newPromo.code, discount: Number(newPromo.discount), type: newPromo.type, maxUses: newPromo.maxUses ? Number(newPromo.maxUses) : undefined }),
