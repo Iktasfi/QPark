@@ -353,7 +353,10 @@ async function runOCR(photoUrl: string, spotId: string): Promise<'CONFIRMED' | '
   try {
     const res = await fetch(`${ocrUrl}/ocr`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'ngrok-skip-browser-warning': '1',
+      },
       body: JSON.stringify({ image: photoUrl, spot: spotId }),
       signal: AbortSignal.timeout(20000),
     });
