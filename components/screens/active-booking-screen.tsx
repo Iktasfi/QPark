@@ -111,8 +111,12 @@ export function ActiveBookingScreen() {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ photoUrl }),
       })
-      if (!res.ok) { const d = await res.json(); throw new Error(d.error) }
-      setPhotoStatus("uploaded")
+      const d = await res.json()
+      if (!res.ok) throw new Error(d.error)
+      // Если OCR сработал — сразу показываем финальный статус
+      if (d.photoStatus === 'CONFIRMED') setPhotoStatus("confirmed")
+      else if (d.photoStatus === 'WRONG_SPOT') setPhotoStatus("wrong_spot")
+      else setPhotoStatus("uploaded")
     } catch (err) {
       setPhotoStatus("pending")
       alert(err instanceof Error ? err.message : "Ошибка загрузки фото")

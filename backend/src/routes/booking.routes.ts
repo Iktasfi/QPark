@@ -344,6 +344,37 @@ router.get('/history', async (req: Request, res: Response) => {
   }
 });
 
+// ─── OCR helper ────────────────────────────────────────────
+async function runOCR(photoUrl: string, bookedPlate: string): Promise<'CONFIRMED' | 'WRONG_SPOT' | null> {
+  const ocrUrl = process.env.OCR_SERVICE_URL;
+  if (!ocrUrl) return null; // OCR не настроен — ручная проверка
+
+  try {
+    const res = await fetch(`${ocrUrl}/ocr`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image: photoUrl }),
+      signal: AbortSignal.timeout(20000),
+    });
+    if (!res.ok) return null;
+
+    const data = await res.json() as { best?: string | null };
+    if (!data.best) return null;
+
+    const norm = (s: string) => s.replace(/\s+/g, '').toUpperCase();
+    const detected = norm(data.best);
+    const booked   = norm(bookedPlate);
+
+    // Совпадение если одно содержит другое (OCR иногда читает часть номера)
+    const isMatch = detected === booked || detected.includes(booked) || booked.includes(detected);
+    logger.info(`🔍 OCR: detected="${detected}" booked="${booked}" match=${isMatch}`);
+    return isMatch ? 'CONFIRMED' : 'WRONG_SPOT';
+  } catch {
+    logger.warn('⚠️  OCR service unavailable, falling back to manual review');
+    return null;
+  }
+}
+
 // ─── PHOTO UPLOAD ──────────────────────────────────────────
 router.post('/:id/photo', async (req: Request, res: Response) => {
   try {
@@ -361,26 +392,56 @@ router.post('/:id/photo', async (req: Request, res: Response) => {
       const rental = await prisma.longTermRental.findFirst({ where: { id, userId } });
       if (!rental) return res.status(404).json({ error: 'Booking not found' });
 
+      // Для долгосрочной аренды тоже запускаем OCR
+      const ocrStatus = await runOCR(photoUrl, rental.plateNumber);
+      const finalStatus = ocrStatus ?? 'UPLOADED';
+
       const updated = await prisma.longTermRental.update({
         where: { id },
-        data: { photoUrl, photoUploadedAt: new Date(), photoStatus: 'UPLOADED' },
+        data: { photoUrl, photoUploadedAt: new Date(), photoStatus: finalStatus },
       });
-      return res.json({ success: true, photoStatus: updated.photoStatus });
+      return res.json({ success: true, photoStatus: updated.photoStatus, autoVerified: !!ocrStatus });
     }
 
     const photoTimerStart = booking.photoTimerStart ?? new Date();
     const elapsed = (Date.now() - photoTimerStart.getTime()) / 1000 / 60;
     if (elapsed > 7) return res.status(400).json({ error: 'Photo upload time expired (7 minutes)' });
 
-    const updated = await prisma.booking.update({
-      where: { id },
-      data: { photoUrl, photoUploadedAt: new Date(), photoStatus: 'UPLOADED' },
-    });
+    // Запускаем OCR параллельно с сохранением в БД
+    const [, ocrStatus] = await Promise.all([
+      prisma.booking.update({
+        where: { id },
+        data: { photoUrl, photoUploadedAt: new Date(), photoStatus: 'UPLOADED' },
+      }),
+      runOCR(photoUrl, booking.plateNumber),
+    ]);
+
+    const finalStatus = ocrStatus ?? 'UPLOADED';
+
+    // Обновляем статус если OCR дал результат
+    if (ocrStatus) {
+      await prisma.booking.update({
+        where: { id },
+        data: { photoStatus: finalStatus },
+      });
+    }
 
     const { io } = await import('../server');
-    io.emit('photo-uploaded', { bookingId: id, spotId: booking.spotId });
+    if (finalStatus === 'CONFIRMED') {
+      io.emit('photo-confirmed',   { bookingId: id, spotId: booking.spotId, autoVerified: true });
+    } else if (finalStatus === 'WRONG_SPOT') {
+      io.emit('photo-wrong-spot',  { bookingId: id, spotId: booking.spotId, autoVerified: true });
 
-    res.json({ success: true, photoStatus: updated.photoStatus });
+      // Штраф 200₸ за неправильное место
+      await prisma.user.update({
+        where: { id: userId },
+        data: { balance: { decrement: 200 } },
+      });
+    } else {
+      io.emit('photo-uploaded', { bookingId: id, spotId: booking.spotId });
+    }
+
+    res.json({ success: true, photoStatus: finalStatus, autoVerified: !!ocrStatus });
   } catch (error) {
     logger.error('❌ Error uploading photo:', error);
     res.status(500).json({ error: 'Failed to upload photo' });
