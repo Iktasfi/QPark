@@ -6,8 +6,8 @@
   "type": "module",
   "scripts": {
     "dev": "node --env-file=.env --import=tsx/esm --watch src/server.ts",
-    "build": "prisma db push --accept-data-loss && prisma generate",
-    "postinstall": "prisma generate",
+    "build": "npx prisma db push --accept-data-loss && npx prisma generate",
+    "postinstall": "npx prisma generate",
     "start": "node --import=tsx/esm src/server.ts",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
@@ -24,6 +24,7 @@
   "license": "MIT",
   "dependencies": {
     "@prisma/client": "^5.7.0",
+    "prisma": "^5.7.0",
     "axios": "^1.6.0",
     "bcrypt": "^5.1.0",
     "bullmq": "^5.0.0",
@@ -44,7 +45,6 @@
     "@types/express": "^4.17.17",
     "@types/jsonwebtoken": "^9.0.2",
     "@types/node": "^20.4.0",
-    "prisma": "^5.7.0",
     "tsx": "^4.0.0",
     "typescript": "^5.1.6"
   }
