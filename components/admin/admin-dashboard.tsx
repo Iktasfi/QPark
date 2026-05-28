@@ -287,13 +287,13 @@ export function AdminDashboard() {
           </button>
         </div>
         <select className="text-[10px] border border-white/10 rounded-lg px-2 py-1 w-full text-white/60 focus:outline-none focus:border-white/30"
-          style={{ background: "rgba(255,255,255,0.05)" }}
+          style={{ background: "#1e2d4a", colorScheme: "dark" }}
           value={spot.status} onChange={(e) => setSpotStatus(spot.spotNumber, e.target.value)} disabled={!!actionLoading}>
-          <option value="Свободно">Свободно</option>
-          <option value="Забронировано">Забронировано</option>
-          <option value="Занято">Занято</option>
-          <option value="Резерв">Резерв</option>
-          <option value="Ремонт">Ремонт</option>
+          <option value="Свободно"  style={{ background: "#1e2d4a", color: "#fff" }}>Свободно</option>
+          <option value="Забронировано" style={{ background: "#1e2d4a", color: "#fff" }}>Забронировано</option>
+          <option value="Занято"    style={{ background: "#1e2d4a", color: "#fff" }}>Занято</option>
+          <option value="Резерв"    style={{ background: "#1e2d4a", color: "#fff" }}>Резерв</option>
+          <option value="Ремонт"    style={{ background: "#1e2d4a", color: "#fff" }}>Ремонт</option>
         </select>
       </div>
     )
@@ -698,10 +698,10 @@ export function AdminDashboard() {
                   <label className="text-xs text-white/30 mb-1.5 block">Тип</label>
                   <select value={newPromo.type} onChange={e => setNewPromo({ ...newPromo, type: e.target.value })}
                     className="w-full px-3 py-2.5 rounded-xl text-sm text-white border border-white/10 focus:outline-none focus:border-white/30"
-                    style={{ background: "rgba(255,255,255,0.06)" }}>
-                    <option value="FIXED">Фиксированная (₸)</option>
-                    <option value="PERCENTAGE">Процент (%)</option>
-                    <option value="FIRST_RIDE">Первая поездка</option>
+                    style={{ background: "#1e2d4a", colorScheme: "dark" }}>
+                    <option value="FIXED" style={{ background: "#1e2d4a", color: "#fff" }}>Фиксированная (₸)</option>
+                    <option value="PERCENTAGE" style={{ background: "#1e2d4a", color: "#fff" }}>Процент (%)</option>
+                    <option value="FIRST_RIDE" style={{ background: "#1e2d4a", color: "#fff" }}>Первая поездка</option>
                   </select>
                 </div>
                 <div>
