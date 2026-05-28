@@ -407,12 +407,24 @@ router.post('/:id/photo', async (req: Request, res: Response) => {
       }
     }
 
-    const booking = await prisma.booking.findFirst({
+    let booking = await prisma.booking.findFirst({
       where: { id, userId },
     });
 
+    // Fallback: если ID фейковый — ищем активное бронирование этого пользователя
     if (!booking) {
-      const rental = await prisma.longTermRental.findFirst({ where: { id, userId } });
+      booking = await prisma.booking.findFirst({
+        where: { userId, status: { in: ['PENDING', 'CONFIRMED'] } },
+        orderBy: { createdAt: 'desc' },
+      });
+    }
+
+    if (!booking) {
+      const rental = await prisma.longTermRental.findFirst({ where: { id, userId } })
+        ?? await prisma.longTermRental.findFirst({
+          where: { userId, status: 'ACTIVE' },
+          orderBy: { createdAt: 'desc' },
+        });
       if (!rental) return res.status(404).json({ error: 'Booking not found' });
 
       const ocrStatus = await runOCR(storedUrl, rental.spotId);
