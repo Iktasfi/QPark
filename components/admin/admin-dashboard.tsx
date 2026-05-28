@@ -167,8 +167,8 @@ export function AdminDashboard() {
   const fetchParkingData = async () => {
     try {
       const [spotsRes, dbRes] = await Promise.all([
-        fetch(`${RAILWAY}/parking/spots"),
-        fetch(`${RAILWAY}/admin/dashboard"),
+        fetch(`${RAILWAY}/parking/spots`),
+        fetch(`${RAILWAY}/admin/dashboard`),
       ])
       if (!spotsRes.ok) throw new Error("Ошибка загрузки данных")
       const data = await spotsRes.json()
@@ -219,7 +219,7 @@ export function AdminDashboard() {
     const englishStatus = statusConfig[russianStatus]?.englishKey ?? russianStatus
     setActionLoading(`status-${spotNumber}`)
     try {
-      const response = await fetch(`${RAILWAY}/parking/set-status", {
+      const response = await fetch(`${RAILWAY}/parking/set-status`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ spotNumber, status: englishStatus }),
