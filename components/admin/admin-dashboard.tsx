@@ -252,7 +252,26 @@ export function AdminDashboard() {
     )
   }
 
-  if (!parkingData) return null
+  if (!parkingData) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen gap-4" style={{ background: "linear-gradient(135deg, #0f1623 0%, #1a2540 100%)" }}>
+        <div className="w-12 h-12 rounded-2xl flex items-center justify-center" style={{ background: "#354469" }}>
+          <span className="text-white text-xl font-black">Q</span>
+        </div>
+        <WifiOff className="h-8 w-8 text-red-400" />
+        <p className="text-white text-lg font-semibold">Бэкенд недоступен</p>
+        <p className="text-white/50 text-sm text-center max-w-xs">
+          {error || "Не удалось подключиться к Railway. Проверьте что сервер запущен."}
+        </p>
+        <button
+          onClick={() => { setLoading(true); fetchParkingData() }}
+          className="mt-2 px-4 py-2 rounded-xl text-sm font-medium text-white border border-white/20 hover:bg-white/10 transition-colors"
+        >
+          Повторить
+        </button>
+      </div>
+    )
+  }
 
   const freeSpots     = parkingData.statistics.shortTerm.free     + parkingData.statistics.longTerm.free
   const occupiedSpots = parkingData.statistics.shortTerm.occupied + parkingData.statistics.longTerm.occupied
