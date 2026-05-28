@@ -1,6 +1,7 @@
 
 export const PRICING = {
   SHORT_TERM: {
+    MIN_FEE: 150,
     RATE_PER_MIN: 3,
   },
   LONG_TERM: {
@@ -18,7 +19,8 @@ export const PRICING = {
 };
 
 export function calculateShortTermCost(minutes: number): number {
-  return Math.max(1, minutes) * PRICING.SHORT_TERM.RATE_PER_MIN;
+  if (minutes <= 60) return 150;
+  return 150 + (minutes - 60) * PRICING.SHORT_TERM.RATE_PER_MIN;
 }
 
 export function getLongTermPrice(days: number): number {

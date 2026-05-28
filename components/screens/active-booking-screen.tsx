@@ -68,7 +68,8 @@ export function ActiveBookingScreen() {
   const calculateCost = () => {
     if (isLongTerm) return 0
     const minutes = Math.ceil(parkingDuration / 60)
-    return Math.max(1, minutes) * 3
+    if (minutes <= 60) return 150
+    return 150 + (minutes - 60) * 3
   }
   
   const handlePayAndExit = async () => {
@@ -452,7 +453,7 @@ export function ActiveBookingScreen() {
             <div className="space-y-2 text-sm">
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Тариф</span>
-                <span className="text-foreground">3 ₸/мин</span>
+                <span className="text-foreground">150 ₸/час, далее 3 ₸/мин</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Время</span>
