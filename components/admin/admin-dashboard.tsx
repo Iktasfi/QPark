@@ -83,7 +83,18 @@ export function AdminDashboard() {
   const [dbBookings, setDbBookings] = useState<DbBooking[]>([])
   const [dbRentals, setDbRentals] = useState<DbRental[]>([])
   const [dbTransactions, setDbTransactions] = useState<DbTransaction[]>([])
-  const [activeTab, setActiveTab] = useState<"spots" | "users" | "bookings" | "transactions" | "promo">("spots")
+  const [activeTab, setActiveTab] = useState<"spots" | "users" | "bookings" | "transactions" | "promo" | "locations">("spots")
+  const [showAddLocation, setShowAddLocation] = useState(false)
+  const [showB2BForm, setShowB2BForm] = useState(false)
+  const [locationForm, setLocationForm] = useState({ name: "", address: "", spots: "" })
+  const [b2bForm, setB2bForm] = useState({ companyName: "", ownerName: "", phone: "", address: "", spots: "", docs: "" })
+  const [locationAdded, setLocationAdded] = useState(false)
+  const [b2bSent, setB2bSent] = useState(false)
+  const mockLocations = [
+    { id: 1, name: "Парковка №1", address: "Улы Дала, 1", spots: 30, free: 12, status: "Активна" },
+    { id: 2, name: "Парковка №2", address: "Сыганак, 5",  spots: 25, free: 8,  status: "Активна" },
+    { id: 3, name: "Парковка №3", address: "Кабанбай батыр, 12", spots: 20, free: 5, status: "Активна" },
+  ]
   const [promoCodes, setPromoCodes] = useState<{id: string; code: string; discount: number; type: string; usedCount: number; maxUses: number | null; isActive: boolean; expiresAt: string | null}[]>([])
   const [newPromo, setNewPromo] = useState({ code: "", discount: "", type: "FIXED", maxUses: "" })
   const [promoLoading, setPromoLoading] = useState(false)
@@ -291,6 +302,7 @@ export function AdminDashboard() {
     { id: "bookings",     label: "Бронирования", count: dbBookings.length + dbRentals.length },
     { id: "transactions", label: "Транзакции",   count: dbTransactions.length },
     { id: "promo",        label: "Промокоды",    count: promoCodes.length },
+    { id: "locations",    label: "Локации",      count: mockLocations.length },
   ]
 
   return (
@@ -733,6 +745,150 @@ export function AdminDashboard() {
                 </div>
               )}
             </div>
+          </div>
+        )}
+
+        {activeTab === "locations" && (
+          <div className="space-y-4">
+
+            {/* Existing locations */}
+            <div className={CARD} style={CARD_BG}>
+              <div className="flex items-center justify-between mb-4">
+                <p className="text-white/70 text-sm font-semibold">Парковочные локации ({mockLocations.length})</p>
+                <button onClick={() => { setShowAddLocation(true); setLocationAdded(false) }}
+                  className="px-4 py-2 rounded-xl text-sm font-semibold text-white transition-all hover:opacity-80"
+                  style={{ background: "#354469" }}>
+                  + Добавить локацию
+                </button>
+              </div>
+              <div className="space-y-3">
+                {mockLocations.map(loc => (
+                  <div key={loc.id} className="flex items-center justify-between p-4 rounded-xl border border-white/10"
+                    style={{ background: "rgba(255,255,255,0.03)" }}>
+                    <div>
+                      <p className="text-white font-semibold text-sm">{loc.name}</p>
+                      <p className="text-white/40 text-xs mt-0.5">{loc.address}</p>
+                      <p className="text-white/30 text-xs mt-0.5">{loc.spots} мест · {loc.free} свободно</p>
+                    </div>
+                    <span className="px-3 py-1 rounded-full text-xs font-medium"
+                      style={{ background: "rgba(34,197,94,0.15)", color: "#22c55e" }}>
+                      {loc.status}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Add location form */}
+            {showAddLocation && (
+              <div className={CARD} style={CARD_BG}>
+                <p className="text-white/70 text-sm font-semibold mb-4">Новая локация</p>
+                {locationAdded ? (
+                  <div className="text-center py-6">
+                    <p className="text-green-400 font-semibold">✅ Локация добавлена!</p>
+                    <button onClick={() => { setShowAddLocation(false); setLocationForm({ name: "", address: "", spots: "" }) }}
+                      className="mt-3 text-white/40 text-sm hover:text-white/70">Закрыть</button>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {[
+                      { label: "Название", field: "name", placeholder: "Парковка №4" },
+                      { label: "Адрес", field: "address", placeholder: "ул. Достык, 12" },
+                      { label: "Количество мест", field: "spots", placeholder: "20" },
+                    ].map(({ label, field, placeholder }) => (
+                      <div key={field}>
+                        <label className="text-xs text-white/30 mb-1.5 block">{label}</label>
+                        <input value={locationForm[field as keyof typeof locationForm]}
+                          onChange={e => setLocationForm({ ...locationForm, [field]: e.target.value })}
+                          placeholder={placeholder}
+                          className="w-full px-3 py-2.5 rounded-xl text-sm text-white border border-white/10 focus:outline-none focus:border-white/30 placeholder-white/20"
+                          style={{ background: "rgba(255,255,255,0.06)" }} />
+                      </div>
+                    ))}
+                    <div className="flex gap-2 pt-1">
+                      <button onClick={() => setShowAddLocation(false)}
+                        className="flex-1 py-3 rounded-xl text-sm font-semibold text-white/50 border border-white/10 hover:bg-white/5">
+                        Отмена
+                      </button>
+                      <button disabled={!locationForm.name || !locationForm.address || !locationForm.spots}
+                        onClick={() => setLocationAdded(true)}
+                        className="flex-1 py-3 rounded-xl text-sm font-semibold text-white disabled:opacity-40 hover:opacity-80"
+                        style={{ background: "#354469" }}>
+                        Добавить
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* B2B landlord stub */}
+            <div className={CARD} style={{ background: "rgba(168,85,247,0.06)", border: "1px solid rgba(168,85,247,0.2)" }}>
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-purple-400 text-lg">🏢</span>
+                <p className="text-purple-300 text-sm font-semibold">Для арендодателей</p>
+                <span className="px-2 py-0.5 rounded-full text-xs font-medium ml-auto"
+                  style={{ background: "rgba(168,85,247,0.2)", color: "#a855f7" }}>Future Work</span>
+              </div>
+              <p className="text-white/40 text-xs mb-4">
+                Владельцы парковок смогут добавлять свои объекты и зарабатывать через платформу QPark
+              </p>
+              <button onClick={() => { setShowB2BForm(!showB2BForm); setB2bSent(false) }}
+                className="w-full py-3 rounded-xl text-sm font-semibold transition-all hover:opacity-80"
+                style={{ background: "rgba(168,85,247,0.15)", color: "#a855f7", border: "1px solid rgba(168,85,247,0.3)" }}>
+                {showB2BForm ? "Скрыть форму" : "Подать заявку на размещение"}
+              </button>
+
+              {showB2BForm && (
+                <div className="mt-4 space-y-3">
+                  {b2bSent ? (
+                    <div className="text-center py-4">
+                      <p className="text-purple-400 font-semibold">✅ Заявка отправлена!</p>
+                      <p className="text-white/40 text-xs mt-1">Мы свяжемся с вами в течение 1-2 рабочих дней</p>
+                    </div>
+                  ) : (
+                    <>
+                      {[
+                        { label: "Название компании / ИП", field: "companyName", placeholder: "ТОО QPark Partner" },
+                        { label: "Имя владельца", field: "ownerName", placeholder: "Иван Иванов" },
+                        { label: "Номер телефона", field: "phone", placeholder: "+7 700 000 0000" },
+                        { label: "Адрес парковки", field: "address", placeholder: "ул. Сыганак, 5, Астана" },
+                        { label: "Количество мест", field: "spots", placeholder: "50" },
+                      ].map(({ label, field, placeholder }) => (
+                        <div key={field}>
+                          <label className="text-xs text-white/30 mb-1.5 block">{label}</label>
+                          <input value={b2bForm[field as keyof typeof b2bForm]}
+                            onChange={e => setB2bForm({ ...b2bForm, [field]: e.target.value })}
+                            placeholder={placeholder}
+                            className="w-full px-3 py-2.5 rounded-xl text-sm text-white border border-white/10 focus:outline-none focus:border-white/30 placeholder-white/20"
+                            style={{ background: "rgba(255,255,255,0.06)" }} />
+                        </div>
+                      ))}
+                      <div>
+                        <label className="text-xs text-white/30 mb-1.5 block">
+                          Документы правообладателя <span className="text-purple-400/60">(правоустанавливающий документ, план объекта)</span>
+                        </label>
+                        <div className="w-full px-3 py-4 rounded-xl border border-dashed border-white/20 text-center cursor-pointer hover:border-purple-400/40 transition-colors"
+                          style={{ background: "rgba(255,255,255,0.03)" }}>
+                          <p className="text-white/30 text-sm">📎 Прикрепить файлы</p>
+                          <p className="text-white/20 text-xs mt-1">PDF, JPG, PNG — макс. 10 МБ</p>
+                        </div>
+                      </div>
+                      <button onClick={() => setB2bSent(true)}
+                        disabled={!b2bForm.companyName || !b2bForm.phone || !b2bForm.address}
+                        className="w-full py-3 rounded-xl text-sm font-semibold text-white disabled:opacity-40 hover:opacity-80 transition-all"
+                        style={{ background: "rgba(168,85,247,0.4)" }}>
+                        Отправить заявку
+                      </button>
+                      <p className="text-white/20 text-xs text-center">
+                        После проверки документов администратор свяжется с вами
+                      </p>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+
           </div>
         )}
       </div>
