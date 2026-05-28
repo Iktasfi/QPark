@@ -10,7 +10,7 @@ export function MobileShell({ children }: MobileShellProps) {
   const { } = useParking()
 
   return (
-    <div className="fixed inset-0 overflow-hidden bg-background">
+    <div className="fixed inset-0 bg-background" style={{ overflowY: "auto" }}>
       {children}
     </div>
   )

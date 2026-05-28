@@ -1,9 +1,11 @@
 "use client"
 
+const RAILWAY = 'https://qpark-production.up.railway.app'
+
 import { useState, useEffect, useRef } from "react"
 import {
   ArrowLeft, Car, Check, Clock, AlertCircle, Wrench,
-  Loader2, RefreshCw, Wifi, WifiOff, Activity
+  Loader2, RefreshCw, Wifi, WifiOff, Activity, TrendingUp
 } from "lucide-react"
 import { getSocket } from "@/lib/socket"
 
@@ -38,32 +40,35 @@ interface LiveEvent {
   timestamp: Date
 }
 
-const statusConfig: Record<string, { color: string; bg: string; icon: React.ComponentType<{ className?: string }>; label: string; emoji: string; englishKey: string }> = {
-  "Свободно":     { color: "text-green-600",  bg: "bg-green-100",  icon: Check,       label: "Свободно",     emoji: "🟢", englishKey: "FREE" },
-  "Забронировано":{ color: "text-yellow-600", bg: "bg-yellow-100", icon: Clock,       label: "Забронировано",emoji: "🟡", englishKey: "BOOKED" },
-  "Занято":       { color: "text-red-600",    bg: "bg-red-100",    icon: Car,         label: "Занято",       emoji: "🔴", englishKey: "OCCUPIED" },
-  "Резерв":       { color: "text-purple-600", bg: "bg-purple-100", icon: AlertCircle, label: "Резерв",       emoji: "🟣", englishKey: "RESERVED" },
-  "Ремонт":       { color: "text-orange-600", bg: "bg-orange-100", icon: Wrench,      label: "Ремонт",       emoji: "🔧", englishKey: "REPAIR" },
-  FREE:      { color: "text-green-600",  bg: "bg-green-100",  icon: Check,       label: "Свободно",     emoji: "🟢", englishKey: "FREE" },
-  BOOKED:    { color: "text-yellow-600", bg: "bg-yellow-100", icon: Clock,       label: "Забронировано",emoji: "🟡", englishKey: "BOOKED" },
-  OCCUPIED:  { color: "text-red-600",    bg: "bg-red-100",    icon: Car,         label: "Занято",       emoji: "🔴", englishKey: "OCCUPIED" },
-  RESERVED:  { color: "text-purple-600", bg: "bg-purple-100", icon: AlertCircle, label: "Резерв",       emoji: "🟣", englishKey: "RESERVED" },
-  REPAIR:    { color: "text-orange-600", bg: "bg-orange-100", icon: Wrench,      label: "Ремонт",       emoji: "🔧", englishKey: "REPAIR" },
+const statusConfig: Record<string, { dot: string; badge: string; badgeText: string; label: string; englishKey: string }> = {
+  "Свободно":      { dot: "#22c55e", badge: "rgba(34,197,94,0.15)",   badgeText: "#22c55e", label: "Свободно",      englishKey: "FREE" },
+  "Забронировано": { dot: "#f59e0b", badge: "rgba(245,158,11,0.15)",  badgeText: "#f59e0b", label: "Забронировано", englishKey: "BOOKED" },
+  "Занято":        { dot: "#ef4444", badge: "rgba(239,68,68,0.15)",   badgeText: "#ef4444", label: "Занято",        englishKey: "OCCUPIED" },
+  "Резерв":        { dot: "#a855f7", badge: "rgba(168,85,247,0.15)",  badgeText: "#a855f7", label: "Резерв",        englishKey: "RESERVED" },
+  "Ремонт":        { dot: "#f97316", badge: "rgba(249,115,22,0.15)",  badgeText: "#f97316", label: "Ремонт",        englishKey: "REPAIR" },
+  FREE:      { dot: "#22c55e", badge: "rgba(34,197,94,0.15)",   badgeText: "#22c55e", label: "Свободно",      englishKey: "FREE" },
+  BOOKED:    { dot: "#f59e0b", badge: "rgba(245,158,11,0.15)",  badgeText: "#f59e0b", label: "Забронировано", englishKey: "BOOKED" },
+  OCCUPIED:  { dot: "#ef4444", badge: "rgba(239,68,68,0.15)",   badgeText: "#ef4444", label: "Занято",        englishKey: "OCCUPIED" },
+  RESERVED:  { dot: "#a855f7", badge: "rgba(168,85,247,0.15)",  badgeText: "#a855f7", label: "Резерв",        englishKey: "RESERVED" },
+  REPAIR:    { dot: "#f97316", badge: "rgba(249,115,22,0.15)",  badgeText: "#f97316", label: "Ремонт",        englishKey: "REPAIR" },
 }
 
-const liveEventLabels: Record<string, { label: string; color: string; emoji: string }> = {
-  "booking-created":   { label: "Новое бронирование",  color: "text-yellow-600", emoji: "🟡" },
-  "booking-completed": { label: "Парковка завершена",   color: "text-green-600",  emoji: "✅" },
-  "booking-cancelled": { label: "Бронь отменена",       color: "text-red-600",    emoji: "❌" },
-  "booking-extended":  { label: "Бронь продлена",       color: "text-blue-600",   emoji: "⏰" },
-  "rental-created":    { label: "Долгосрочная аренда",  color: "text-purple-600", emoji: "🟣" },
-  "payment-completed": { label: "Оплата прошла",        color: "text-green-600",  emoji: "💳" },
+const liveEventMeta: Record<string, { label: string; color: string; emoji: string }> = {
+  "booking-created":   { label: "Новое бронирование",  color: "#f59e0b", emoji: "🟡" },
+  "booking-completed": { label: "Парковка завершена",   color: "#22c55e", emoji: "✅" },
+  "booking-cancelled": { label: "Бронь отменена",       color: "#ef4444", emoji: "❌" },
+  "booking-extended":  { label: "Бронь продлена",       color: "#60a5fa", emoji: "⏰" },
+  "rental-created":    { label: "Долгосрочная аренда",  color: "#a855f7", emoji: "🟣" },
+  "payment-completed": { label: "Оплата прошла",        color: "#22c55e", emoji: "💳" },
 }
 
 interface DbUser { id: string; phoneNumber: string; firstName: string | null; lastName: string | null; walletBalance: number; isBanned: boolean; cars: { plateNumber: string; brand: string; model: string }[] }
 interface DbBooking { id: string; spotNumber: string; plateNumber: string; userName: string; status: string; startTime: string; totalCost: number }
 interface DbRental { id: string; spotNumber: string; plateNumber: string; userName: string; rentalDays: number; totalCost: number; status: string; endDate: string }
 interface DbTransaction { id: string; amount: number; type: string; description: string | null; balanceBefore: number; balanceAfter: number; stripePaymentIntentId: string | null; createdAt: string; user: { phoneNumber: string; firstName: string | null; lastName: string | null } }
+
+const CARD = "rounded-2xl border border-white/10 p-5"
+const CARD_BG = { background: "rgba(255,255,255,0.04)" }
 
 export function AdminDashboard() {
   const [parkingData, setParkingData] = useState<ParkingData | null>(null)
@@ -80,7 +85,30 @@ export function AdminDashboard() {
   const [dbBookings, setDbBookings] = useState<DbBooking[]>([])
   const [dbRentals, setDbRentals] = useState<DbRental[]>([])
   const [dbTransactions, setDbTransactions] = useState<DbTransaction[]>([])
-  const [activeTab, setActiveTab] = useState<"spots" | "users" | "bookings" | "transactions" | "promo">("spots")
+  const [activeTab, setActiveTab] = useState<"spots" | "users" | "bookings" | "transactions" | "promo" | "locations">("spots")
+  const [showAddLocation, setShowAddLocation] = useState(false)
+  const [showB2BForm, setShowB2BForm] = useState(false)
+  const [locationForm, setLocationForm] = useState({ name: "", address: "", spots: "" })
+  const [b2bForm, setB2bForm] = useState({ companyName: "", ownerName: "", phone: "", address: "", spots: "", docs: "" })
+  const [locationAdded, setLocationAdded] = useState(false)
+  const [b2bSent, setB2bSent] = useState(false)
+  const mockLocations = [
+    { id: 1, name: "Парковка №1", address: "Улы Дала, 1", spots: 30, free: 12, status: "Активна", spotRange: [1, 30] },
+    { id: 2, name: "Парковка №2", address: "Сыганак, 5",  spots: 25, free: 8,  status: "Активна", spotRange: [1, 25] },
+    { id: 3, name: "Парковка №3", address: "Кабанбай батыр, 12", spots: 20, free: 5, status: "Активна", spotRange: [1, 20] },
+  ]
+  const [selectedLocationId, setSelectedLocationId] = useState(1)
+  const selectedLocation = mockLocations.find(l => l.id === selectedLocationId)!
+
+  const filterSpotsByLocation = (table: ParkingSpot[][]) => {
+    const [min, max] = selectedLocation.spotRange
+    return table.map(row =>
+      row.filter(spot => {
+        const num = parseInt(spot.spotNumber.replace("SP-", ""))
+        return num >= min && num <= max
+      })
+    ).filter(row => row.length > 0)
+  }
   const [promoCodes, setPromoCodes] = useState<{id: string; code: string; discount: number; type: string; usedCount: number; maxUses: number | null; isActive: boolean; expiresAt: string | null}[]>([])
   const [newPromo, setNewPromo] = useState({ code: "", discount: "", type: "FIXED", maxUses: "" })
   const [promoLoading, setPromoLoading] = useState(false)
@@ -100,11 +128,12 @@ export function AdminDashboard() {
   useEffect(() => {
     fetchParkingData()
     const socket = getSocket()
+
     socket.on("connect", () => setSocketConnected(true))
     socket.on("disconnect", () => setSocketConnected(false))
     if (socket.connected) setSocketConnected(true)
 
-    const onSpotStatusChanged = () => fetchParkingData()
+    const onSpotStatusChanged = () => { fetchParkingData() }
     const onBookingCreated = (data: Record<string, unknown>) => { addLiveEvent("booking-created", data); fetchParkingData() }
     const onBookingCompleted = (data: Record<string, unknown>) => { addLiveEvent("booking-completed", data); fetchParkingData() }
     const onBookingCancelled = (data: Record<string, unknown>) => { addLiveEvent("booking-cancelled", data); fetchParkingData() }
@@ -119,6 +148,7 @@ export function AdminDashboard() {
     socket.on("booking-extended", onBookingExtended)
     socket.on("rental-created", onRentalCreated)
     socket.on("payment-completed", onPaymentCompleted)
+
     const fallback = setInterval(fetchParkingData, 30000)
 
     return () => {
@@ -137,8 +167,8 @@ export function AdminDashboard() {
   const fetchParkingData = async () => {
     try {
       const [spotsRes, dbRes] = await Promise.all([
-        fetch("/backend/parking/spots"),
-        fetch("/backend/admin/dashboard"),
+        fetch(`${RAILWAY}/parking/spots"),
+        fetch(`${RAILWAY}/admin/dashboard"),
       ])
       if (!spotsRes.ok) throw new Error("Ошибка загрузки данных")
       const data = await spotsRes.json()
@@ -151,9 +181,11 @@ export function AdminDashboard() {
       }
       const token = typeof window !== "undefined" ? localStorage.getItem("qpark_token") : null
       if (token) {
-        const txRes = await fetch("/backend/payments/admin/transactions", { headers: { Authorization: `Bearer ${token}` } })
+        const txRes = await fetch(`${RAILWAY}/payments/admin/transactions", { headers: { Authorization: `Bearer ${token}` } })
         if (txRes.ok) setDbTransactions(await txRes.json())
-        const promoRes = await fetch("/backend/payments/promo/all", { headers: { Authorization: `Bearer ${token}` } })
+      }
+      if (token) {
+        const promoRes = await fetch(`${RAILWAY}/payments/promo/all", { headers: { Authorization: `Bearer ${token}` } })
         if (promoRes.ok) setPromoCodes(await promoRes.json())
       }
       setError(null)
@@ -187,7 +219,7 @@ export function AdminDashboard() {
     const englishStatus = statusConfig[russianStatus]?.englishKey ?? russianStatus
     setActionLoading(`status-${spotNumber}`)
     try {
-      const response = await fetch("/backend/parking/set-status", {
+      const response = await fetch(`${RAILWAY}/parking/set-status", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ spotNumber, status: englishStatus }),
@@ -205,9 +237,12 @@ export function AdminDashboard() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-[#f0f3f8]">
-        <Loader2 className="h-8 w-8 animate-spin text-[#354469]" />
-        <span className="ml-2 text-gray-600">Загрузка данных парковки...</span>
+      <div className="flex flex-col items-center justify-center min-h-screen gap-3" style={{ background: "linear-gradient(135deg, #0f1623 0%, #1a2540 100%)" }}>
+        <div className="w-12 h-12 rounded-2xl flex items-center justify-center" style={{ background: "#354469" }}>
+          <span className="text-white text-xl font-black">Q</span>
+        </div>
+        <Loader2 className="h-6 w-6 animate-spin text-white/40" />
+        <span className="text-white/40 text-sm">Загрузка данных...</span>
       </div>
     )
   }
@@ -218,47 +253,51 @@ export function AdminDashboard() {
   const occupiedSpots = parkingData.statistics.shortTerm.occupied + parkingData.statistics.longTerm.occupied
   const bookedSpots   = parkingData.statistics.shortTerm.booked   + parkingData.statistics.longTerm.booked
   const repairSpots   = parkingData.statistics.shortTerm.repair   + parkingData.statistics.longTerm.repair
+  const total         = parkingData.statistics.total
+  const occupancy     = total > 0 ? Math.round(((occupiedSpots + bookedSpots) / total) * 100) : 0
 
   const renderSpotCard = (spot: ParkingSpot) => {
-    const config = statusConfig[spot.status] ?? statusConfig["Свободно"]
-    const IconComponent = config.icon
+    const cfg = statusConfig[spot.status] ?? statusConfig["Свободно"]
     return (
-      <div key={spot.spotNumber} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-3 hover:shadow-md transition-shadow">
+      <div key={spot.spotNumber} className="rounded-2xl p-3 border border-white/10 hover:border-white/20 transition-all"
+        style={{ background: "rgba(255,255,255,0.04)" }}>
         <div className="flex items-center justify-between mb-2">
-          <span className="font-bold text-base text-gray-900">{spot.spotNumber}</span>
-          <div className={`flex items-center gap-1 px-2 py-0.5 rounded-full ${config.bg}`}>
-            <IconComponent className={`w-3 h-3 ${config.color}`} />
-            <span className={`text-[10px] font-medium ${config.color}`}>{config.label}</span>
-          </div>
+          <span className="font-bold text-sm text-white">{spot.spotNumber}</span>
+          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full" style={{ background: cfg.badge, color: cfg.badgeText }}>
+            {cfg.label}
+          </span>
         </div>
         <div className="flex items-center gap-1.5 mb-2">
-          <span className="inline-block w-2 h-2 rounded-full" style={{ backgroundColor: spot.type === "SHORT_TERM" ? "#3B82F6" : "#10B981" }} />
-          <span className="text-xs text-gray-400">{spot.type === "SHORT_TERM" ? "Краткосрочная" : "Долгосрочная"}</span>
+          <span className="w-1.5 h-1.5 rounded-full" style={{ background: spot.type === "SHORT_TERM" ? "#60a5fa" : "#34d399" }} />
+          <span className="text-[10px] text-white/40">{spot.type === "SHORT_TERM" ? "Краткосрочная" : "Долгосрочная"}</span>
         </div>
         {spot.carPlate !== "-" && (
-          <div className="text-xs font-mono bg-gray-50 border border-gray-200 px-2 py-1 rounded-lg mb-2 text-gray-700">{spot.carPlate}</div>
+          <div className="text-xs font-mono px-2 py-1 rounded-lg mb-2 text-white/70 border border-white/10" style={{ background: "rgba(255,255,255,0.05)" }}>
+            {spot.carPlate}
+          </div>
         )}
         <div className="flex gap-1 mb-1.5">
           <button disabled={!!actionLoading} onClick={() => simulateAction("entry", spot.spotNumber)}
-            className="flex-1 py-1 text-[10px] font-medium bg-blue-50 text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors disabled:opacity-50">
-            {actionLoading === `entry-${spot.spotNumber}` ? "..." : "🚗 Въезд"}
+            className="flex-1 py-1 text-[10px] font-medium rounded-lg border border-blue-500/30 text-blue-400 hover:bg-blue-500/10 transition-colors disabled:opacity-40">
+            {actionLoading === `entry-${spot.spotNumber}` ? "..." : "↓ Въезд"}
           </button>
           <button disabled={!!actionLoading} onClick={() => simulateAction("exit", spot.spotNumber)}
-            className="flex-1 py-1 text-[10px] font-medium bg-gray-50 text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors disabled:opacity-50">
-            {actionLoading === `exit-${spot.spotNumber}` ? "..." : "🚙 Выезд"}
+            className="flex-1 py-1 text-[10px] font-medium rounded-lg border border-white/10 text-white/50 hover:bg-white/5 transition-colors disabled:opacity-40">
+            {actionLoading === `exit-${spot.spotNumber}` ? "..." : "↑ Выезд"}
           </button>
           <button disabled={!!actionLoading} onClick={() => setSpotStatus(spot.spotNumber, "FREE")}
-            className="px-2 py-1 text-[10px] bg-green-50 text-green-600 border border-green-200 rounded-lg hover:bg-green-100 transition-colors disabled:opacity-50" title="Сбросить в FREE">
-            🔄
+            className="px-2 py-1 text-[10px] rounded-lg border border-green-500/30 text-green-400 hover:bg-green-500/10 transition-colors disabled:opacity-40" title="Сбросить">
+            ↺
           </button>
         </div>
-        <select className="text-[10px] border border-gray-200 rounded-lg px-2 py-1 w-full bg-white text-gray-700 focus:outline-none focus:ring-1 focus:ring-[#354469]"
+        <select className="text-[10px] border border-white/10 rounded-lg px-2 py-1 w-full text-white/60 focus:outline-none focus:border-white/30"
+          style={{ background: "#1e2d4a", colorScheme: "dark" }}
           value={spot.status} onChange={(e) => setSpotStatus(spot.spotNumber, e.target.value)} disabled={!!actionLoading}>
-          <option value="Свободно">✓ Свободно</option>
-          <option value="Забронировано">⏱ Забронировано</option>
-          <option value="Занято">🚗 Занято</option>
-          <option value="Резерв">⚠ Резерв</option>
-          <option value="Ремонт">🔧 Ремонт</option>
+          <option value="Свободно"  style={{ background: "#1e2d4a", color: "#fff" }}>Свободно</option>
+          <option value="Забронировано" style={{ background: "#1e2d4a", color: "#fff" }}>Забронировано</option>
+          <option value="Занято"    style={{ background: "#1e2d4a", color: "#fff" }}>Занято</option>
+          <option value="Резерв"    style={{ background: "#1e2d4a", color: "#fff" }}>Резерв</option>
+          <option value="Ремонт"    style={{ background: "#1e2d4a", color: "#fff" }}>Ремонт</option>
         </select>
       </div>
     )
@@ -266,37 +305,49 @@ export function AdminDashboard() {
 
   const renderParkingSection = (title: string, table: ParkingSpot[][]) => (
     <div className="mb-6">
-      <h3 className="text-sm font-semibold text-gray-700 mb-3 px-1">{title}</h3>
+      <p className="text-white/50 text-xs font-mono uppercase tracking-widest mb-3">{title}</p>
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
         {table.map((row) => row.map((spot) => renderSpotCard(spot)))}
       </div>
     </div>
   )
 
+  const tabs: { id: typeof activeTab; label: string; count: number }[] = [
+    { id: "spots",        label: "Места",        count: total },
+    { id: "users",        label: "Пользователи", count: dbUsers.length },
+    { id: "bookings",     label: "Бронирования", count: dbBookings.length + dbRentals.length },
+    { id: "transactions", label: "Транзакции",   count: dbTransactions.length },
+    { id: "promo",        label: "Промокоды",    count: promoCodes.length },
+    { id: "locations",    label: "Локации",      count: mockLocations.length },
+  ]
+
   return (
-    <div className="min-h-screen bg-[#f0f3f8]">
+    <div className="min-h-screen" style={{ background: "linear-gradient(135deg, #0f1623 0%, #1a2540 50%, #0f1623 100%)" }}>
+
       {/* Header */}
-      <div className="bg-[#354469] text-white px-6 py-5 shadow-lg">
+      <div className="border-b border-white/10 px-6 py-4" style={{ background: "rgba(53,68,105,0.6)", backdropFilter: "blur(12px)" }}>
         <div className="mx-auto max-w-7xl flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <button onClick={() => (window.location.href = "/")} className="p-2 rounded-xl bg-white/10 hover:bg-white/20 transition-colors">
-              <ArrowLeft className="h-5 w-5" />
+            <button onClick={() => (window.location.href = "/")}
+              className="p-2 rounded-xl border border-white/10 text-white/60 hover:bg-white/10 hover:text-white transition-colors">
+              <ArrowLeft className="h-4 w-4" />
             </button>
-            <div>
-              <div className="flex items-center gap-2">
-                <div className="w-7 h-7 bg-white/20 rounded-lg flex items-center justify-center">
-                  <span className="text-white font-black text-xs">Q</span>
-                </div>
-                <h1 className="text-xl font-bold">QPark Admin</h1>
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: "#354469" }}>
+                <span className="text-white font-black text-sm">Q</span>
               </div>
-              <p className="text-white/60 text-xs mt-0.5">Последнее обновление: {parkingData.lastUpdated}</p>
+              <div>
+                <h1 className="text-white font-bold text-base">QPark Admin</h1>
+                <p className="text-white/40 text-xs">Обновлено: {parkingData.lastUpdated}</p>
+              </div>
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium ${socketConnected ? "bg-green-500/20 text-green-300" : "bg-white/10 text-white/50"}`}>
-              {socketConnected ? <><Wifi className="h-3 w-3" />Live</> : <><WifiOff className="h-3 w-3" />Offline</>}
+            <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium ${socketConnected ? "bg-green-500/20 text-green-400" : "bg-white/10 text-white/40"}`}>
+              {socketConnected ? <><Wifi className="h-3 w-3" /> Live</> : <><WifiOff className="h-3 w-3" /> Офлайн</>}
             </div>
-            <button onClick={handleRefresh} disabled={refreshing} className="p-2 rounded-xl bg-white/10 hover:bg-white/20 transition-colors">
+            <button onClick={handleRefresh} disabled={refreshing}
+              className="p-2 rounded-xl border border-white/10 text-white/60 hover:bg-white/10 hover:text-white transition-colors">
               {refreshing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
             </button>
           </div>
@@ -304,61 +355,66 @@ export function AdminDashboard() {
       </div>
 
       <div className="mx-auto max-w-7xl px-6 py-6">
+
         {error && (
-          <div className="mb-5 flex items-center gap-3 bg-red-50 border border-red-200 text-red-700 rounded-2xl px-4 py-3">
+          <div className="mb-5 flex items-center gap-3 rounded-2xl px-4 py-3 border border-red-500/30 text-red-400"
+            style={{ background: "rgba(239,68,68,0.1)" }}>
             <AlertCircle className="h-5 w-5 shrink-0" />
             <span className="text-sm">{error}</span>
           </div>
         )}
 
-        {/* Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        {/* Stats row */}
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
           {[
-            { label: "Свободно",      value: freeSpots,     icon: Check,  color: "text-green-600",  bg: "bg-green-50",  border: "border-green-200" },
-            { label: "Забронировано", value: bookedSpots,   icon: Clock,  color: "text-blue-600",   bg: "bg-blue-50",   border: "border-blue-200" },
-            { label: "Занято",        value: occupiedSpots, icon: Car,    color: "text-red-600",    bg: "bg-red-50",    border: "border-red-200" },
-            { label: "На ремонте",    value: repairSpots,   icon: Wrench, color: "text-orange-600", bg: "bg-orange-50", border: "border-orange-200" },
-          ].map(({ label, value, icon: Icon, color, bg, border }) => (
-            <div key={label} className={`${bg} border ${border} rounded-2xl p-4`}>
-              <div className={`w-10 h-10 rounded-xl ${bg} border ${border} flex items-center justify-center mb-3`}>
-                <Icon className={`h-5 w-5 ${color}`} />
-              </div>
-              <p className="text-2xl font-bold text-gray-800">{value}</p>
-              <p className={`text-xs font-medium ${color} mt-0.5`}>{label}</p>
+            { label: "Свободно",      value: freeSpots,     color: "#22c55e", bg: "rgba(34,197,94,0.12)" },
+            { label: "Забронировано", value: bookedSpots,   color: "#f59e0b", bg: "rgba(245,158,11,0.12)" },
+            { label: "Занято",        value: occupiedSpots, color: "#ef4444", bg: "rgba(239,68,68,0.12)" },
+            { label: "Ремонт",        value: repairSpots,   color: "#f97316", bg: "rgba(249,115,22,0.12)" },
+            { label: "Загрузка",      value: `${occupancy}%`, color: "#60a5fa", bg: "rgba(96,165,250,0.12)" },
+          ].map(({ label, value, color, bg }) => (
+            <div key={label} className="rounded-2xl p-4 border border-white/10" style={{ background: bg }}>
+              <p className="text-3xl font-black" style={{ color }}>{value}</p>
+              <p className="text-white/50 text-xs mt-1">{label}</p>
             </div>
           ))}
         </div>
 
-        {/* Live feed + Legend */}
+        {/* Live feed + controls */}
         <div className="grid md:grid-cols-2 gap-4 mb-6">
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
-            <div className="flex items-center justify-between mb-3">
+          <div className={CARD} style={CARD_BG}>
+            <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
-                <Activity className="h-4 w-4 text-[#354469]" />
-                <h3 className="font-semibold text-gray-800 text-sm">Живая лента</h3>
+                <Activity className="h-4 w-4 text-white/40" />
+                <p className="text-white/70 text-sm font-semibold">Живая лента</p>
               </div>
-              {socketConnected && <span className="text-[10px] font-medium text-green-600 bg-green-100 px-2 py-0.5 rounded-full">● В реальном времени</span>}
+              {socketConnected && (
+                <span className="text-[10px] font-medium px-2 py-0.5 rounded-full text-green-400" style={{ background: "rgba(34,197,94,0.15)" }}>
+                  ● В реальном времени
+                </span>
+              )}
             </div>
             {liveEvents.length === 0 ? (
-              <div className="text-center py-6 text-gray-400">
-                <Activity className="h-7 w-7 mx-auto mb-2 opacity-20" />
-                <p className="text-xs">Ожидание событий...</p>
-                <p className="text-[10px] mt-0.5">{socketConnected ? "Подключено" : "Нет подключения"}</p>
+              <div className="flex flex-col items-center justify-center py-8 text-center">
+                <TrendingUp className="h-8 w-8 text-white/10 mb-2" />
+                <p className="text-white/30 text-sm">Ожидание событий...</p>
               </div>
             ) : (
-              <div className="space-y-1.5 max-h-48 overflow-y-auto">
+              <div className="space-y-1.5 max-h-52 overflow-y-auto pr-1">
                 {liveEvents.map((evt) => {
-                  const meta = liveEventLabels[evt.type] ?? { label: evt.type, color: "text-gray-600", emoji: "📌" }
+                  const meta = liveEventMeta[evt.type] ?? { label: evt.type, color: "#9ca3af", emoji: "📌" }
                   return (
-                    <div key={evt.id} className="flex items-center justify-between py-1.5 border-b last:border-0 border-gray-50">
+                    <div key={evt.id} className="flex items-center justify-between py-2 border-b border-white/5 last:border-0">
                       <div className="flex items-center gap-2">
                         <span className="text-base">{meta.emoji}</span>
                         <div>
-                          <p className={`text-xs font-medium ${meta.color}`}>{meta.label}</p>
-                          <p className="text-[10px] text-gray-400">{evt.spotId ? `${evt.spotId}` : ""}{evt.plateNumber ? ` · ${evt.plateNumber}` : ""}</p>
+                          <p className="text-xs font-medium" style={{ color: meta.color }}>{meta.label}</p>
+                          <p className="text-[10px] text-white/30">{evt.spotId ?? ""}{evt.plateNumber ? ` · ${evt.plateNumber}` : ""}</p>
                         </div>
                       </div>
-                      <span className="text-[10px] text-gray-400">{evt.timestamp.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}</span>
+                      <span className="text-[10px] text-white/30 font-mono">
+                        {evt.timestamp.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}
+                      </span>
                     </div>
                   )
                 })}
@@ -366,84 +422,119 @@ export function AdminDashboard() {
             )}
           </div>
 
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
-            <h3 className="font-semibold text-gray-800 text-sm mb-3">Легенда и управление</h3>
-            <div className="flex flex-wrap gap-2 mb-4">
+          <div className={CARD} style={CARD_BG}>
+            <p className="text-white/70 text-sm font-semibold mb-4">Управление симуляцией</p>
+            <div className="flex gap-2 mb-4">
+              <input placeholder="Номер машины" value={carPlate} onChange={(e) => setCarPlate(e.target.value)}
+                className="flex-1 px-3 py-2.5 rounded-xl text-sm text-white border border-white/10 focus:outline-none focus:border-white/30 placeholder-white/20"
+                style={{ background: "rgba(255,255,255,0.06)" }} />
+              <button onClick={handleRefresh}
+                className="px-4 py-2.5 rounded-xl text-sm font-medium text-white transition-colors"
+                style={{ background: "#354469" }}>
+                Обновить
+              </button>
+            </div>
+            <div className="flex flex-wrap gap-2">
               {[
-                { icon: Check, label: "Свободно", color: "text-green-600", bg: "bg-green-100" },
-                { icon: Clock, label: "Забронировано", color: "text-blue-600", bg: "bg-blue-100" },
-                { icon: Car, label: "Занято", color: "text-red-600", bg: "bg-red-100" },
-                { icon: AlertCircle, label: "Резерв", color: "text-purple-600", bg: "bg-purple-100" },
-                { icon: Wrench, label: "Ремонт", color: "text-orange-600", bg: "bg-orange-100" },
-              ].map(({ icon: Icon, label, color, bg }) => (
-                <div key={label} className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full ${bg}`}>
-                  <Icon className={`w-3 h-3 ${color}`} />
-                  <span className={`text-xs font-medium ${color}`}>{label}</span>
+                { dot: "#22c55e", label: "Свободно" },
+                { dot: "#f59e0b", label: "Забронировано" },
+                { dot: "#ef4444", label: "Занято" },
+                { dot: "#a855f7", label: "Резерв" },
+                { dot: "#f97316", label: "Ремонт" },
+              ].map(({ dot, label }) => (
+                <div key={label} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-full border border-white/10"
+                  style={{ background: "rgba(255,255,255,0.04)" }}>
+                  <span className="w-2 h-2 rounded-full" style={{ background: dot }} />
+                  <span className="text-xs text-white/50">{label}</span>
                 </div>
               ))}
-            </div>
-            <div className="flex gap-2">
-              <input placeholder="Номер машины" value={carPlate} onChange={(e) => setCarPlate(e.target.value)}
-                className="flex-1 px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#354469]/30 focus:border-[#354469]" />
-              <button onClick={handleRefresh}
-                className="px-3 py-2 bg-[#354469] text-white rounded-xl text-xs font-medium hover:bg-[#2a3654] transition-colors whitespace-nowrap">
-                🔄 Обновить
-              </button>
             </div>
           </div>
         </div>
 
         {/* Tabs */}
         <div className="flex flex-wrap gap-2 mb-5">
-          {(["spots", "users", "bookings", "transactions", "promo"] as const).map(tab => (
-            <button key={tab} onClick={() => setActiveTab(tab)}
-              className={`px-4 py-2 rounded-xl font-medium text-sm transition-all ${activeTab === tab ? "bg-[#354469] text-white shadow-md" : "bg-white text-gray-600 hover:bg-gray-50 border border-gray-200"}`}>
-              {tab === "spots"        ? `Места (${parkingData.statistics.total})`
-               : tab === "users"     ? `Пользователи (${dbUsers.length})`
-               : tab === "bookings"  ? `Бронирования (${dbBookings.length + dbRentals.length})`
-               : tab === "promo"     ? `Промокоды (${promoCodes.length})`
-               :                      `Транзакции (${dbTransactions.length})`}
+          {tabs.map(tab => (
+            <button key={tab.id} onClick={() => setActiveTab(tab.id)}
+              className="px-4 py-2 rounded-xl font-medium text-sm transition-all"
+              style={activeTab === tab.id
+                ? { background: "#354469", color: "#ffffff" }
+                : { background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.5)", border: "1px solid rgba(255,255,255,0.1)" }}>
+              {tab.label}
+              <span className="ml-2 text-xs opacity-60">({tab.count})</span>
             </button>
           ))}
         </div>
 
+        {/* Tab content */}
         {activeTab === "spots" && (
           <>
-            {renderParkingSection(parkingData.tables.shortTerm.title, parkingData.tables.shortTerm.table)}
-            {renderParkingSection(parkingData.tables.longTerm.title, parkingData.tables.longTerm.table)}
+            {/* Location selector */}
+            <div className="flex items-center gap-3 mb-5">
+              <span className="text-white/40 text-sm shrink-0">Локация:</span>
+              <select
+                value={selectedLocationId}
+                onChange={e => setSelectedLocationId(Number(e.target.value))}
+                className="px-4 py-2.5 rounded-xl text-sm font-medium text-white border border-white/10 focus:outline-none focus:border-white/30"
+                style={{ background: "#354469" }}>
+                {mockLocations.map(loc => (
+                  <option key={loc.id} value={loc.id}>
+                    {loc.name} — {loc.address}
+                  </option>
+                ))}
+              </select>
+            </div>
+            {(() => {
+              const allSpots = [
+                ...parkingData.tables.shortTerm.table.flat(),
+                ...parkingData.tables.longTerm.table.flat(),
+              ]
+              const filtered = filterSpotsByLocation([allSpots])
+              return (
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+                  {filtered.flat().map(spot => renderSpotCard(spot))}
+                </div>
+              )
+            })()}
           </>
         )}
 
         {activeTab === "users" && (
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
-            <h3 className="font-semibold text-gray-800 text-sm mb-4">Зарегистрированные пользователи</h3>
+          <div className={CARD} style={CARD_BG}>
+            <p className="text-white/70 text-sm font-semibold mb-4">Зарегистрированные пользователи</p>
             {dbUsers.length === 0 ? (
-              <p className="text-gray-400 text-center py-10 text-sm">Нет пользователей в базе данных</p>
+              <p className="text-white/30 text-center py-10 text-sm">Нет пользователей</p>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="text-left text-xs text-gray-400 border-b border-gray-100">
-                      <th className="pb-2 pr-4 font-medium">Телефон</th>
-                      <th className="pb-2 pr-4 font-medium">Имя</th>
-                      <th className="pb-2 pr-4 font-medium">Баланс</th>
-                      <th className="pb-2 pr-4 font-medium">Машины</th>
-                      <th className="pb-2 font-medium">Статус</th>
+                    <tr className="text-left text-xs text-white/30 border-b border-white/10">
+                      <th className="pb-3 pr-4 font-medium">Телефон</th>
+                      <th className="pb-3 pr-4 font-medium">Имя</th>
+                      <th className="pb-3 pr-4 font-medium">Баланс</th>
+                      <th className="pb-3 pr-4 font-medium">Машины</th>
+                      <th className="pb-3 font-medium">Статус</th>
                     </tr>
                   </thead>
                   <tbody>
                     {dbUsers.map(u => (
-                      <tr key={u.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50/50 transition-colors">
-                        <td className="py-3 pr-4 font-mono text-xs text-gray-600">{u.phoneNumber}</td>
-                        <td className="py-3 pr-4 font-medium text-gray-800">{u.firstName ?? "-"} {u.lastName ?? ""}</td>
-                        <td className="py-3 pr-4 font-semibold text-[#354469]">{u.walletBalance.toLocaleString()} ₸</td>
+                      <tr key={u.id} className="border-b border-white/5 last:border-0 hover:bg-white/[0.02] transition-colors">
+                        <td className="py-3 pr-4 font-mono text-xs text-white/50">{u.phoneNumber}</td>
+                        <td className="py-3 pr-4 font-medium text-white/80">{u.firstName ?? "-"} {u.lastName ?? ""}</td>
+                        <td className="py-3 pr-4 font-semibold text-blue-400">{u.walletBalance.toLocaleString()} ₸</td>
                         <td className="py-3 pr-4">
-                          {u.cars.length === 0 ? <span className="text-gray-300">—</span> : u.cars.map(c => (
-                            <span key={c.plateNumber} className="inline-block bg-gray-100 rounded-lg px-2 py-0.5 text-xs mr-1 font-mono">{c.brand} {c.model} · {c.plateNumber}</span>
+                          {u.cars.length === 0 ? <span className="text-white/20">—</span> : u.cars.map(c => (
+                            <span key={c.plateNumber} className="inline-block rounded-lg px-2 py-0.5 text-xs mr-1 font-mono text-white/60 border border-white/10"
+                              style={{ background: "rgba(255,255,255,0.05)" }}>
+                              {c.brand} {c.model} · {c.plateNumber}
+                            </span>
                           ))}
                         </td>
                         <td className="py-3">
-                          <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${u.isBanned ? "bg-red-100 text-red-600" : "bg-green-100 text-green-600"}`}>
+                          <span className="px-2.5 py-1 rounded-full text-xs font-medium"
+                            style={u.isBanned
+                              ? { background: "rgba(239,68,68,0.15)", color: "#ef4444" }
+                              : { background: "rgba(34,197,94,0.15)", color: "#22c55e" }}>
                             {u.isBanned ? "Забанен" : "Активен"}
                           </span>
                         </td>
@@ -458,35 +549,39 @@ export function AdminDashboard() {
 
         {activeTab === "bookings" && (
           <div className="space-y-4">
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
-              <h3 className="font-semibold text-gray-800 text-sm mb-4">Краткосрочные бронирования</h3>
-              {dbBookings.length === 0 ? <p className="text-gray-400 text-center py-8 text-sm">Нет бронирований</p> : (
+            <div className={CARD} style={CARD_BG}>
+              <p className="text-white/70 text-sm font-semibold mb-4">Краткосрочные бронирования</p>
+              {dbBookings.length === 0 ? <p className="text-white/30 text-center py-8 text-sm">Нет бронирований</p> : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
-                      <tr className="text-left text-xs text-gray-400 border-b border-gray-100">
-                        <th className="pb-2 pr-4 font-medium">Место</th>
-                        <th className="pb-2 pr-4 font-medium">Номер авто</th>
-                        <th className="pb-2 pr-4 font-medium">Пользователь</th>
-                        <th className="pb-2 pr-4 font-medium">Статус</th>
-                        <th className="pb-2 font-medium">Стоимость</th>
+                      <tr className="text-left text-xs text-white/30 border-b border-white/10">
+                        <th className="pb-3 pr-4 font-medium">Место</th>
+                        <th className="pb-3 pr-4 font-medium">Номер авто</th>
+                        <th className="pb-3 pr-4 font-medium">Пользователь</th>
+                        <th className="pb-3 pr-4 font-medium">Статус</th>
+                        <th className="pb-3 font-medium">Стоимость</th>
                       </tr>
                     </thead>
                     <tbody>
                       {dbBookings.map(b => (
-                        <tr key={b.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50/50 transition-colors">
-                          <td className="py-3 pr-4 font-bold text-[#354469]">{b.spotNumber}</td>
-                          <td className="py-3 pr-4 font-mono text-xs text-gray-600">{b.plateNumber}</td>
-                          <td className="py-3 pr-4 text-gray-800">{b.userName}</td>
+                        <tr key={b.id} className="border-b border-white/5 last:border-0 hover:bg-white/[0.02] transition-colors">
+                          <td className="py-3 pr-4 font-bold text-blue-400">{b.spotNumber}</td>
+                          <td className="py-3 pr-4 font-mono text-xs text-white/50">{b.plateNumber}</td>
+                          <td className="py-3 pr-4 text-white/70">{b.userName}</td>
                           <td className="py-3 pr-4">
-                            <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${
-                              b.status === "ACTIVE" ? "bg-blue-100 text-blue-700"
-                              : b.status === "COMPLETED" ? "bg-green-100 text-green-700"
-                              : b.status === "CANCELLED" ? "bg-red-100 text-red-700"
-                              : "bg-yellow-100 text-yellow-700"
-                            }`}>{b.status}</span>
+                            <span className="px-2.5 py-1 rounded-full text-xs font-medium"
+                              style={b.status === "ACTIVE"
+                                ? { background: "rgba(96,165,250,0.15)", color: "#60a5fa" }
+                                : b.status === "COMPLETED"
+                                  ? { background: "rgba(34,197,94,0.15)", color: "#22c55e" }
+                                  : b.status === "CANCELLED"
+                                    ? { background: "rgba(239,68,68,0.15)", color: "#ef4444" }
+                                    : { background: "rgba(245,158,11,0.15)", color: "#f59e0b" }}>
+                              {b.status}
+                            </span>
                           </td>
-                          <td className="py-3 font-semibold text-gray-800">{b.totalCost.toLocaleString()} ₸</td>
+                          <td className="py-3 font-semibold text-white/80">{b.totalCost.toLocaleString()} ₸</td>
                         </tr>
                       ))}
                     </tbody>
@@ -495,30 +590,34 @@ export function AdminDashboard() {
               )}
             </div>
 
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
-              <h3 className="font-semibold text-gray-800 text-sm mb-4">Долгосрочная аренда</h3>
-              {dbRentals.length === 0 ? <p className="text-gray-400 text-center py-8 text-sm">Нет аренды</p> : (
+            <div className={CARD} style={CARD_BG}>
+              <p className="text-white/70 text-sm font-semibold mb-4">Долгосрочная аренда</p>
+              {dbRentals.length === 0 ? <p className="text-white/30 text-center py-8 text-sm">Нет аренды</p> : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
-                      <tr className="text-left text-xs text-gray-400 border-b border-gray-100">
-                        <th className="pb-2 pr-4 font-medium">Место</th>
-                        <th className="pb-2 pr-4 font-medium">Номер авто</th>
-                        <th className="pb-2 pr-4 font-medium">Пользователь</th>
-                        <th className="pb-2 pr-4 font-medium">Дней</th>
-                        <th className="pb-2 pr-4 font-medium">До</th>
-                        <th className="pb-2 font-medium">Стоимость</th>
+                      <tr className="text-left text-xs text-white/30 border-b border-white/10">
+                        <th className="pb-3 pr-4 font-medium">Место</th>
+                        <th className="pb-3 pr-4 font-medium">Номер авто</th>
+                        <th className="pb-3 pr-4 font-medium">Пользователь</th>
+                        <th className="pb-3 pr-4 font-medium">Дней</th>
+                        <th className="pb-3 pr-4 font-medium">До</th>
+                        <th className="pb-3 font-medium">Стоимость</th>
                       </tr>
                     </thead>
                     <tbody>
                       {dbRentals.map(r => (
-                        <tr key={r.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50/50 transition-colors">
-                          <td className="py-3 pr-4 font-bold text-[#354469]">{r.spotNumber}</td>
-                          <td className="py-3 pr-4 font-mono text-xs text-gray-600">{r.plateNumber}</td>
-                          <td className="py-3 pr-4 text-gray-800">{r.userName}</td>
-                          <td className="py-3 pr-4"><span className="bg-blue-50 text-blue-600 px-2 py-0.5 rounded-lg text-xs font-medium">{r.rentalDays} дн.</span></td>
-                          <td className="py-3 pr-4 text-xs text-gray-500">{new Date(r.endDate).toLocaleDateString("ru-RU")}</td>
-                          <td className="py-3 font-semibold text-gray-800">{r.totalCost.toLocaleString()} ₸</td>
+                        <tr key={r.id} className="border-b border-white/5 last:border-0 hover:bg-white/[0.02] transition-colors">
+                          <td className="py-3 pr-4 font-bold text-blue-400">{r.spotNumber}</td>
+                          <td className="py-3 pr-4 font-mono text-xs text-white/50">{r.plateNumber}</td>
+                          <td className="py-3 pr-4 text-white/70">{r.userName}</td>
+                          <td className="py-3 pr-4">
+                            <span className="px-2 py-0.5 rounded-lg text-xs font-medium" style={{ background: "rgba(96,165,250,0.15)", color: "#60a5fa" }}>
+                              {r.rentalDays} дн.
+                            </span>
+                          </td>
+                          <td className="py-3 pr-4 text-xs text-white/40">{new Date(r.endDate).toLocaleDateString("ru-RU")}</td>
+                          <td className="py-3 font-semibold text-white/80">{r.totalCost.toLocaleString()} ₸</td>
                         </tr>
                       ))}
                     </tbody>
@@ -530,50 +629,48 @@ export function AdminDashboard() {
         )}
 
         {activeTab === "transactions" && (
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
-            <h3 className="font-semibold text-gray-800 text-sm mb-4">История транзакций</h3>
+          <div className={CARD} style={CARD_BG}>
+            <p className="text-white/70 text-sm font-semibold mb-4">История транзакций</p>
             {dbTransactions.length === 0 ? (
-              <p className="text-gray-400 text-center py-10 text-sm">Нет транзакций в базе данных</p>
+              <p className="text-white/30 text-center py-10 text-sm">Нет транзакций</p>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="text-left text-xs text-gray-400 border-b border-gray-100">
-                      <th className="pb-2 pr-3 font-medium">Дата</th>
-                      <th className="pb-2 pr-3 font-medium">Пользователь</th>
-                      <th className="pb-2 pr-3 font-medium">Тип</th>
-                      <th className="pb-2 pr-3 font-medium">Описание</th>
-                      <th className="pb-2 pr-3 text-right font-medium">Сумма</th>
-                      <th className="pb-2 text-right font-medium">Баланс после</th>
+                    <tr className="text-left text-xs text-white/30 border-b border-white/10">
+                      <th className="pb-3 pr-3 font-medium">Дата</th>
+                      <th className="pb-3 pr-3 font-medium">Пользователь</th>
+                      <th className="pb-3 pr-3 font-medium">Тип</th>
+                      <th className="pb-3 pr-3 font-medium">Описание</th>
+                      <th className="pb-3 pr-3 text-right font-medium">Сумма</th>
+                      <th className="pb-3 text-right font-medium">Баланс после</th>
                     </tr>
                   </thead>
                   <tbody>
                     {dbTransactions.map(tx => (
-                      <tr key={tx.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50/50 transition-colors">
-                        <td className="py-3 pr-3 text-xs text-gray-400 whitespace-nowrap">
+                      <tr key={tx.id} className="border-b border-white/5 last:border-0 hover:bg-white/[0.02] transition-colors">
+                        <td className="py-3 pr-3 text-xs text-white/30 whitespace-nowrap font-mono">
                           {new Date(tx.createdAt).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
                         </td>
                         <td className="py-3 pr-3 text-xs">
-                          <div className="font-medium text-gray-800">{tx.user.firstName ?? ""} {tx.user.lastName ?? ""}</div>
-                          <div className="text-gray-400 font-mono">{tx.user.phoneNumber}</div>
+                          <div className="font-medium text-white/70">{tx.user.firstName ?? ""} {tx.user.lastName ?? ""}</div>
+                          <div className="text-white/30 font-mono">{tx.user.phoneNumber}</div>
                         </td>
                         <td className="py-3 pr-3">
-                          <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${
-                            tx.type === "DEPOSIT" ? "bg-green-100 text-green-700"
-                            : tx.type === "PAYMENT" ? "bg-orange-100 text-orange-700"
-                            : tx.type === "REFUND" ? "bg-blue-100 text-blue-700"
-                            : tx.type === "CASHBACK" ? "bg-purple-100 text-purple-700"
-                            : "bg-gray-100 text-gray-600"
-                          }`}>{tx.type}</span>
-                          {tx.stripePaymentIntentId && (
-                            <span className="ml-1 px-1.5 py-0.5 rounded-lg text-xs bg-indigo-50 text-indigo-500 font-mono">Stripe</span>
-                          )}
+                          <span className="px-2.5 py-1 rounded-full text-xs font-medium"
+                            style={tx.type === "DEPOSIT"  ? { background: "rgba(34,197,94,0.15)",  color: "#22c55e" }
+                              : tx.type === "PAYMENT"  ? { background: "rgba(249,115,22,0.15)", color: "#f97316" }
+                              : tx.type === "REFUND"   ? { background: "rgba(96,165,250,0.15)", color: "#60a5fa" }
+                              : tx.type === "CASHBACK" ? { background: "rgba(168,85,247,0.15)", color: "#a855f7" }
+                              :                         { background: "rgba(255,255,255,0.08)",  color: "#9ca3af" }}>
+                            {tx.type}
+                          </span>
                         </td>
-                        <td className="py-3 pr-3 text-xs text-gray-500 max-w-[160px] truncate">{tx.description ?? "—"}</td>
-                        <td className={`py-3 pr-3 font-semibold text-right whitespace-nowrap ${tx.amount > 0 ? "text-green-600" : "text-gray-800"}`}>
+                        <td className="py-3 pr-3 text-xs text-white/30 max-w-[160px] truncate">{tx.description ?? "—"}</td>
+                        <td className={`py-3 pr-3 font-semibold text-right whitespace-nowrap ${tx.amount > 0 ? "text-green-400" : "text-white/70"}`}>
                           {tx.amount > 0 ? "+" : ""}{tx.amount.toLocaleString()} ₸
                         </td>
-                        <td className="py-3 text-right font-mono text-xs text-gray-500">{tx.balanceAfter.toLocaleString()} ₸</td>
+                        <td className="py-3 text-right font-mono text-xs text-white/30">{tx.balanceAfter.toLocaleString()} ₸</td>
                       </tr>
                     ))}
                   </tbody>
@@ -585,43 +682,49 @@ export function AdminDashboard() {
 
         {activeTab === "promo" && (
           <div className="space-y-4">
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
-              <h3 className="font-semibold text-gray-800 text-sm mb-4">Создать промокод</h3>
+            <div className={CARD} style={CARD_BG}>
+              <p className="text-white/70 text-sm font-semibold mb-4">Создать промокод</p>
               <div className="grid grid-cols-2 gap-3 mb-3">
+                {[
+                  { label: "Код", field: "code", placeholder: "SUMMER20", type: "text", transform: (v: string) => v.toUpperCase() },
+                  { label: "Скидка", field: "discount", placeholder: "100", type: "number", transform: (v: string) => v },
+                ].map(({ label, field, placeholder, type, transform }) => (
+                  <div key={field}>
+                    <label className="text-xs text-white/30 mb-1.5 block">{label}</label>
+                    <input value={newPromo[field as "code" | "discount"]}
+                      onChange={e => setNewPromo({ ...newPromo, [field]: transform(e.target.value) })}
+                      placeholder={placeholder} type={type}
+                      className="w-full px-3 py-2.5 rounded-xl text-sm text-white border border-white/10 focus:outline-none focus:border-white/30 placeholder-white/20"
+                      style={{ background: "rgba(255,255,255,0.06)" }} />
+                  </div>
+                ))}
                 <div>
-                  <label className="text-xs text-gray-400 mb-1 block">Код</label>
-                  <input value={newPromo.code} onChange={e => setNewPromo({...newPromo, code: e.target.value.toUpperCase()})}
-                    placeholder="SUMMER20" className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#354469]/30 focus:border-[#354469]" />
-                </div>
-                <div>
-                  <label className="text-xs text-gray-400 mb-1 block">Скидка</label>
-                  <input value={newPromo.discount} onChange={e => setNewPromo({...newPromo, discount: e.target.value})}
-                    placeholder="100" type="number" className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#354469]/30 focus:border-[#354469]" />
-                </div>
-                <div>
-                  <label className="text-xs text-gray-400 mb-1 block">Тип</label>
-                  <select value={newPromo.type} onChange={e => setNewPromo({...newPromo, type: e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#354469]/30 focus:border-[#354469]">
-                    <option value="FIXED">Фиксированная (₸)</option>
-                    <option value="PERCENTAGE">Процент (%)</option>
-                    <option value="FIRST_RIDE">Первая поездка</option>
+                  <label className="text-xs text-white/30 mb-1.5 block">Тип</label>
+                  <select value={newPromo.type} onChange={e => setNewPromo({ ...newPromo, type: e.target.value })}
+                    className="w-full px-3 py-2.5 rounded-xl text-sm text-white border border-white/10 focus:outline-none focus:border-white/30"
+                    style={{ background: "#1e2d4a", colorScheme: "dark" }}>
+                    <option value="FIXED" style={{ background: "#1e2d4a", color: "#fff" }}>Фиксированная (₸)</option>
+                    <option value="PERCENTAGE" style={{ background: "#1e2d4a", color: "#fff" }}>Процент (%)</option>
+                    <option value="FIRST_RIDE" style={{ background: "#1e2d4a", color: "#fff" }}>Первая поездка</option>
                   </select>
                 </div>
                 <div>
-                  <label className="text-xs text-gray-400 mb-1 block">Макс. использований</label>
-                  <input value={newPromo.maxUses} onChange={e => setNewPromo({...newPromo, maxUses: e.target.value})}
-                    placeholder="Без лимита" type="number" className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#354469]/30 focus:border-[#354469]" />
+                  <label className="text-xs text-white/30 mb-1.5 block">Макс. использований</label>
+                  <input value={newPromo.maxUses} onChange={e => setNewPromo({ ...newPromo, maxUses: e.target.value })}
+                    placeholder="Без лимита" type="number"
+                    className="w-full px-3 py-2.5 rounded-xl text-sm text-white border border-white/10 focus:outline-none focus:border-white/30 placeholder-white/20"
+                    style={{ background: "rgba(255,255,255,0.06)" }} />
                 </div>
               </div>
-              {promoError && <p className="text-red-500 text-xs mb-2">{promoError}</p>}
+              {promoError && <p className="text-red-400 text-xs mb-2">{promoError}</p>}
               <button disabled={promoLoading || !newPromo.code || !newPromo.discount}
                 onClick={async () => {
                   setPromoLoading(true); setPromoError("")
                   try {
                     const token = localStorage.getItem("qpark_token")
-                    const res = await fetch("/backend/payments/promo/create", {
+                    const res = await fetch(`${RAILWAY}/payments/promo/create", {
                       method: "POST",
-                      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+                      headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
                       body: JSON.stringify({ code: newPromo.code, discount: Number(newPromo.discount), type: newPromo.type, maxUses: newPromo.maxUses ? Number(newPromo.maxUses) : undefined }),
                     })
                     const data = await res.json()
@@ -632,42 +735,47 @@ export function AdminDashboard() {
                     setPromoError(err instanceof Error ? err.message : "Ошибка")
                   } finally { setPromoLoading(false) }
                 }}
-                className="w-full py-2.5 bg-[#354469] hover:bg-[#2a3654] text-white rounded-xl font-medium text-sm transition-colors disabled:opacity-50">
+                className="w-full py-3 rounded-xl font-semibold text-sm text-white transition-all disabled:opacity-40"
+                style={{ background: "#354469" }}>
                 {promoLoading ? "Создание..." : "Создать промокод"}
               </button>
             </div>
 
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
-              <h3 className="font-semibold text-gray-800 text-sm mb-4">Все промокоды ({promoCodes.length})</h3>
+            <div className={CARD} style={CARD_BG}>
+              <p className="text-white/70 text-sm font-semibold mb-4">Все промокоды ({promoCodes.length})</p>
               {promoCodes.length === 0 ? (
-                <p className="text-gray-400 text-center py-10 text-sm">Промокодов пока нет</p>
+                <p className="text-white/30 text-center py-10 text-sm">Промокодов пока нет</p>
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
-                      <tr className="text-left text-xs text-gray-400 border-b border-gray-100">
-                        <th className="pb-2 pr-3 font-medium">Код</th>
-                        <th className="pb-2 pr-3 font-medium">Скидка</th>
-                        <th className="pb-2 pr-3 font-medium">Тип</th>
-                        <th className="pb-2 pr-3 font-medium">Использован</th>
-                        <th className="pb-2 font-medium">Статус</th>
+                      <tr className="text-left text-xs text-white/30 border-b border-white/10">
+                        <th className="pb-3 pr-3 font-medium">Код</th>
+                        <th className="pb-3 pr-3 font-medium">Скидка</th>
+                        <th className="pb-3 pr-3 font-medium">Тип</th>
+                        <th className="pb-3 pr-3 font-medium">Использован</th>
+                        <th className="pb-3 font-medium">Статус</th>
                       </tr>
                     </thead>
                     <tbody>
                       {promoCodes.map(p => (
-                        <tr key={p.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50/50 transition-colors">
-                          <td className="py-3 pr-3 font-mono font-bold text-[#354469]">{p.code}</td>
-                          <td className="py-3 pr-3 font-semibold text-gray-800">{p.discount}{p.type === "PERCENTAGE" ? "%" : " ₸"}</td>
+                        <tr key={p.id} className="border-b border-white/5 last:border-0 hover:bg-white/[0.02] transition-colors">
+                          <td className="py-3 pr-3 font-mono font-bold text-blue-400">{p.code}</td>
+                          <td className="py-3 pr-3 font-semibold text-white/80">{p.discount}{p.type === "PERCENTAGE" ? "%" : " ₸"}</td>
                           <td className="py-3 pr-3">
-                            <span className={`px-2 py-0.5 rounded-lg text-xs font-medium ${
-                              p.type === "PERCENTAGE" ? "bg-purple-100 text-purple-700"
-                              : p.type === "FIRST_RIDE" ? "bg-blue-100 text-blue-700"
-                              : "bg-orange-100 text-orange-700"
-                            }`}>{p.type}</span>
+                            <span className="px-2 py-0.5 rounded-lg text-xs font-medium"
+                              style={p.type === "PERCENTAGE" ? { background: "rgba(168,85,247,0.15)", color: "#a855f7" }
+                                : p.type === "FIRST_RIDE"   ? { background: "rgba(96,165,250,0.15)",  color: "#60a5fa" }
+                                :                             { background: "rgba(249,115,22,0.15)",   color: "#f97316" }}>
+                              {p.type}
+                            </span>
                           </td>
-                          <td className="py-3 pr-3 text-xs text-gray-500">{p.usedCount}{p.maxUses ? `/${p.maxUses}` : ""}</td>
+                          <td className="py-3 pr-3 text-xs text-white/40">{p.usedCount}{p.maxUses ? `/${p.maxUses}` : ""}</td>
                           <td className="py-3">
-                            <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${p.isActive ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
+                            <span className="px-2.5 py-1 rounded-full text-xs font-medium"
+                              style={p.isActive
+                                ? { background: "rgba(34,197,94,0.15)", color: "#22c55e" }
+                                : { background: "rgba(239,68,68,0.15)", color: "#ef4444" }}>
                               {p.isActive ? "Активен" : "Неактивен"}
                             </span>
                           </td>
@@ -678,6 +786,150 @@ export function AdminDashboard() {
                 </div>
               )}
             </div>
+          </div>
+        )}
+
+        {activeTab === "locations" && (
+          <div className="space-y-4">
+
+            {/* Existing locations */}
+            <div className={CARD} style={CARD_BG}>
+              <div className="flex items-center justify-between mb-4">
+                <p className="text-white/70 text-sm font-semibold">Парковочные локации ({mockLocations.length})</p>
+                <button onClick={() => { setShowAddLocation(true); setLocationAdded(false) }}
+                  className="px-4 py-2 rounded-xl text-sm font-semibold text-white transition-all hover:opacity-80"
+                  style={{ background: "#354469" }}>
+                  + Добавить локацию
+                </button>
+              </div>
+              <div className="space-y-3">
+                {mockLocations.map(loc => (
+                  <div key={loc.id} className="flex items-center justify-between p-4 rounded-xl border border-white/10"
+                    style={{ background: "rgba(255,255,255,0.03)" }}>
+                    <div>
+                      <p className="text-white font-semibold text-sm">{loc.name}</p>
+                      <p className="text-white/40 text-xs mt-0.5">{loc.address}</p>
+                      <p className="text-white/30 text-xs mt-0.5">{loc.spots} мест · {loc.free} свободно</p>
+                    </div>
+                    <span className="px-3 py-1 rounded-full text-xs font-medium"
+                      style={{ background: "rgba(34,197,94,0.15)", color: "#22c55e" }}>
+                      {loc.status}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Add location form */}
+            {showAddLocation && (
+              <div className={CARD} style={CARD_BG}>
+                <p className="text-white/70 text-sm font-semibold mb-4">Новая локация</p>
+                {locationAdded ? (
+                  <div className="text-center py-6">
+                    <p className="text-green-400 font-semibold">✅ Локация добавлена!</p>
+                    <button onClick={() => { setShowAddLocation(false); setLocationForm({ name: "", address: "", spots: "" }) }}
+                      className="mt-3 text-white/40 text-sm hover:text-white/70">Закрыть</button>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {[
+                      { label: "Название", field: "name", placeholder: "Парковка №4" },
+                      { label: "Адрес", field: "address", placeholder: "ул. Достык, 12" },
+                      { label: "Количество мест", field: "spots", placeholder: "20" },
+                    ].map(({ label, field, placeholder }) => (
+                      <div key={field}>
+                        <label className="text-xs text-white/30 mb-1.5 block">{label}</label>
+                        <input value={locationForm[field as keyof typeof locationForm]}
+                          onChange={e => setLocationForm({ ...locationForm, [field]: e.target.value })}
+                          placeholder={placeholder}
+                          className="w-full px-3 py-2.5 rounded-xl text-sm text-white border border-white/10 focus:outline-none focus:border-white/30 placeholder-white/20"
+                          style={{ background: "rgba(255,255,255,0.06)" }} />
+                      </div>
+                    ))}
+                    <div className="flex gap-2 pt-1">
+                      <button onClick={() => setShowAddLocation(false)}
+                        className="flex-1 py-3 rounded-xl text-sm font-semibold text-white/50 border border-white/10 hover:bg-white/5">
+                        Отмена
+                      </button>
+                      <button disabled={!locationForm.name || !locationForm.address || !locationForm.spots}
+                        onClick={() => setLocationAdded(true)}
+                        className="flex-1 py-3 rounded-xl text-sm font-semibold text-white disabled:opacity-40 hover:opacity-80"
+                        style={{ background: "#354469" }}>
+                        Добавить
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* B2B landlord stub */}
+            <div className={CARD} style={{ background: "rgba(168,85,247,0.06)", border: "1px solid rgba(168,85,247,0.2)" }}>
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-purple-400 text-lg">🏢</span>
+                <p className="text-purple-300 text-sm font-semibold">Для арендодателей</p>
+                <span className="px-2 py-0.5 rounded-full text-xs font-medium ml-auto"
+                  style={{ background: "rgba(168,85,247,0.2)", color: "#a855f7" }}>Future Work</span>
+              </div>
+              <p className="text-white/40 text-xs mb-4">
+                Владельцы парковок смогут добавлять свои объекты и зарабатывать через платформу QPark
+              </p>
+              <button onClick={() => { setShowB2BForm(!showB2BForm); setB2bSent(false) }}
+                className="w-full py-3 rounded-xl text-sm font-semibold transition-all hover:opacity-80"
+                style={{ background: "rgba(168,85,247,0.15)", color: "#a855f7", border: "1px solid rgba(168,85,247,0.3)" }}>
+                {showB2BForm ? "Скрыть форму" : "Подать заявку на размещение"}
+              </button>
+
+              {showB2BForm && (
+                <div className="mt-4 space-y-3">
+                  {b2bSent ? (
+                    <div className="text-center py-4">
+                      <p className="text-purple-400 font-semibold">✅ Заявка отправлена!</p>
+                      <p className="text-white/40 text-xs mt-1">Мы свяжемся с вами в течение 1-2 рабочих дней</p>
+                    </div>
+                  ) : (
+                    <>
+                      {[
+                        { label: "Название компании / ИП", field: "companyName", placeholder: "ТОО QPark Partner" },
+                        { label: "Имя владельца", field: "ownerName", placeholder: "Иван Иванов" },
+                        { label: "Номер телефона", field: "phone", placeholder: "+7 700 000 0000" },
+                        { label: "Адрес парковки", field: "address", placeholder: "ул. Сыганак, 5, Астана" },
+                        { label: "Количество мест", field: "spots", placeholder: "50" },
+                      ].map(({ label, field, placeholder }) => (
+                        <div key={field}>
+                          <label className="text-xs text-white/30 mb-1.5 block">{label}</label>
+                          <input value={b2bForm[field as keyof typeof b2bForm]}
+                            onChange={e => setB2bForm({ ...b2bForm, [field]: e.target.value })}
+                            placeholder={placeholder}
+                            className="w-full px-3 py-2.5 rounded-xl text-sm text-white border border-white/10 focus:outline-none focus:border-white/30 placeholder-white/20"
+                            style={{ background: "rgba(255,255,255,0.06)" }} />
+                        </div>
+                      ))}
+                      <div>
+                        <label className="text-xs text-white/30 mb-1.5 block">
+                          Документы правообладателя <span className="text-purple-400/60">(правоустанавливающий документ, план объекта)</span>
+                        </label>
+                        <div className="w-full px-3 py-4 rounded-xl border border-dashed border-white/20 text-center cursor-pointer hover:border-purple-400/40 transition-colors"
+                          style={{ background: "rgba(255,255,255,0.03)" }}>
+                          <p className="text-white/30 text-sm">📎 Прикрепить файлы</p>
+                          <p className="text-white/20 text-xs mt-1">PDF, JPG, PNG — макс. 10 МБ</p>
+                        </div>
+                      </div>
+                      <button onClick={() => setB2bSent(true)}
+                        disabled={!b2bForm.companyName || !b2bForm.phone || !b2bForm.address}
+                        className="w-full py-3 rounded-xl text-sm font-semibold text-white disabled:opacity-40 hover:opacity-80 transition-all"
+                        style={{ background: "rgba(168,85,247,0.4)" }}>
+                        Отправить заявку
+                      </button>
+                      <p className="text-white/20 text-xs text-center">
+                        После проверки документов администратор свяжется с вами
+                      </p>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+
           </div>
         )}
       </div>

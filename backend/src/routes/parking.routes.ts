@@ -6,6 +6,14 @@ import { prisma } from '../lib/prisma';
 
 const router = Router();
 
+// Cyrillic lookalike → Latin (for license plate normalization)
+const CYR_TO_LAT: Record<string, string> = {
+  'А':'A','В':'B','Е':'E','К':'K','М':'M','Н':'H','О':'O','Р':'P','С':'C','Т':'T','У':'Y','Х':'X',
+  'а':'A','в':'B','е':'E','к':'K','м':'M','н':'H','о':'O','р':'P','с':'C','т':'T','у':'Y','х':'X',
+};
+const normalizePlate = (p: string) =>
+  p.toUpperCase().replace(/\s/g, '').split('').map(c => CYR_TO_LAT[c] ?? c).join('');
+
 
 router.get('/spots', async (req: Request, res: Response) => {
   try {
@@ -133,9 +141,8 @@ router.post('/lpr/entry', async (req: Request, res: Response) => {
     }
 
 
-    const normalize = (p: string) => p.replace(/\s/g, '').toUpperCase();
     const plateMatches = spot.currentUserPlate
-      ? normalize(spot.currentUserPlate) === normalize(carPlate)
+      ? normalizePlate(spot.currentUserPlate) === normalizePlate(carPlate)
       : true;
 
     let success = false;
@@ -216,8 +223,6 @@ router.post('/lpr/exit-lpr', async (req: Request, res: Response) => {
 
     if (spot.type === 'SHORT_TERM') {
 
-      const normalize = (p: string) => p.replace(/\s/g, '').toUpperCase();
-
       // Ищем оплаченную бронь для этого места
       const paidBooking = await prisma.booking.findFirst({
         where: {
@@ -231,7 +236,7 @@ router.post('/lpr/exit-lpr', async (req: Request, res: Response) => {
       if (paidBooking) {
         // Проверяем что номер совпадает с бронью
         const plateOk = paidBooking.plateNumber
-          ? normalize(paidBooking.plateNumber) === normalize(carPlate)
+          ? normalizePlate(paidBooking.plateNumber) === normalizePlate(carPlate)
           : true;
 
         if (!plateOk) {
@@ -279,6 +284,79 @@ router.post('/lpr/exit-lpr', async (req: Request, res: Response) => {
   } catch (error) {
     logger.error('❌ Error handling LPR exit:', error);
     res.status(500).json({ error: 'Failed to process exit' });
+  }
+});
+
+
+// ─── Единый LPR эндпоинт: автоматически определяет въезд или выезд ───
+router.post('/lpr/scan', async (req: Request, res: Response) => {
+  try {
+    const { carPlate } = req.body;
+    if (!carPlate) {
+      return res.status(400).json({ error: 'carPlate is required' });
+    }
+
+    const { io } = await import('../server');
+    const normPlate = normalizePlate(carPlate);
+
+    // 1. Ищем место где сейчас стоит эта машина (OCCUPIED)
+    const occupiedSpots = await prisma.parkingSpot.findMany({
+      where: { status: 'OCCUPIED', currentUserPlate: { not: null } },
+    });
+    const occupiedSpot = occupiedSpots.find(s => s.currentUserPlate && normalizePlate(s.currentUserPlate) === normPlate);
+
+    if (occupiedSpot) {
+      // Машина сейчас на парковке → ВЫЕЗД
+      const spotNumber = occupiedSpot.spotNumber;
+      let newStatus: string;
+
+      if (occupiedSpot.type === 'LONG_TERM') {
+        newStatus = 'RESERVED';
+        await prisma.parkingSpot.update({
+          where: { spotNumber },
+          data: { status: 'RESERVED' },
+        });
+      } else {
+        newStatus = 'FREE';
+        await prisma.parkingSpot.update({
+          where: { spotNumber },
+          data: { status: 'FREE', currentUserPlate: null, currentUserId: null },
+        });
+      }
+
+      io.emit('lpr-gate-open', { carPlate, spotNumber, type: 'exit' });
+      io.emit('spot-status-changed', { spotNumber, status: newStatus, carPlate: newStatus === 'FREE' ? null : carPlate });
+      logger.info(`✅ LPR scan EXIT: ${carPlate} from ${spotNumber} → ${newStatus}`);
+      return res.json({ success: true, direction: 'exit', message: `Выезд разрешён (${spotNumber})`, newStatus, spotNumber });
+    }
+
+    // 2. Ищем бронь/аренду для въезда (BOOKED или RESERVED)
+    const bookedSpots = await prisma.parkingSpot.findMany({
+      where: { status: { in: ['BOOKED', 'RESERVED'] }, currentUserPlate: { not: null } },
+    });
+    const bookedSpot = bookedSpots.find(s => s.currentUserPlate && normalizePlate(s.currentUserPlate) === normPlate);
+
+    if (bookedSpot) {
+      const spotNumber = bookedSpot.spotNumber;
+      await prisma.parkingSpot.update({
+        where: { spotNumber },
+        data: { status: 'OCCUPIED' },
+      });
+
+      io.emit('lpr-gate-open', { carPlate, spotNumber, type: 'entry' });
+      io.emit('spot-status-changed', { spotNumber, status: 'OCCUPIED', carPlate });
+      logger.info(`✅ LPR scan ENTRY: ${carPlate} → ${spotNumber} OCCUPIED`);
+      return res.json({ success: true, direction: 'entry', message: `Въезд разрешён (${spotNumber})`, newStatus: 'OCCUPIED', spotNumber });
+    }
+
+    // 3. Не найдено — отказ
+    io.emit('lpr-gate-denied', { carPlate, spotNumber: '?', reason: 'Бронь не найдена' });
+    logger.warn(`⛔ LPR scan denied: ${carPlate} — no booking found`);
+    return res.json({ success: false, message: 'Бронь не найдена. Забронируйте место в приложении.' });
+
+  } catch (error) {
+    logger.error('❌ Error handling LPR scan:', error);
+    res.status(500).json({ error: 'Failed to process scan' });
   }
 });
 
