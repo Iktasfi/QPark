@@ -19,7 +19,7 @@ export const PRICING = {
 };
 
 export function calculateShortTermCost(minutes: number): number {
-  if (minutes <= 60) return 150;
+  if (minutes < 60) return minutes * PRICING.SHORT_TERM.RATE_PER_MIN;
   return 150 + (minutes - 60) * PRICING.SHORT_TERM.RATE_PER_MIN;
 }
 

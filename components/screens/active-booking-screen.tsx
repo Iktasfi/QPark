@@ -130,7 +130,7 @@ export function ActiveBookingScreen() {
   const calculateCost = () => {
     if (isLongTerm) return 0
     const minutes = Math.ceil(parkingDuration / 60)
-    if (minutes <= 60) return 150
+    if (minutes < 60) return minutes * 3
     return 150 + (minutes - 60) * 3
   }
   

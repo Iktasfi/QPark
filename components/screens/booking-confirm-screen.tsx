@@ -66,8 +66,8 @@ export function BookingConfirmScreen() {
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">{t.arrivalDeadline}</p>
-                <p className="font-medium text-foreground">15:00 remaining</p>
-                <p className="text-xs text-muted-foreground">{t.arriveWithin15}</p>
+                <p className="font-medium text-foreground">30:00 remaining</p>
+                <p className="text-xs text-muted-foreground">{t.arriveWithin30}</p>
               </div>
             </div>
           )}

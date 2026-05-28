@@ -10,7 +10,7 @@ import { ArrowLeft, MapPin, Clock, Calendar, Car, Check, AlertTriangle, Wallet }
 import { cn } from "@/lib/utils"
 
 const calcShortTermPrice = (minutes: number) => {
-  if (minutes <= 60) return 150
+  if (minutes < 60) return minutes * 3
   return 150 + (minutes - 60) * 3
 }
 
