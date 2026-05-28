@@ -122,7 +122,7 @@ export function SpotDetailsScreen() {
       const data = await res.json()
 
       const booking = {
-        id: `booking-${Date.now()}`,
+        id: data.booking?.id ?? data.id ?? `booking-${Date.now()}`,
         spotId: selectedSpot.id,
         userId: user.id,
         plateNumber: selectedCarData.plateNumber,
