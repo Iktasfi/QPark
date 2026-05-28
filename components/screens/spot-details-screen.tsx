@@ -22,9 +22,9 @@ const formatDuration = (minutes: number) => {
 }
 
 const rentalOptions = [
-  { days: 1,  price: 700,  perDay: 700 },
-  { days: 3,  price: 1800, perDay: 600 },
-  { days: 5,  price: 2700, perDay: 540 },
+  { days: 1,  price: 900,  perDay: 900 },
+  { days: 3,  price: 2400, perDay: 800 },
+  { days: 5,  price: 3000, perDay: 600 },
   { days: 7,  price: 3500, perDay: 500 },
   { days: 14, price: 6000, perDay: 429 },
 ]
@@ -55,15 +55,12 @@ export function SpotDetailsScreen() {
   const isLongTerm      = bookingType === "long-term"
   const selectedCarData = user?.cars.find(c => c.id === selectedCar)
 
-  const getPrice = () => {
-    if (bookingType === "long-term") {
-      return rentalOptions.find(o => o.days === selectedRentalDays)?.price || 0
-    }
-    if (bookingType === "short-term") {
-      return calcShortTermPrice(selectedDuration)
-    }
+  const getBasePrice = () => {
+    if (bookingType === "long-term") return rentalOptions.find(o => o.days === selectedRentalDays)?.price || 0
+    if (bookingType === "short-term") return calcShortTermPrice(selectedDuration)
     return 150
   }
+  const getPrice = () => Math.max(0, getBasePrice() - (promoApplied?.discount || 0))
 
   const handleApplyPromo = async () => {
     if (!promoCode.trim()) return
@@ -74,7 +71,7 @@ export function SpotDetailsScreen() {
       const res = await fetch("/backend/payments/promo/apply", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ code: promoCode.trim(), amount: getPrice() }),
+        body: JSON.stringify({ code: promoCode.trim(), amount: getBasePrice() }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
@@ -412,6 +409,18 @@ export function SpotDetailsScreen() {
                 </div>
               )}
               <Separator className="my-2" />
+              {promoApplied && (
+                <>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Сумма</span>
+                    <span className="text-muted-foreground line-through">{getBasePrice().toLocaleString()} ₸</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-green-600 font-medium">Промокод {promoApplied.code}</span>
+                    <span className="text-green-600 font-medium">−{promoApplied.discount} ₸</span>
+                  </div>
+                </>
+              )}
               <div className="flex justify-between">
                 <span className="font-medium text-foreground">Итого</span>
                 <span className="text-lg font-bold text-[#36549B]">{getPrice().toLocaleString()} ₸</span>
