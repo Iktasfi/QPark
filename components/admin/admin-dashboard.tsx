@@ -91,10 +91,22 @@ export function AdminDashboard() {
   const [locationAdded, setLocationAdded] = useState(false)
   const [b2bSent, setB2bSent] = useState(false)
   const mockLocations = [
-    { id: 1, name: "Парковка №1", address: "Улы Дала, 1", spots: 30, free: 12, status: "Активна" },
-    { id: 2, name: "Парковка №2", address: "Сыганак, 5",  spots: 25, free: 8,  status: "Активна" },
-    { id: 3, name: "Парковка №3", address: "Кабанбай батыр, 12", spots: 20, free: 5, status: "Активна" },
+    { id: 1, name: "Парковка №1", address: "Улы Дала, 1", spots: 30, free: 12, status: "Активна", spotRange: [1, 30] },
+    { id: 2, name: "Парковка №2", address: "Сыганак, 5",  spots: 25, free: 8,  status: "Активна", spotRange: [1, 25] },
+    { id: 3, name: "Парковка №3", address: "Кабанбай батыр, 12", spots: 20, free: 5, status: "Активна", spotRange: [1, 20] },
   ]
+  const [selectedLocationId, setSelectedLocationId] = useState(1)
+  const selectedLocation = mockLocations.find(l => l.id === selectedLocationId)!
+
+  const filterSpotsByLocation = (table: ParkingSpot[][]) => {
+    const [min, max] = selectedLocation.spotRange
+    return table.map(row =>
+      row.filter(spot => {
+        const num = parseInt(spot.spotNumber.replace("SP-", ""))
+        return num >= min && num <= max
+      })
+    ).filter(row => row.length > 0)
+  }
   const [promoCodes, setPromoCodes] = useState<{id: string; code: string; discount: number; type: string; usedCount: number; maxUses: number | null; isActive: boolean; expiresAt: string | null}[]>([])
   const [newPromo, setNewPromo] = useState({ code: "", discount: "", type: "FIXED", maxUses: "" })
   const [promoLoading, setPromoLoading] = useState(false)
@@ -453,8 +465,22 @@ export function AdminDashboard() {
         {/* Tab content */}
         {activeTab === "spots" && (
           <>
-            {renderParkingSection(parkingData.tables.shortTerm.title, parkingData.tables.shortTerm.table)}
-            {renderParkingSection(parkingData.tables.longTerm.title, parkingData.tables.longTerm.table)}
+            {/* Location selector */}
+            <div className="flex flex-wrap gap-2 mb-5">
+              {mockLocations.map(loc => (
+                <button key={loc.id} onClick={() => setSelectedLocationId(loc.id)}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all"
+                  style={selectedLocationId === loc.id
+                    ? { background: "#354469", color: "#ffffff", border: "1px solid rgba(255,255,255,0.2)" }
+                    : { background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.5)", border: "1px solid rgba(255,255,255,0.1)" }}>
+                  <span className="w-1.5 h-1.5 rounded-full" style={{ background: selectedLocationId === loc.id ? "#22c55e" : "rgba(255,255,255,0.2)" }} />
+                  {loc.name}
+                  <span className="text-xs opacity-60">· {loc.address}</span>
+                </button>
+              ))}
+            </div>
+            {renderParkingSection(parkingData.tables.shortTerm.title, filterSpotsByLocation(parkingData.tables.shortTerm.table))}
+            {renderParkingSection(parkingData.tables.longTerm.title, filterSpotsByLocation(parkingData.tables.longTerm.table))}
           </>
         )}
 
