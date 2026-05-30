@@ -85,9 +85,10 @@ export function AdminDashboard() {
   const [dbBookings, setDbBookings] = useState<DbBooking[]>([])
   const [dbRentals, setDbRentals] = useState<DbRental[]>([])
   const [dbTransactions, setDbTransactions] = useState<DbTransaction[]>([])
-  const [activeTab, setActiveTab] = useState<"spots" | "users" | "bookings" | "transactions" | "promo" | "locations" | "photos" | "complaints">("spots")
+  const [activeTab, setActiveTab] = useState<"spots" | "users" | "bookings" | "transactions" | "promo" | "locations" | "photos" | "complaints" | "applications">("spots")
   const [pendingPhotos, setPendingPhotos] = useState<{id: string; type: string; photoUrl: string | null; photoUploadedAt: string | null; spotNumber: string; plateNumber: string; userName: string}[]>([])
   const [complaints, setComplaints] = useState<{id: string; spotId: string; reason: string; photoUrl: string | null; status: string; createdAt: string; user: {firstName: string | null; phoneNumber: string}}[]>([])
+  const [applications, setApplications] = useState<{id: string; companyName: string; ownerName: string; phone: string; email: string | null; address: string; city: string; spotsCount: number; description: string | null; status: string; adminNote: string | null; createdAt: string}[]>([])
   const [showAddLocation, setShowAddLocation] = useState(false)
   const [showB2BForm, setShowB2BForm] = useState(false)
   const [locationForm, setLocationForm] = useState({ name: "", address: "", spots: "" })
@@ -195,6 +196,8 @@ export function AdminDashboard() {
         if (photosRes.ok) setPendingPhotos(await photosRes.json())
         const complaintsRes = await fetch(`${RAILWAY}/admin/complaints`, { headers: { Authorization: `Bearer ${token}` } })
         if (complaintsRes.ok) setComplaints(await complaintsRes.json())
+        const appsRes = await fetch(`${RAILWAY}/admin/applications`, { headers: { Authorization: `Bearer ${token}` } })
+        if (appsRes.ok) setApplications(await appsRes.json())
       }
       setError(null)
     } catch (err) {
@@ -347,6 +350,7 @@ export function AdminDashboard() {
     { id: "promo",        label: "Промокоды",    count: promoCodes.length },
     { id: "photos",       label: "📷 Фото",      count: pendingPhotos.length },
     { id: "complaints",   label: "⚠️ Жалобы",    count: complaints.filter(c => c.status === "PENDING").length },
+    { id: "applications", label: "📋 Заявки",    count: applications.filter(a => a.status === "NEW").length },
     { id: "locations",    label: "Локации",      count: mockLocations.length },
   ]
 
@@ -943,6 +947,115 @@ export function AdminDashboard() {
                             className="px-4 py-2 rounded-xl text-sm font-semibold text-white bg-red-600/70 hover:bg-red-600 transition-all"
                           >
                             ⚡ Штраф
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {activeTab === "applications" && (
+          <div className="space-y-4">
+            <div className={CARD} style={CARD_BG}>
+              <div className="flex items-center justify-between mb-4">
+                <p className="text-white/70 text-sm font-semibold">Заявки от арендодателей ({applications.length})</p>
+                <a href="/apply" target="_blank"
+                  className="px-3 py-1.5 rounded-xl text-xs font-semibold text-white hover:opacity-80 transition-all"
+                  style={{ background: "#354469" }}>
+                  🔗 Ссылка для арендодателей
+                </a>
+              </div>
+              {applications.length === 0 ? (
+                <div className="text-center py-10">
+                  <p className="text-white/40 text-sm mb-2">Заявок пока нет</p>
+                  <p className="text-white/30 text-xs">Поделитесь ссылкой <span className="text-white/50">/apply</span> с арендодателями</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {applications.map(app => (
+                    <div key={app.id} className="rounded-2xl p-5 space-y-3" style={{ background: "rgba(255,255,255,0.05)" }}>
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 flex-wrap mb-2">
+                            <span className={`text-xs px-2.5 py-1 rounded-full font-bold ${
+                              app.status === "NEW" ? "bg-blue-500/20 text-blue-300" :
+                              app.status === "IN_REVIEW" ? "bg-yellow-500/20 text-yellow-300" :
+                              app.status === "APPROVED" ? "bg-green-500/20 text-green-300" :
+                              "bg-red-500/20 text-red-300"
+                            }`}>
+                              {app.status === "NEW" ? "🆕 Новая" : app.status === "IN_REVIEW" ? "🔍 На рассмотрении" : app.status === "APPROVED" ? "✅ Одобрена" : "❌ Отклонена"}
+                            </span>
+                            <span className="text-white/40 text-xs">{new Date(app.createdAt).toLocaleString("ru-RU", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
+                          </div>
+                          <p className="text-white font-bold text-base">{app.companyName}</p>
+                          <p className="text-white/60 text-sm">{app.ownerName}</p>
+                          <div className="grid grid-cols-2 gap-x-4 gap-y-1 mt-2">
+                            <p className="text-white/50 text-xs">📍 {app.city}, {app.address}</p>
+                            <p className="text-white/50 text-xs">🅿️ {app.spotsCount} мест</p>
+                            <p className="text-white/50 text-xs">📞 {app.phone}</p>
+                            {app.email && <p className="text-white/50 text-xs">✉️ {app.email}</p>}
+                          </div>
+                          {app.description && (
+                            <p className="text-white/50 text-xs mt-2 italic">"{app.description}"</p>
+                          )}
+                          {app.adminNote && (
+                            <div className="mt-2 px-3 py-2 rounded-xl bg-white/5 text-white/60 text-xs">
+                              📝 Заметка: {app.adminNote}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      {(app.status === "NEW" || app.status === "IN_REVIEW") && (
+                        <div className="flex gap-2 flex-wrap">
+                          {app.status === "NEW" && (
+                            <button
+                              onClick={async () => {
+                                const token = localStorage.getItem("admin_token") || localStorage.getItem("qpark_token")
+                                await fetch(`${RAILWAY}/admin/applications/${app.id}`, {
+                                  method: "PATCH",
+                                  headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+                                  body: JSON.stringify({ status: "IN_REVIEW" }),
+                                })
+                                setApplications(prev => prev.map(a => a.id === app.id ? { ...a, status: "IN_REVIEW" } : a))
+                              }}
+                              className="px-4 py-2 rounded-xl text-xs font-semibold text-white bg-yellow-600/70 hover:bg-yellow-600 transition-all"
+                            >
+                              🔍 Взять на рассмотрение
+                            </button>
+                          )}
+                          <button
+                            onClick={async () => {
+                              const token = localStorage.getItem("admin_token") || localStorage.getItem("qpark_token")
+                              const note = prompt("Заметка для одобрения (необязательно):")
+                              await fetch(`${RAILWAY}/admin/applications/${app.id}`, {
+                                method: "PATCH",
+                                headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+                                body: JSON.stringify({ status: "APPROVED", ...(note ? { adminNote: note } : {}) }),
+                              })
+                              setApplications(prev => prev.map(a => a.id === app.id ? { ...a, status: "APPROVED", adminNote: note ?? a.adminNote } : a))
+                            }}
+                            className="px-4 py-2 rounded-xl text-xs font-semibold text-white bg-green-600/70 hover:bg-green-600 transition-all"
+                          >
+                            ✅ Одобрить
+                          </button>
+                          <button
+                            onClick={async () => {
+                              const token = localStorage.getItem("admin_token") || localStorage.getItem("qpark_token")
+                              const note = prompt("Причина отказа:")
+                              await fetch(`${RAILWAY}/admin/applications/${app.id}`, {
+                                method: "PATCH",
+                                headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+                                body: JSON.stringify({ status: "REJECTED", ...(note ? { adminNote: note } : {}) }),
+                              })
+                              setApplications(prev => prev.map(a => a.id === app.id ? { ...a, status: "REJECTED", adminNote: note ?? a.adminNote } : a))
+                            }}
+                            className="px-4 py-2 rounded-xl text-xs font-semibold text-white bg-red-700/70 hover:bg-red-700 transition-all"
+                          >
+                            ❌ Отклонить
                           </button>
                         </div>
                       )}

@@ -268,6 +268,32 @@ enum ComplaintStatus {
   RESOLVED
 }
 
+// ─── LANDLORD APPLICATIONS ───────────────────────────────
+model Application {
+  id          String            @id @default(cuid())
+  companyName String
+  ownerName   String
+  phone       String
+  email       String?
+  address     String
+  city        String
+  spotsCount  Int
+  description String?
+  status      ApplicationStatus @default(NEW)
+  adminNote   String?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  @@map("applications")
+}
+
+enum ApplicationStatus {
+  NEW
+  IN_REVIEW
+  APPROVED
+  REJECTED
+}
+
 // ─── PROMO CODES ─────────────────────────────────────────
 model PromoCode {
   id         String        @id @default(cuid())

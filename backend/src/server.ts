@@ -15,6 +15,7 @@ import rentalRoutes from './routes/rental.routes';
 import adminRoutes from './routes/admin.routes';
 import testRoutes from './routes/test.routes';
 import complaintRoutes from './routes/complaint.routes';
+import applicationRoutes from './routes/application.routes';
 import { prisma } from './lib/prisma';
 
 
@@ -54,6 +55,7 @@ app.use('/rentals', rentalRoutes);
 app.use('/admin', adminRoutes);
 app.use('/test', testRoutes);
 app.use('/complaints', complaintRoutes);
+app.use('/applications', applicationRoutes);
 
 
 app.get('/health', (req: Request, res: Response) => {

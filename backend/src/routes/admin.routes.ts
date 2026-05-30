@@ -346,4 +346,28 @@ router.post('/complaints/:id/fine', async (req: Request, res: Response) => {
   }
 });
 
+// ─── APPLICATIONS ─────────────────────────────────────────
+
+router.get('/applications', async (req: Request, res: Response) => {
+  try {
+    const apps = await prisma.application.findMany({ orderBy: { createdAt: 'desc' } });
+    res.json(apps);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch applications' });
+  }
+});
+
+router.patch('/applications/:id', async (req: Request, res: Response) => {
+  try {
+    const { status, adminNote } = req.body;
+    const app = await prisma.application.update({
+      where: { id: req.params.id },
+      data: { ...(status ? { status } : {}), ...(adminNote !== undefined ? { adminNote } : {}) },
+    });
+    res.json(app);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to update application' });
+  }
+});
+
 export default router;
