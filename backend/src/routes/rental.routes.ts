@@ -146,10 +146,18 @@ router.post('/terminate-by-spot', async (req: Request, res: Response) => {
     const spot = await prisma.parkingSpot.findUnique({ where: { spotNumber } });
     if (!spot) return res.status(404).json({ error: 'Spot not found' });
 
-    const rental = await prisma.longTermRental.findFirst({
+    let rental = await prisma.longTermRental.findFirst({
       where: { spotId: spot.id, userId, status: 'ACTIVE' },
       orderBy: { createdAt: 'desc' },
     });
+
+    // Fallback: find any active rental for this spot (userId may differ between booking and termination)
+    if (!rental) {
+      rental = await prisma.longTermRental.findFirst({
+        where: { spotId: spot.id, status: 'ACTIVE' },
+        orderBy: { createdAt: 'desc' },
+      });
+    }
 
     if (!rental) return res.status(404).json({ error: 'Active rental not found' });
 
