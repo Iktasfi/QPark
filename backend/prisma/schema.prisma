@@ -245,16 +245,18 @@ enum PhotoStatus {
 
 // ─── COMPLAINTS ──────────────────────────────────────────
 model Complaint {
-  id          String          @id @default(cuid())
-  userId      String
-  bookingId   String?
-  spotId      String
-  reason      String
-  photoUrl    String?
-  status      ComplaintStatus @default(PENDING)
-  newSpotId   String?
-  createdAt   DateTime        @default(now())
-  resolvedAt  DateTime?
+  id              String          @id @default(cuid())
+  userId          String
+  bookingId       String?
+  spotId          String
+  reason          String
+  photoUrl        String?
+  status          ComplaintStatus @default(PENDING)
+  newSpotId       String?
+  detectedPlate   String?
+  violatorUserId  String?
+  createdAt       DateTime        @default(now())
+  resolvedAt      DateTime?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 

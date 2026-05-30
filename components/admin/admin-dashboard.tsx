@@ -87,7 +87,7 @@ export function AdminDashboard() {
   const [dbTransactions, setDbTransactions] = useState<DbTransaction[]>([])
   const [activeTab, setActiveTab] = useState<"spots" | "users" | "bookings" | "transactions" | "promo" | "locations" | "photos" | "complaints" | "applications">("spots")
   const [pendingPhotos, setPendingPhotos] = useState<{id: string; type: string; photoUrl: string | null; photoUploadedAt: string | null; spotNumber: string; plateNumber: string; userName: string}[]>([])
-  const [complaints, setComplaints] = useState<{id: string; spotId: string; reason: string; photoUrl: string | null; status: string; createdAt: string; user: {firstName: string | null; phoneNumber: string}}[]>([])
+  const [complaints, setComplaints] = useState<{id: string; spotId: string; reason: string; photoUrl: string | null; status: string; createdAt: string; detectedPlate: string | null; violatorUserId: string | null; user: {firstName: string | null; phoneNumber: string}}[]>([])
   const [applications, setApplications] = useState<{id: string; companyName: string; ownerName: string; phone: string; email: string | null; address: string; city: string; spotsCount: number; description: string | null; status: string; adminNote: string | null; createdAt: string}[]>([])
   const [showAddLocation, setShowAddLocation] = useState(false)
   const [showB2BForm, setShowB2BForm] = useState(false)
@@ -910,6 +910,35 @@ export function AdminDashboard() {
                           <img src={c.photoUrl} alt="complaint" className="w-20 h-20 rounded-lg object-cover shrink-0" />
                         )}
                       </div>
+                      {/* OCR detected plate block */}
+                      {c.detectedPlate && (
+                        <div className="rounded-xl px-4 py-3 flex items-center justify-between" style={{ background: "rgba(251,191,36,0.1)", border: "1px solid rgba(251,191,36,0.3)" }}>
+                          <div>
+                            <p className="text-yellow-300 text-xs font-semibold mb-0.5">🔍 OCR обнаружил номер</p>
+                            <p className="text-white font-bold text-lg tracking-widest">{c.detectedPlate}</p>
+                            <p className="text-white/50 text-xs">{c.violatorUserId ? "✅ Пользователь найден в системе" : "⚠️ Пользователь не найден в БД"}</p>
+                          </div>
+                          {c.violatorUserId && c.status === "PENDING" && (
+                            <button
+                              onClick={async () => {
+                                const token = localStorage.getItem("admin_token") || localStorage.getItem("qpark_token")
+                                await fetch(`${RAILWAY}/admin/complaints/${c.id}/fine`, {
+                                  method: "POST",
+                                  headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+                                  body: JSON.stringify({ violatorUserId: c.violatorUserId, amount: 500 }),
+                                })
+                                setComplaints(prev => prev.map(x => x.id === c.id ? { ...x, status: "RESOLVED" } : x))
+                                alert(`✅ Штраф 500₸ выписан нарушителю автоматически`)
+                              }}
+                              className="px-4 py-3 rounded-xl text-sm font-bold text-white transition-all hover:opacity-80 shrink-0"
+                              style={{ background: "rgba(220,38,38,0.7)" }}
+                            >
+                              ⚡ Штраф 500₸
+                            </button>
+                          )}
+                        </div>
+                      )}
+
                       {c.status === "PENDING" && (
                         <div className="flex gap-2">
                           <button
@@ -933,21 +962,23 @@ export function AdminDashboard() {
                           >
                             🔄 Найти новое место
                           </button>
-                          <button
-                            onClick={async () => {
-                              const token = localStorage.getItem("admin_token") || localStorage.getItem("qpark_token")
-                              await fetch(`${RAILWAY}/admin/complaints/${c.id}/fine`, {
-                                method: "POST",
-                                headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-                                body: JSON.stringify({ amount: 500 }),
-                              })
-                              setComplaints(prev => prev.map(x => x.id === c.id ? { ...x, status: "RESOLVED" } : x))
-                              alert("✅ Нарушитель оштрафован на 500₸")
-                            }}
-                            className="px-4 py-2 rounded-xl text-sm font-semibold text-white bg-red-600/70 hover:bg-red-600 transition-all"
-                          >
-                            ⚡ Штраф
-                          </button>
+                          {!c.violatorUserId && (
+                            <button
+                              onClick={async () => {
+                                const token = localStorage.getItem("admin_token") || localStorage.getItem("qpark_token")
+                                await fetch(`${RAILWAY}/admin/complaints/${c.id}/fine`, {
+                                  method: "POST",
+                                  headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+                                  body: JSON.stringify({ amount: 500 }),
+                                })
+                                setComplaints(prev => prev.map(x => x.id === c.id ? { ...x, status: "RESOLVED" } : x))
+                                alert("✅ Штраф выписан вручную")
+                              }}
+                              className="px-4 py-2 rounded-xl text-sm font-semibold text-white bg-red-600/70 hover:bg-red-600 transition-all"
+                            >
+                              ⚡ Штраф вручную
+                            </button>
+                          )}
                         </div>
                       )}
                     </div>

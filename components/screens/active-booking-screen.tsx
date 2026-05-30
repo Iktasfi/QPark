@@ -907,17 +907,31 @@ export function ActiveBookingScreen() {
               rows={3}
               className="w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 px-4 py-3 text-sm text-foreground resize-none focus:outline-none focus:ring-2 focus:ring-orange-400 mb-3"
             />
-            <label className={`flex items-center justify-center gap-2 w-full py-2.5 rounded-xl border-2 text-sm font-medium cursor-pointer mb-4 transition-all ${complaintPhotoUrl ? "border-green-400 bg-green-50 text-green-700" : "border-dashed border-gray-300 text-gray-500 hover:border-orange-400 hover:text-orange-600"}`}>
-              <Camera className="h-4 w-4" />
-              {complaintPhotoUrl ? "✓ Photo attached" : t.complaintPhoto}
+            <label className={`flex flex-col items-center justify-center gap-2 w-full py-4 rounded-xl border-2 text-sm font-medium cursor-pointer mb-2 transition-all ${complaintPhotoUrl ? "border-green-400 bg-green-50 dark:bg-green-900/20 text-green-700" : "border-dashed border-orange-300 bg-orange-50/50 text-orange-600 hover:border-orange-400"}`}>
+              {complaintPhotoUrl ? (
+                <>
+                  <Camera className="h-5 w-5 text-green-600" />
+                  <span>✓ Фото прикреплено</span>
+                  <span className="text-xs text-green-500">OCR прочитает номер машины автоматически</span>
+                </>
+              ) : (
+                <>
+                  <Camera className="h-6 w-6" />
+                  <span>{t.complaintPhoto} <span className="text-red-500">*</span></span>
+                  <span className="text-xs text-orange-500/80">Сфотографируйте машину нарушителя — система определит номер</span>
+                </>
+              )}
               <input type="file" accept="image/*" capture="environment" className="hidden" onChange={handleComplaintPhotoUpload} />
             </label>
-            <div className="flex gap-3">
+            {!complaintPhotoUrl && (
+              <p className="text-xs text-orange-500 text-center mb-3">Фото обязательно — это доказательство нарушения</p>
+            )}
+            <div className="flex gap-3 mt-1">
               <Button variant="outline" size="lg" className="flex-1" onClick={() => setShowComplaint(false)}>{t.back}</Button>
               <Button
                 size="lg"
                 className="flex-1 bg-orange-500 hover:bg-orange-600 text-white"
-                disabled={!complaintReason.trim() || isSendingComplaint}
+                disabled={!complaintReason.trim() || !complaintPhotoUrl || isSendingComplaint}
                 onClick={handleSendComplaint}
               >
                 {isSendingComplaint ? t.complaintSending : t.complaintSend}
