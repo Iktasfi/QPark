@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import parkingService from '../services/parking.service';
 import paymentService from '../services/payment.service';
-import { calculateShortTermCost } from '../utils/pricing';
+import { calculateShortTermCost, getLongTermPrice } from '../utils/pricing';
 import { logger } from '../server';
 import jwt from 'jsonwebtoken';
 import { prisma } from '../lib/prisma';
@@ -549,8 +549,7 @@ router.post('/set-status', async (req: Request, res: Response) => {
 
     if (status === 'RESERVED' && userId && carPlate && rentalDays) {
       try {
-        const priceMap: Record<number, number> = { 1: 700, 3: 1800, 5: 2700, 7: 3500, 14: 6000 };
-        const totalCost = priceMap[Number(rentalDays)] ?? Number(rentalDays) * 700;
+        const totalCost = getLongTermPrice(Number(rentalDays));
 
 
         const payment = await paymentService.payLongTermRental(userId, spotNumber, Number(rentalDays), totalCost);

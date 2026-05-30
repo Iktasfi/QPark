@@ -145,7 +145,17 @@ export function SpotDetailsScreen() {
       })
 
       if (data.newBalance !== undefined) {
-        setUser({ ...user, balance: data.newBalance })
+        const paidAmount = getPrice()
+        const newTx = {
+          id: `tx-${Date.now()}`,
+          type: "parking_charge" as const,
+          amount: -paidAmount,
+          description: isLongTerm
+            ? `Долгосрочная аренда ${selectedSpot.id} — ${selectedRentalDays} дн.`
+            : `Краткосрочная парковка ${selectedSpot.id}, ${selectedDuration} мин`,
+          date: new Date(),
+        }
+        setUser({ ...user, balance: data.newBalance, transactions: [newTx, ...(user.transactions || [])] })
       }
 
       setCurrentScreen("booking-confirm")
