@@ -85,8 +85,9 @@ export function AdminDashboard() {
   const [dbBookings, setDbBookings] = useState<DbBooking[]>([])
   const [dbRentals, setDbRentals] = useState<DbRental[]>([])
   const [dbTransactions, setDbTransactions] = useState<DbTransaction[]>([])
-  const [activeTab, setActiveTab] = useState<"spots" | "users" | "bookings" | "transactions" | "promo" | "locations" | "photos">("spots")
+  const [activeTab, setActiveTab] = useState<"spots" | "users" | "bookings" | "transactions" | "promo" | "locations" | "photos" | "complaints">("spots")
   const [pendingPhotos, setPendingPhotos] = useState<{id: string; type: string; photoUrl: string | null; photoUploadedAt: string | null; spotNumber: string; plateNumber: string; userName: string}[]>([])
+  const [complaints, setComplaints] = useState<{id: string; spotId: string; reason: string; photoUrl: string | null; status: string; createdAt: string; user: {firstName: string | null; phoneNumber: string}}[]>([])
   const [showAddLocation, setShowAddLocation] = useState(false)
   const [showB2BForm, setShowB2BForm] = useState(false)
   const [locationForm, setLocationForm] = useState({ name: "", address: "", spots: "" })
@@ -192,6 +193,8 @@ export function AdminDashboard() {
       if (token) {
         const photosRes = await fetch(`${RAILWAY}/bookings/admin/pending-photos`, { headers: { Authorization: `Bearer ${token}` } })
         if (photosRes.ok) setPendingPhotos(await photosRes.json())
+        const complaintsRes = await fetch(`${RAILWAY}/admin/complaints`, { headers: { Authorization: `Bearer ${token}` } })
+        if (complaintsRes.ok) setComplaints(await complaintsRes.json())
       }
       setError(null)
     } catch (err) {
@@ -343,6 +346,7 @@ export function AdminDashboard() {
     { id: "transactions", label: "Транзакции",   count: dbTransactions.length },
     { id: "promo",        label: "Промокоды",    count: promoCodes.length },
     { id: "photos",       label: "📷 Фото",      count: pendingPhotos.length },
+    { id: "complaints",   label: "⚠️ Жалобы",    count: complaints.filter(c => c.status === "PENDING").length },
     { id: "locations",    label: "Локации",      count: mockLocations.length },
   ]
 
@@ -868,6 +872,80 @@ export function AdminDashboard() {
                           ✗ Неверное место (−200₸)
                         </button>
                       </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {activeTab === "complaints" && (
+          <div className="space-y-4">
+            <div className={CARD} style={CARD_BG}>
+              <p className="text-white/70 text-sm font-semibold mb-4">Жалобы пользователей ({complaints.length})</p>
+              {complaints.length === 0 ? (
+                <p className="text-white/50 text-sm text-center py-8">Жалоб нет</p>
+              ) : (
+                <div className="space-y-3">
+                  {complaints.map(c => (
+                    <div key={c.id} className="rounded-xl p-4 space-y-3" style={{ background: "rgba(255,255,255,0.05)" }}>
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${c.status === "PENDING" ? "bg-orange-500/20 text-orange-300" : c.status === "REASSIGNED" ? "bg-green-500/20 text-green-300" : c.status === "REFUNDED" ? "bg-blue-500/20 text-blue-300" : "bg-gray-500/20 text-gray-300"}`}>
+                              {c.status}
+                            </span>
+                            <span className="text-white/60 text-xs">Место: <span className="text-white font-bold">{c.spotId}</span></span>
+                            <span className="text-white/40 text-xs">{new Date(c.createdAt).toLocaleString("ru-RU", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
+                          </div>
+                          <p className="text-white/50 text-xs">{c.user.firstName ?? c.user.phoneNumber}</p>
+                          <p className="text-white/80 text-sm mt-1">{c.reason}</p>
+                        </div>
+                        {c.photoUrl && (
+                          <img src={c.photoUrl} alt="complaint" className="w-20 h-20 rounded-lg object-cover shrink-0" />
+                        )}
+                      </div>
+                      {c.status === "PENDING" && (
+                        <div className="flex gap-2">
+                          <button
+                            onClick={async () => {
+                              const token = localStorage.getItem("admin_token") || localStorage.getItem("qpark_token")
+                              const res = await fetch(`${RAILWAY}/admin/complaints/${c.id}/reassign`, {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+                              })
+                              const data = await res.json()
+                              if (data.action === "reassigned") {
+                                setComplaints(prev => prev.map(x => x.id === c.id ? { ...x, status: "REASSIGNED" } : x))
+                                alert(`✅ Пользователь перенесён на ${data.newSpotId}`)
+                              } else if (data.action === "refunded") {
+                                setComplaints(prev => prev.map(x => x.id === c.id ? { ...x, status: "REFUNDED" } : x))
+                                alert(`💸 Нет свободных мест. Возврат ${data.refundAmount}₸`)
+                              }
+                            }}
+                            className="flex-1 py-2 rounded-xl text-sm font-semibold text-white transition-all hover:opacity-80"
+                            style={{ background: "#354469" }}
+                          >
+                            🔄 Найти новое место
+                          </button>
+                          <button
+                            onClick={async () => {
+                              const token = localStorage.getItem("admin_token") || localStorage.getItem("qpark_token")
+                              await fetch(`${RAILWAY}/admin/complaints/${c.id}/fine`, {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+                                body: JSON.stringify({ amount: 500 }),
+                              })
+                              setComplaints(prev => prev.map(x => x.id === c.id ? { ...x, status: "RESOLVED" } : x))
+                              alert("✅ Нарушитель оштрафован на 500₸")
+                            }}
+                            className="px-4 py-2 rounded-xl text-sm font-semibold text-white bg-red-600/70 hover:bg-red-600 transition-all"
+                          >
+                            ⚡ Штраф
+                          </button>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>

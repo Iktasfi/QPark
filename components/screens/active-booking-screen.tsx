@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react"
 import { useParking } from "@/lib/parking-context"
+import { getSocket } from "@/lib/socket"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -56,6 +57,13 @@ export function ActiveBookingScreen() {
   const [isExtending, setIsExtending] = useState(false)
   const [isTerminating, setIsTerminating] = useState(false)
   const [showTerminateConfirm, setShowTerminateConfirm] = useState(false)
+  const [showComplaint, setShowComplaint] = useState(false)
+  const [complaintReason, setComplaintReason] = useState("")
+  const [complaintPhotoUrl, setComplaintPhotoUrl] = useState<string | null>(null)
+  const [isSendingComplaint, setIsSendingComplaint] = useState(false)
+  const [complaintSent, setComplaintSent] = useState(false)
+  const [newSpotOffer, setNewSpotOffer] = useState<{ spotId: string } | null>(null)
+  const [noSpotsAvailable, setNoSpotsAvailable] = useState(false)
 
   // Photo confirmation state
   const [photoStatus, setPhotoStatus] = useState<"idle" | "pending" | "uploading" | "uploaded" | "confirmed" | "wrong_spot">("idle")
@@ -286,6 +294,87 @@ export function ActiveBookingScreen() {
     }
   }, [activeBooking, user, selectedSpot, updateSpot, setActiveBooking, setCurrentScreen])
   
+  const handleComplaintPhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = (ev) => {
+      const img = new Image()
+      img.onload = () => {
+        const canvas = document.createElement("canvas")
+        const MAX = 800
+        const ratio = Math.min(MAX / img.width, MAX / img.height, 1)
+        canvas.width = img.width * ratio
+        canvas.height = img.height * ratio
+        canvas.getContext("2d")!.drawImage(img, 0, 0, canvas.width, canvas.height)
+        setComplaintPhotoUrl(canvas.toDataURL("image/jpeg", 0.7))
+      }
+      img.src = ev.target?.result as string
+    }
+    reader.readAsDataURL(file)
+  }
+
+  const handleSendComplaint = async () => {
+    if (!activeBooking || !user || !complaintReason.trim()) return
+    setIsSendingComplaint(true)
+    try {
+      const token = localStorage.getItem("qpark_token")
+      const res = await fetch("/backend/complaints", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          bookingId: activeBooking.id,
+          spotId: activeBooking.spotId,
+          reason: complaintReason,
+          photoUrl: complaintPhotoUrl,
+        }),
+      })
+      if (!res.ok) throw new Error("Failed to send complaint")
+      setComplaintSent(true)
+      setShowComplaint(false)
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Error")
+    } finally {
+      setIsSendingComplaint(false)
+    }
+  }
+
+  // Listen for spot reassignment from admin
+  useEffect(() => {
+    const socket = getSocket()
+    const handleReassigned = (data: { userId: string; newSpotId: string }) => {
+      if (data.userId === user?.id) {
+        setNewSpotOffer({ spotId: data.newSpotId })
+      }
+    }
+    const handleNoSpots = (data: { userId: string; refundAmount: number }) => {
+      if (data.userId === user?.id) {
+        setNoSpotsAvailable(true)
+        if (data.refundAmount && user) {
+          setUser({ ...user, balance: user.balance + data.refundAmount })
+        }
+      }
+    }
+    socket.on("spot-reassigned", handleReassigned)
+    socket.on("no-spots-available", handleNoSpots)
+    return () => {
+      socket.off("spot-reassigned", handleReassigned)
+      socket.off("no-spots-available", handleNoSpots)
+    }
+  }, [user])
+
+  const handleAcceptNewSpot = async () => {
+    if (!newSpotOffer || !activeBooking || !user) return
+    const token = localStorage.getItem("qpark_token")
+    await fetch("/backend/complaints/accept-reassignment", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ oldSpotId: activeBooking.spotId, newSpotId: newSpotOffer.spotId, bookingId: activeBooking.id }),
+    }).catch(() => {})
+    setActiveBooking({ ...activeBooking, spotId: newSpotOffer.spotId })
+    setNewSpotOffer(null)
+  }
+
   const [history, setHistory] = useState<{id: string; spotId: string; plateNumber: string; status: string; startTime: string; totalCost: number; type: string}[]>([])
   const [historyLoading, setHistoryLoading] = useState(false)
 
@@ -636,6 +725,28 @@ export function ActiveBookingScreen() {
             {t.cancelBooking}
           </Button>
         )}
+
+        {(isArrived || isLongTerm) && !complaintSent && (
+          <Button
+            variant="outline"
+            size="lg"
+            className="w-full border-orange-300 text-orange-600 hover:bg-orange-50 hover:border-orange-400"
+            onClick={() => setShowComplaint(true)}
+          >
+            <AlertTriangle className="h-5 w-5 mr-2" />
+            {t.spotTaken}
+          </Button>
+        )}
+
+        {complaintSent && (
+          <div className="flex items-center gap-3 rounded-xl border border-green-200 bg-green-50 px-4 py-3">
+            <Check className="h-5 w-5 text-green-600 shrink-0" />
+            <div>
+              <p className="text-sm font-semibold text-green-700">{t.complaintSent}</p>
+              <p className="text-xs text-green-600">{t.complaintSentDesc}</p>
+            </div>
+          </div>
+        )}
         
         {isLongTerm && (
           <Button
@@ -770,6 +881,91 @@ export function ActiveBookingScreen() {
                 {isTerminating ? t.terminating : t.terminate}
               </Button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Complaint Modal */}
+      {showComplaint && (
+        <div className="absolute inset-0 z-50 flex flex-col justify-end">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setShowComplaint(false)} />
+          <div className="relative bg-white dark:bg-gray-900 rounded-t-3xl px-5 pt-5 pb-10">
+            <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-gray-200 dark:bg-gray-700" />
+            <div className="flex items-center gap-3 mb-4">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-orange-100">
+                <AlertTriangle className="h-6 w-6 text-orange-600" />
+              </div>
+              <div>
+                <h2 className="text-lg font-bold text-gray-900 dark:text-white">{t.complaintTitle}</h2>
+                <p className="text-sm text-gray-500">{t.spotTakenDesc}</p>
+              </div>
+            </div>
+            <textarea
+              value={complaintReason}
+              onChange={e => setComplaintReason(e.target.value)}
+              placeholder={t.complaintReasonPlaceholder}
+              rows={3}
+              className="w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 px-4 py-3 text-sm text-foreground resize-none focus:outline-none focus:ring-2 focus:ring-orange-400 mb-3"
+            />
+            <label className={`flex items-center justify-center gap-2 w-full py-2.5 rounded-xl border-2 text-sm font-medium cursor-pointer mb-4 transition-all ${complaintPhotoUrl ? "border-green-400 bg-green-50 text-green-700" : "border-dashed border-gray-300 text-gray-500 hover:border-orange-400 hover:text-orange-600"}`}>
+              <Camera className="h-4 w-4" />
+              {complaintPhotoUrl ? "✓ Photo attached" : t.complaintPhoto}
+              <input type="file" accept="image/*" capture="environment" className="hidden" onChange={handleComplaintPhotoUpload} />
+            </label>
+            <div className="flex gap-3">
+              <Button variant="outline" size="lg" className="flex-1" onClick={() => setShowComplaint(false)}>{t.back}</Button>
+              <Button
+                size="lg"
+                className="flex-1 bg-orange-500 hover:bg-orange-600 text-white"
+                disabled={!complaintReason.trim() || isSendingComplaint}
+                onClick={handleSendComplaint}
+              >
+                {isSendingComplaint ? t.complaintSending : t.complaintSend}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* New Spot Offer Modal */}
+      {newSpotOffer && (
+        <div className="absolute inset-0 z-50 flex flex-col justify-end">
+          <div className="absolute inset-0 bg-black/40" />
+          <div className="relative bg-white dark:bg-gray-900 rounded-t-3xl px-5 pt-5 pb-10">
+            <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-gray-200 dark:bg-gray-700" />
+            <div className="flex flex-col items-center gap-3 mb-5">
+              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-green-100">
+                <MapPin className="h-8 w-8 text-green-600" />
+              </div>
+              <h2 className="text-xl font-bold text-gray-900 dark:text-white text-center">{t.newSpotFound}</h2>
+              <p className="text-gray-500 text-center">
+                {t.newSpotFoundDesc}{" "}
+                <span className="font-bold text-[#354469] text-lg">{newSpotOffer.spotId}</span>
+              </p>
+            </div>
+            <Button size="lg" className="w-full bg-[#354469] hover:bg-[#354469]/90" onClick={handleAcceptNewSpot}>
+              {t.acceptNewSpot} → {newSpotOffer.spotId}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* No Spots Modal */}
+      {noSpotsAvailable && (
+        <div className="absolute inset-0 z-50 flex flex-col justify-end">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setNoSpotsAvailable(false)} />
+          <div className="relative bg-white dark:bg-gray-900 rounded-t-3xl px-5 pt-5 pb-10">
+            <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-gray-200 dark:bg-gray-700" />
+            <div className="flex flex-col items-center gap-3 mb-5">
+              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-red-100">
+                <Wallet className="h-8 w-8 text-red-500" />
+              </div>
+              <h2 className="text-xl font-bold text-gray-900 dark:text-white">{t.noSpotsAvailable}</h2>
+              <p className="text-sm text-gray-500 text-center">{t.noSpotsDesc}</p>
+            </div>
+            <Button size="lg" className="w-full bg-[#354469] hover:bg-[#354469]/90" onClick={() => { setNoSpotsAvailable(false); setActiveBooking(null); setCurrentScreen("home") }}>
+              {t.backToHome}
+            </Button>
           </div>
         </div>
       )}

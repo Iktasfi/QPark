@@ -27,6 +27,7 @@ model User {
   transactions         Transaction[]
   payments             Payment[]
   renewalNotifications RenewalNotification[]
+  complaints           Complaint[]
 
   @@map("users")
 }
@@ -240,6 +241,31 @@ enum PhotoStatus {
   UPLOADED
   CONFIRMED
   WRONG_SPOT
+}
+
+// ─── COMPLAINTS ──────────────────────────────────────────
+model Complaint {
+  id          String          @id @default(cuid())
+  userId      String
+  bookingId   String?
+  spotId      String
+  reason      String
+  photoUrl    String?
+  status      ComplaintStatus @default(PENDING)
+  newSpotId   String?
+  createdAt   DateTime        @default(now())
+  resolvedAt  DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("complaints")
+}
+
+enum ComplaintStatus {
+  PENDING
+  REASSIGNED
+  REFUNDED
+  RESOLVED
 }
 
 // ─── PROMO CODES ─────────────────────────────────────────

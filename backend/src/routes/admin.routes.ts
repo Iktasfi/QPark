@@ -234,4 +234,116 @@ router.patch('/promo/:id/toggle', async (req: Request, res: Response) => {
   }
 });
 
+// ─── COMPLAINTS ───────────────────────────────────────────
+
+router.get('/complaints', async (req: Request, res: Response) => {
+  try {
+    const complaints = await prisma.complaint.findMany({
+      include: { user: { select: { id: true, firstName: true, lastName: true, phoneNumber: true } } },
+      orderBy: { createdAt: 'desc' },
+    });
+    res.json(complaints);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch complaints' });
+  }
+});
+
+// Reassign user to a new spot
+router.post('/complaints/:id/reassign', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const complaint = await prisma.complaint.findUnique({ where: { id } });
+    if (!complaint) return res.status(404).json({ error: 'Complaint not found' });
+
+    // Find a free spot of same type as the original
+    const originalSpot = await prisma.parkingSpot.findUnique({ where: { spotNumber: complaint.spotId } });
+    const spotType = originalSpot?.type ?? 'SHORT_TERM';
+
+    const freeSpot = await prisma.parkingSpot.findFirst({
+      where: { status: 'FREE', type: spotType, spotNumber: { not: complaint.spotId } },
+      orderBy: { spotNumber: 'asc' },
+    });
+
+    const { io } = await import('../server');
+
+    if (!freeSpot) {
+      // No spots — refund the user
+      const booking = complaint.bookingId
+        ? await prisma.booking.findUnique({ where: { id: complaint.bookingId } })
+        : null;
+      const refundAmount = booking?.totalCost ?? 0;
+
+      if (refundAmount > 0) {
+        await prisma.user.update({
+          where: { id: complaint.userId },
+          data: { walletBalance: { increment: refundAmount } },
+        });
+        await prisma.transaction.create({
+          data: {
+            userId: complaint.userId,
+            amount: refundAmount,
+            type: 'REFUND',
+            description: `Возврат: место занято (${complaint.spotId})`,
+            balanceBefore: 0,
+            balanceAfter: refundAmount,
+          },
+        });
+      }
+
+      await prisma.complaint.update({ where: { id }, data: { status: 'REFUNDED', resolvedAt: new Date() } });
+      io.emit('no-spots-available', { userId: complaint.userId, refundAmount });
+      return res.json({ success: true, action: 'refunded', refundAmount });
+    }
+
+    // Found a spot — notify user
+    await prisma.complaint.update({
+      where: { id },
+      data: { status: 'REASSIGNED', newSpotId: freeSpot.spotNumber, resolvedAt: new Date() },
+    });
+
+    io.emit('spot-reassigned', { userId: complaint.userId, newSpotId: freeSpot.spotNumber });
+    logger.info(`✅ Complaint ${id}: reassigned ${complaint.userId} → ${freeSpot.spotNumber}`);
+    res.json({ success: true, action: 'reassigned', newSpotId: freeSpot.spotNumber });
+  } catch (error) {
+    logger.error('❌ Error reassigning complaint:', error);
+    res.status(500).json({ error: 'Failed to reassign' });
+  }
+});
+
+// Fine the violator
+router.post('/complaints/:id/fine', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { violatorUserId, amount = 500 } = req.body;
+
+    const complaint = await prisma.complaint.findUnique({ where: { id } });
+    if (!complaint) return res.status(404).json({ error: 'Complaint not found' });
+
+    if (violatorUserId) {
+      const violator = await prisma.user.findUnique({ where: { id: violatorUserId } });
+      if (violator) {
+        await prisma.user.update({
+          where: { id: violatorUserId },
+          data: { walletBalance: { decrement: amount } },
+        });
+        await prisma.transaction.create({
+          data: {
+            userId: violatorUserId,
+            amount: -amount,
+            type: 'PAYMENT',
+            description: `Штраф за нарушение парковки (место ${complaint.spotId})`,
+            balanceBefore: violator.walletBalance,
+            balanceAfter: violator.walletBalance - amount,
+          },
+        });
+      }
+    }
+
+    await prisma.complaint.update({ where: { id }, data: { status: 'RESOLVED', resolvedAt: new Date() } });
+    res.json({ success: true, fined: amount });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fine' });
+  }
+});
+
 export default router;
