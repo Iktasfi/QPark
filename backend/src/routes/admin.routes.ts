@@ -127,8 +127,20 @@ router.patch('/spots/:spotNumber/status', async (req: Request, res: Response) =>
     const { status } = req.body;
     const spot = await prisma.parkingSpot.update({
       where: { spotNumber: req.params.spotNumber },
-      data: { status, currentUserPlate: status === 'FREE' ? null : undefined },
+      data: { status, currentUserPlate: status === 'FREE' ? null : undefined, currentUserId: status === 'FREE' ? null : undefined },
     });
+
+    if (status === 'FREE') {
+      await prisma.longTermRental.updateMany({
+        where: { spotId: spot.id, status: 'ACTIVE' },
+        data: { status: 'CANCELLED', endDate: new Date() },
+      });
+      await prisma.booking.updateMany({
+        where: { spotId: spot.id, status: { in: ['PENDING', 'CONFIRMED'] } },
+        data: { status: 'CANCELLED' },
+      });
+    }
+
     const { io } = await import('../server');
     io.emit('spot-status-changed', { spotNumber: spot.spotNumber, status: spot.status, carPlate: spot.currentUserPlate });
     res.json(spot);

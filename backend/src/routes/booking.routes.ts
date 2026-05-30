@@ -91,6 +91,14 @@ router.get('/restore', async (req: Request, res: Response) => {
     });
 
     if (rental) {
+      // If the spot is now FREE, cancel the stale rental and don't restore it
+      if (rental.spot?.status === 'FREE') {
+        await prisma.longTermRental.update({
+          where: { id: rental.id },
+          data: { status: 'CANCELLED', endDate: new Date() },
+        });
+        return res.json(null);
+      }
       return res.json({
         id: rental.id,
         spotId: rental.spot?.spotNumber ?? rental.spotId,

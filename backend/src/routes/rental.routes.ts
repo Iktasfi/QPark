@@ -146,25 +146,20 @@ router.post('/terminate-by-spot', async (req: Request, res: Response) => {
     const spot = await prisma.parkingSpot.findUnique({ where: { spotNumber } });
     if (!spot) return res.status(404).json({ error: 'Spot not found' });
 
-    let rental = await prisma.longTermRental.findFirst({
-      where: { spotId: spot.id, userId, status: 'ACTIVE' },
-      orderBy: { createdAt: 'desc' },
+    const activeRentals = await prisma.longTermRental.findMany({
+      where: { spotId: spot.id, status: 'ACTIVE' },
     });
 
-    // Fallback: find any active rental for this spot (userId may differ between booking and termination)
-    if (!rental) {
-      rental = await prisma.longTermRental.findFirst({
-        where: { spotId: spot.id, status: 'ACTIVE' },
-        orderBy: { createdAt: 'desc' },
-      });
-    }
-
-    if (!rental) return res.status(404).json({ error: 'Active rental not found' });
+    if (activeRentals.length === 0) return res.status(404).json({ error: 'Active rental not found' });
 
     await prisma.$transaction([
-      prisma.longTermRental.update({
-        where: { id: rental.id },
+      prisma.longTermRental.updateMany({
+        where: { spotId: spot.id, status: 'ACTIVE' },
         data: { status: 'CANCELLED', endDate: new Date() },
+      }),
+      prisma.booking.updateMany({
+        where: { spotId: spot.id, status: { in: ['PENDING', 'CONFIRMED'] } },
+        data: { status: 'CANCELLED' },
       }),
       prisma.parkingSpot.update({
         where: { spotNumber },
