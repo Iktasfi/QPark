@@ -111,6 +111,8 @@ export function SpotDetailsScreen() {
           carPlate: selectedCarData.plateNumber,
           userId: user.id,
           rentalDays: selectedRentalDays ?? undefined,
+          estimatedMinutes: bookingType === 'short-term' ? selectedDuration : undefined,
+          promoDiscount: promoApplied?.discount ?? 0,
         }),
       })
 
@@ -142,7 +144,7 @@ export function SpotDetailsScreen() {
         bookedAt: new Date(),
       })
 
-      if (isLongTerm && data.newBalance !== undefined) {
+      if (data.newBalance !== undefined) {
         setUser({ ...user, balance: data.newBalance })
       }
 
@@ -152,6 +154,7 @@ export function SpotDetailsScreen() {
       const match = msg.match(/need (\d+)₸.*have (\d+)₸/)
       if (match) {
         setInsufficientBalance({ need: parseInt(match[1]), have: parseInt(match[2]) })
+        setBookingError(`${t.insufficientBalance} — ${t.insufficientMsg3}`)
       } else {
         setBookingError(msg)
       }
@@ -458,7 +461,10 @@ export function SpotDetailsScreen() {
       </div>
 
       {bookingError && (
-        <p className="text-red-500 text-sm text-center px-2">{bookingError}</p>
+        <div className="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 dark:bg-red-900/20 dark:border-red-800 px-4 py-3">
+          <Wallet className="h-4 w-4 text-red-500 shrink-0" />
+          <p className="text-red-600 dark:text-red-400 text-sm font-medium">{bookingError}</p>
+        </div>
       )}
 
       <Button
@@ -467,8 +473,11 @@ export function SpotDetailsScreen() {
         onClick={handleBookNow}
         disabled={!canBook}
       >
-        {isBooking ? t.bookingLabel : t.bookNowBtn}
+        {isBooking ? t.bookingLabel : (bookingType ? `${t.payNow} · ${getPrice().toLocaleString()} ₸` : t.bookNowBtn)}
       </Button>
+      {bookingType && !isBooking && (
+        <p className="text-xs text-center text-muted-foreground -mt-1">{t.chargedImmediately}</p>
+      )}
 
       {/* Bottom nav */}
       <div className="fixed bottom-0 left-0 right-0 h-20 bg-white dark:bg-gray-900 border-t border-gray-300 dark:border-gray-700 z-50 shadow-lg">

@@ -107,6 +107,23 @@ export class PaymentService {
     if (!user) throw new Error('User not found');
 
     const now = new Date();
+
+    if (booking.isPaid) {
+      const updatedBooking = await prisma.booking.update({
+        where: { id: booking.id },
+        data: { actualEndTime: now, status: 'COMPLETED' },
+      });
+      return {
+        booking: updatedBooking,
+        parkingCost: booking.totalCost ?? 0,
+        alreadyPaidWaiting: 0,
+        netCharge: 0,
+        bonusEarned: 0,
+        walletBalance: user.walletBalance,
+        bonusPoints: user.bonusPoints,
+      };
+    }
+
     const totalMinutes = Math.ceil((now.getTime() - booking.startTime.getTime()) / 60000);
     const paidMinutes = Math.max(0, totalMinutes - 15);
     const parkingCost = calculateShortTermCost(paidMinutes);

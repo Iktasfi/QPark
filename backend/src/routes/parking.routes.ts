@@ -1,12 +1,14 @@
 import { Router, Request, Response } from 'express';
 import parkingService from '../services/parking.service';
+import paymentService from '../services/payment.service';
+import { calculateShortTermCost } from '../utils/pricing';
 import { logger } from '../server';
 import jwt from 'jsonwebtoken';
 import { prisma } from '../lib/prisma';
 
 const router = Router();
 
-// Cyrillic lookalike → Latin (for license plate normalization)
+
 const CYR_TO_LAT: Record<string, string> = {
   'А':'A','В':'B','Е':'E','К':'K','М':'M','Н':'H','О':'O','Р':'P','С':'C','Т':'T','У':'Y','Х':'X',
   'а':'A','в':'B','е':'E','к':'K','м':'M','н':'H','о':'O','р':'P','с':'C','т':'T','у':'Y','х':'X',
@@ -169,25 +171,14 @@ router.post('/lpr/entry', async (req: Request, res: Response) => {
       const isExiting = spot.status === 'OCCUPIED';
       const toggledStatus = isExiting ? 'RESERVED' : 'OCCUPIED';
       const eventType = isExiting ? 'exit' : 'entry';
-      const now = new Date();
 
       await prisma.parkingSpot.update({
         where: { spotNumber },
-        data: { status: toggledStatus, currentUserPlate: carPlate },
+        data: {
+          status: toggledStatus,
+          currentUserPlate: carPlate,
+        },
       });
-
-      // On first entry: set photo timer on rental
-      if (!isExiting) {
-        const rental = await prisma.longTermRental.findFirst({
-          where: { spotId: spot.id, status: 'ACTIVE', plateNumber: { contains: normalizePlate(carPlate) } },
-        });
-        if (rental && !rental.arrivedAt) {
-          await prisma.longTermRental.update({
-            where: { id: rental.id },
-            data: { arrivedAt: now, photoTimerStart: now, photoStatus: 'PENDING' },
-          });
-        }
-      }
 
       io.emit('lpr-gate-open', { carPlate, spotNumber, type: eventType });
       io.emit('spot-status-changed', { spotNumber, status: toggledStatus, carPlate });
@@ -206,7 +197,7 @@ router.post('/lpr/entry', async (req: Request, res: Response) => {
         data: { status: newStatus, currentUserPlate: carPlate },
       });
 
-      // Set photo timer on the active booking
+      
       const activeBooking = await prisma.booking.findFirst({
         where: { spotId: spot.id, status: { in: ['PENDING', 'CONFIRMED'] } },
       });
@@ -247,18 +238,17 @@ router.post('/lpr/exit-lpr', async (req: Request, res: Response) => {
 
     if (spot.type === 'SHORT_TERM') {
 
-      // Ищем оплаченную бронь для этого места
+      
       const paidBooking = await prisma.booking.findFirst({
         where: {
           spotId: spot.id,
           isPaid: true,
-          status: 'COMPLETED',
+          status: { in: ['COMPLETED', 'CONFIRMED', 'PENDING'] },
         },
         orderBy: { createdAt: 'desc' },
       });
 
       if (paidBooking) {
-        // Проверяем что номер совпадает с бронью
         const plateOk = paidBooking.plateNumber
           ? normalizePlate(paidBooking.plateNumber) === normalizePlate(carPlate)
           : true;
@@ -267,6 +257,13 @@ router.post('/lpr/exit-lpr', async (req: Request, res: Response) => {
           io.emit('lpr-gate-denied', { carPlate, spotNumber, reason: 'Номер не совпадает с оплаченной бронью' });
           logger.warn(`⛔ LPR exit denied (plate mismatch): ${carPlate} vs ${paidBooking.plateNumber} at ${spotNumber}`);
           return res.json({ success: false, message: 'Plate does not match paid booking' });
+        }
+
+        if (paidBooking.status !== 'COMPLETED') {
+          await prisma.booking.update({
+            where: { id: paidBooking.id },
+            data: { status: 'COMPLETED', actualEndTime: new Date() },
+          });
         }
 
         await prisma.parkingSpot.update({
@@ -279,7 +276,7 @@ router.post('/lpr/exit-lpr', async (req: Request, res: Response) => {
         return res.json({ success: true, message: 'Gate opened', newStatus: 'FREE' });
       }
 
-      // Нет оплаченной брони — отказываем
+      
       const unpaidBooking = await prisma.booking.findFirst({
         where: { spotId: spot.id, status: { in: ['PENDING', 'CONFIRMED'] } },
         orderBy: { createdAt: 'desc' },
@@ -312,7 +309,7 @@ router.post('/lpr/exit-lpr', async (req: Request, res: Response) => {
 });
 
 
-// ─── Единый LPR эндпоинт: автоматически определяет въезд или выезд ───
+
 router.post('/lpr/scan', async (req: Request, res: Response) => {
   try {
     const { carPlate } = req.body;
@@ -323,14 +320,14 @@ router.post('/lpr/scan', async (req: Request, res: Response) => {
     const { io } = await import('../server');
     const normPlate = normalizePlate(carPlate);
 
-    // 1. Ищем место где сейчас стоит эта машина (OCCUPIED)
+    
     const occupiedSpots = await prisma.parkingSpot.findMany({
       where: { status: 'OCCUPIED', currentUserPlate: { not: null } },
     });
     const occupiedSpot = occupiedSpots.find(s => s.currentUserPlate && normalizePlate(s.currentUserPlate) === normPlate);
 
     if (occupiedSpot) {
-      // Машина сейчас на парковке → ВЫЕЗД
+      
       const spotNumber = occupiedSpot.spotNumber;
       let newStatus: string;
 
@@ -354,7 +351,7 @@ router.post('/lpr/scan', async (req: Request, res: Response) => {
       return res.json({ success: true, direction: 'exit', message: `Выезд разрешён (${spotNumber})`, newStatus, spotNumber });
     }
 
-    // 2. Ищем бронь/аренду для въезда (BOOKED или RESERVED)
+    
     const bookedSpots = await prisma.parkingSpot.findMany({
       where: { status: { in: ['BOOKED', 'RESERVED'] }, currentUserPlate: { not: null } },
     });
@@ -373,7 +370,7 @@ router.post('/lpr/scan', async (req: Request, res: Response) => {
       return res.json({ success: true, direction: 'entry', message: `Въезд разрешён (${spotNumber})`, newStatus: 'OCCUPIED', spotNumber });
     }
 
-    // 3. Не найдено — отказ
+    
     io.emit('lpr-gate-denied', { carPlate, spotNumber: '?', reason: 'Бронь не найдена' });
     logger.warn(`⛔ LPR scan denied: ${carPlate} — no booking found`);
     return res.json({ success: false, message: 'Бронь не найдена. Забронируйте место в приложении.' });
@@ -463,6 +460,21 @@ router.post('/set-status', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Invalid status' });
     }
 
+    if (status === 'BOOKED' && userId && carPlate) {
+      const minutes = Number(req.body.estimatedMinutes) || 60;
+      const discount = Number(req.body.promoDiscount) || 0;
+      const cost = Math.max(0, calculateShortTermCost(minutes) - discount);
+      if (cost > 0) {
+        const userRecord = await prisma.user.findUnique({ where: { id: userId } });
+        if (!userRecord) return res.status(404).json({ error: 'User not found' });
+        if (userRecord.walletBalance < cost) {
+          return res.status(400).json({
+            error: `Insufficient balance: need ${cost}₸, have ${userRecord.walletBalance}₸`,
+          });
+        }
+      }
+    }
+
     const updatedSpot = await prisma.parkingSpot.update({
       where: { spotNumber },
       data: {
@@ -473,35 +485,70 @@ router.post('/set-status', async (req: Request, res: Response) => {
     });
 
 
+    let bookingRecord: any = null;
+    let newBalance: number | undefined;
+
     if (status === 'BOOKED' && userId && carPlate) {
+      const minutes = Number(req.body.estimatedMinutes) || 60;
+      const discount = Number(req.body.promoDiscount) || 0;
+      const cost = Math.max(0, calculateShortTermCost(minutes) - discount);
       try {
-        const spot = await prisma.parkingSpot.findUnique({ where: { spotNumber } });
-        if (spot) {
-          const now = new Date();
-          const estimated = new Date(now.getTime() + 2 * 60 * 60 * 1000);
-          await prisma.booking.create({
+        const now = new Date();
+        const estimated = new Date(now.getTime() + minutes * 60 * 1000);
+        const userRecord = await prisma.user.findUnique({ where: { id: userId } });
+        if (!userRecord) throw new Error('User not found');
+        if (cost > 0 && userRecord.walletBalance < cost) {
+          throw new Error(`Insufficient balance: need ${cost}₸, have ${userRecord.walletBalance}₸`);
+        }
+        if (cost > 0) {
+          const [booking, , updatedUser] = await prisma.$transaction([
+            prisma.booking.create({
+              data: {
+                userId, spotId: updatedSpot.id, plateNumber: carPlate,
+                startTime: now, estimatedEndTime: estimated,
+                status: 'CONFIRMED', isPaid: true, totalCost: cost,
+              },
+            }),
+            prisma.transaction.create({
+              data: {
+                userId, amount: -cost, type: 'PAYMENT',
+                description: `Краткосрочная парковка ${spotNumber}, ${minutes} мин`,
+                balanceBefore: userRecord.walletBalance,
+                balanceAfter: userRecord.walletBalance - cost,
+              },
+            }),
+            prisma.user.update({
+              where: { id: userId },
+              data: { walletBalance: { decrement: cost } },
+            }),
+          ]);
+          bookingRecord = booking;
+          newBalance = updatedUser.walletBalance;
+          logger.info(`✅ Short-term booking paid: ${userId}, ${spotNumber}, -${cost}₸, balance→${updatedUser.walletBalance}₸`);
+        } else {
+          const booking = await prisma.booking.create({
             data: {
-              userId,
-              spotId: spot.id,
-              plateNumber: carPlate,
-              startTime: now,
-              estimatedEndTime: estimated,
-              status: 'CONFIRMED',
-              isPaid: false,
-              totalCost: 0,
+              userId, spotId: updatedSpot.id, plateNumber: carPlate,
+              startTime: now, estimatedEndTime: estimated,
+              status: 'CONFIRMED', isPaid: true, totalCost: 0,
             },
           });
+          bookingRecord = booking;
+          newBalance = userRecord.walletBalance;
+          logger.info(`✅ Short-term booking (free/promo): ${userId}, ${spotNumber}`);
         }
       } catch (e) {
-        logger.warn('⚠️ Could not create booking record:', e);
+        logger.error('❌ Booking payment failed:', e);
+        await prisma.parkingSpot.update({
+          where: { spotNumber },
+          data: { status: 'FREE', currentUserPlate: null, currentUserId: null },
+        }).catch(() => {});
+        return res.status(400).json({ error: e instanceof Error ? e.message : 'Booking failed' });
       }
     }
 
-
-    let newBalance: number | undefined;
     if (status === 'RESERVED' && userId && carPlate && rentalDays) {
       try {
-        const { default: paymentService } = await import('../services/payment.service');
         const priceMap: Record<number, number> = { 1: 700, 3: 1800, 5: 2700, 7: 3500, 14: 6000 };
         const totalCost = priceMap[Number(rentalDays)] ?? Number(rentalDays) * 700;
 
@@ -539,6 +586,7 @@ router.post('/set-status', async (req: Request, res: Response) => {
     res.json({
       success: true,
       spot: { spotNumber: updatedSpot.spotNumber, status: updatedSpot.status },
+      ...(bookingRecord ? { booking: bookingRecord } : {}),
       ...(newBalance !== undefined ? { newBalance } : {}),
     });
   } catch (error) {
