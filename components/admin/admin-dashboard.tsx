@@ -348,7 +348,6 @@ export function AdminDashboard() {
     { id: "bookings",     label: "Бронирования", count: dbBookings.length + dbRentals.length },
     { id: "transactions", label: "Транзакции",   count: dbTransactions.length },
     { id: "promo",        label: "Промокоды",    count: promoCodes.length },
-    { id: "photos",       label: "📷 Фото",      count: pendingPhotos.length },
     { id: "complaints",   label: "⚠️ Жалобы",    count: complaints.filter(c => c.status === "PENDING").length },
     { id: "applications", label: "📋 Заявки",    count: applications.filter(a => a.status === "NEW").length },
     { id: "locations",    label: "Локации",      count: mockLocations.length },
