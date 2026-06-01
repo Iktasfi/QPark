@@ -11,7 +11,7 @@ export const PRICING = {
     7: 3500,
     14: 6000,
   },
-  // 30 min arrival window (in seconds)
+
   FREE_BOOKING_DURATION: parseInt(process.env.FREE_BOOKING_DURATION || '1800'),
   NOSHOW_SHORT_TERM_REFUND_PERCENT: 50,
   NOSHOW_LONG_TERM_KEEP: 900,
@@ -48,6 +48,6 @@ export function getFreeTravelTimeRemaining(startTime: Date, currentTime: Date = 
   return Math.max(0, remaining);
 }
 
-// kept for backwards compat if anything imports it
+
 export function getExtendBookingCost(): number { return 0; }
 export function getExtendBookingDuration(): number { return 0; }

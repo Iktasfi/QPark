@@ -1,9 +1,10 @@
 import { Router, Request, Response } from 'express';
 import paymentService from '../services/payment.service';
 import promoCodeService from '../services/promocode.service';
-import { verifyToken } from '../middleware/auth';
+import { verifyToken, verifyToken as authenticate } from '../middleware/auth';
 import { validateWalletTopup, validatePromoCode } from '../middleware/validation.middleware';
 import { logger } from '../server';
+import { prisma } from '../lib/prisma';
 
 const router = Router();
 
@@ -158,6 +159,19 @@ router.post('/wallet/debit', async (req: Request, res: Response) => {
   } catch (error) {
     logger.error('❌ Error debiting wallet:', error);
     res.status(400).json({ error: error instanceof Error ? error.message : 'Failed to debit wallet' });
+  }
+});
+
+// Получить штрафы пользователя
+router.get('/fines', async (req: Request, res: Response) => {
+  try {
+    const fines = await prisma.fine.findMany({
+      where: { userId: req.userId! },
+      orderBy: { createdAt: 'desc' },
+    });
+    res.json(fines);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch fines' });
   }
 });
 

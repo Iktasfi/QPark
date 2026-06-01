@@ -165,22 +165,7 @@ async function runNoShowJob() {
           where: { id: booking.spotId },
           data: { status: 'FREE', currentUserPlate: null, currentUserId: null },
         }),
-        prisma.user.update({
-          where: { id: booking.userId },
-          data: { noShowCount: { increment: 1 } },
-        }),
       ]);
-
-
-      const user = await prisma.user.findUnique({ where: { id: booking.userId } });
-      if (user && user.noShowCount >= 6 && !user.isBanned) {
-        const bannedUntil = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
-        await prisma.user.update({
-          where: { id: booking.userId },
-          data: { isBanned: true, bannedUntil },
-        });
-        logger.info(`🚫 User ${booking.userId} auto-banned until ${bannedUntil.toISOString()}`);
-      }
 
       io.emit('spot-status-changed', { spotNumber: booking.spot.spotNumber, status: 'FREE', carPlate: null });
       logger.info(`⏰ No-show cancelled: booking ${booking.id}, spot ${booking.spot.spotNumber}`);

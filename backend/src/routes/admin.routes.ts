@@ -58,8 +58,6 @@ router.get('/dashboard', async (req: Request, res: Response) => {
         lastName: u.lastName,
         walletBalance: u.walletBalance,
         bonusPoints: u.bonusPoints,
-        noShowCount: u.noShowCount,
-        isBanned: u.isBanned,
         cars: u.cars,
         createdAt: u.createdAt,
       })),
@@ -104,14 +102,6 @@ router.get('/users', async (req: Request, res: Response) => {
   }
 });
 
-router.post('/users/:id/unban', async (req: Request, res: Response) => {
-  try {
-    const user = await authService.unbanUser(req.params.id);
-    res.json({ user, message: '✅ User unbanned' });
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to unban user' });
-  }
-});
 
 router.get('/spots', async (req: Request, res: Response) => {
   try {
@@ -310,11 +300,11 @@ router.post('/complaints/:id/reassign', async (req: Request, res: Response) => {
   }
 });
 
-// Fine the violator
+// Fine the violator — сразу списываем с кошелька, как в дипломе
 router.post('/complaints/:id/fine', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { violatorUserId, amount = 500 } = req.body;
+    const { violatorUserId, amount = 900 } = req.body;
 
     const complaint = await prisma.complaint.findUnique({ where: { id } });
     if (!complaint) return res.status(404).json({ error: 'Complaint not found' });
@@ -322,20 +312,51 @@ router.post('/complaints/:id/fine', async (req: Request, res: Response) => {
     if (violatorUserId) {
       const violator = await prisma.user.findUnique({ where: { id: violatorUserId } });
       if (violator) {
-        await prisma.user.update({
-          where: { id: violatorUserId },
-          data: { walletBalance: { decrement: amount } },
-        });
-        await prisma.transaction.create({
-          data: {
-            userId: violatorUserId,
-            amount: -amount,
-            type: 'PAYMENT',
-            description: `Штраф за нарушение парковки (место ${complaint.spotId})`,
-            balanceBefore: violator.walletBalance,
-            balanceAfter: violator.walletBalance - amount,
-          },
-        });
+        // Сколько реально можем списать
+        const deductable = Math.min(violator.walletBalance, amount);
+        const debt = amount - deductable;
+        const newBalance = Math.max(0, violator.walletBalance - amount);
+
+        await prisma.$transaction([
+          // Журнал штрафа
+          prisma.fine.create({
+            data: {
+              userId: violatorUserId,
+              amount,
+              reason: `Нарушение парковки — занято чужое место`,
+              ticketId: id,
+              isPaid: deductable >= amount,
+              paidAt: deductable >= amount ? new Date() : null,
+            },
+          }),
+          // Кошелёк не уходит ниже 0
+          prisma.user.update({
+            where: { id: violatorUserId },
+            data: { walletBalance: newBalance },
+          }),
+          // Запись в транзакции — штраф
+          prisma.transaction.create({
+            data: {
+              userId: violatorUserId,
+              amount: -deductable,
+              type: 'PAYMENT',
+              description: `Штраф 900₸ за нарушение парковки`,
+              balanceBefore: violator.walletBalance,
+              balanceAfter: newBalance,
+            },
+          }),
+          // Если баланса не хватило — записываем долг отдельной строкой
+          ...(debt > 0 ? [prisma.transaction.create({
+            data: {
+              userId: violatorUserId,
+              amount: -debt,
+              type: 'PAYMENT',
+              description: `Долг по штрафу: ${debt}₸ (пополните кошелёк)`,
+              balanceBefore: 0,
+              balanceAfter: 0,
+            },
+          })] : []),
+        ]);
       }
     }
 

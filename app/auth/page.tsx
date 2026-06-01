@@ -100,8 +100,6 @@ function AuthPage() {
         name: firebaseUser.displayName ?? 'User',
         balance: 0,
         bonusPoints: 0,
-        noShowCount: 0,
-        isBanned: false,
         cars: [],
         transactions: [],
       })

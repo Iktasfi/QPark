@@ -1,21 +1,3 @@
-"""
-QPark — LPR Barrier Controller
-================================
-Запускается на каждом шлагбауме (Raspberry Pi или обычный ПК с камерой).
-Читает номера через OpenCV + EasyOCR, отправляет на бэкенд, открывает шлагбаум.
-
-Установка зависимостей:
-    pip install opencv-python easyocr requests numpy
-
-Для Raspberry Pi (управление GPIO реле):
-    pip install RPi.GPIO
-
-Запуск:
-    python barrier.py                      # интерактивный (камера)
-    python barrier.py --demo               # демо-режим (ввод номера с клавиатуры)
-    python barrier.py --spot SP-05 --dir entry
-"""
-
 import cv2
 import easyocr
 import requests
@@ -28,14 +10,13 @@ import platform
 import numpy as np
 from datetime import datetime
 
-# На macOS используем AVFoundation для доступа к камере
 _CAP_BACKEND = cv2.CAP_ANY
 
-# Общее состояние шлагбаума (обновляется из потока process_plate)
+
 _barrier_state = {
-    "status": "IDLE",       # IDLE | OPENING | OPEN | DENIED
+    "status": "IDLE",      
     "plate":  "",
-    "until":  0.0,          # time.time() до которого показывать баннер
+    "until":  0.0,          
     "lock":   threading.Lock(),
 }
 
@@ -49,21 +30,18 @@ def _get_barrier_state():
     with _barrier_state["lock"]:
         return dict(_barrier_state)
 
-# ─────────────────────────────────────────────
-# КОНФИГУРАЦИЯ — меняйте под каждый шлагбаум
-# ─────────────────────────────────────────────
-BACKEND_URL   = "https://qpark-production.up.railway.app"  # Railway бэкенд
-SPOT_NUMBER   = "SP-01"                      # Номер места, которое контролирует этот шлагбаум
-DIRECTION     = "entry"                      # "entry" или "exit"
-CAMERA_INDEX  = 1                            # Индекс камеры (0 — встроенная, 1 — USB/внешняя)
-BARRIER_PIN   = 18                           # GPIO пин реле (Raspberry Pi)
-SCAN_COOLDOWN = 8                            # Сек. паузы после успешного считывания
-MIN_CONFIDENCE = 0.5                         # Минимальная уверенность EasyOCR (0–1)
-FRAME_SKIP    = 5                            # Обрабатывать каждый N-й кадр
 
-# ─────────────────────────────────────────────
-# GPIO (только Raspberry Pi)
-# ─────────────────────────────────────────────
+BACKEND_URL   = "https://qpark-production.up.railway.app" 
+SPOT_NUMBER   = "SP-01"                   
+DIRECTION     = "entry"                    
+CAMERA_INDEX  = 1                          
+BARRIER_PIN   = 18                         
+SCAN_COOLDOWN = 8                            
+MIN_CONFIDENCE = 0.5                         
+FRAME_SKIP    = 5                        
+
+
+
 GPIO_AVAILABLE = False
 try:
     import RPi.GPIO as GPIO  # type: ignore[import]
@@ -89,9 +67,7 @@ def open_barrier(seconds: float = 5.0):
         print("🔒 [СИМУЛЯЦИЯ] Шлагбаум закрыт")
 
 
-# ─────────────────────────────────────────────
-# API — отправить номер на бэкенд
-# ─────────────────────────────────────────────
+
 def notify_backend(car_plate: str, spot_number: str, direction: str) -> dict:
     """Отправить данные на бэкенд и получить решение об открытии."""
     endpoint = "/parking/lpr/entry" if direction == "entry" else "/parking/lpr/exit-lpr"
@@ -112,9 +88,7 @@ def notify_backend(car_plate: str, spot_number: str, direction: str) -> dict:
         return {"success": False, "message": str(e)}
 
 
-# ─────────────────────────────────────────────
-# Очистка и валидация номера
-# ─────────────────────────────────────────────
+
 def clean_plate(raw: str) -> str:
     """Убрать лишние символы, привести к верхнему регистру."""
     cleaned = re.sub(r"[^A-Z0-9А-ЯЁ]", "", raw.upper())
@@ -126,9 +100,6 @@ def is_valid_plate(plate: str) -> bool:
     return 5 <= len(plate) <= 10
 
 
-# ─────────────────────────────────────────────
-# Обработка одного считанного номера
-# ─────────────────────────────────────────────
 def process_plate(plate: str, spot_number: str, direction: str):
     ts = datetime.now().strftime("%H:%M:%S")
     print(f"\n[{ts}] 🚗 Номер: {plate} | Место: {spot_number} | Направление: {direction}")
@@ -146,9 +117,6 @@ def process_plate(plate: str, spot_number: str, direction: str):
         _set_barrier_state("DENIED", plate, duration=4.0)
 
 
-# ─────────────────────────────────────────────
-# ДЕМО-РЕЖИМ — ввод номера вручную
-# ─────────────────────────────────────────────
 def run_demo(spot_number: str, direction: str):
     auto = direction == "auto"
     print(f"\n=== QPark LPR ДЕМО-РЕЖИМ ===")
@@ -187,9 +155,7 @@ def run_demo(spot_number: str, direction: str):
         process_plate(plate, spot_number, dir_choice)
 
 
-# ─────────────────────────────────────────────
-# ОСНОВНОЙ РЕЖИМ — реальная камера + EasyOCR
-# ─────────────────────────────────────────────
+
 def _draw_hud(frame: np.ndarray, spot_number: str, direction: str,
               last_plate: str, last_scan_ts: float, frame_w: int, frame_h: int):
     """Рисует весь интерфейс поверх кадра камеры."""
@@ -199,7 +165,7 @@ def _draw_hud(frame: np.ndarray, spot_number: str, direction: str,
     s_plate = state["plate"]
     active  = now < state["until"]
 
-    # ── Цвета по статусу ─────────────────────────────
+    
     COLOR = {
         "IDLE":    (180, 180, 180),
         "OPENING": (0, 200, 255),
@@ -208,7 +174,7 @@ def _draw_hud(frame: np.ndarray, spot_number: str, direction: str,
     }
     col = COLOR.get(status if active else "IDLE", (180, 180, 180))
 
-    # ── Тёмная полоска-шапка ─────────────────────────
+    
     overlay = frame.copy()
     cv2.rectangle(overlay, (0, 0), (frame_w, 56), (20, 25, 40), -1)
     cv2.addWeighted(overlay, 0.75, frame, 0.25, 0, frame)
@@ -220,22 +186,22 @@ def _draw_hud(frame: np.ndarray, spot_number: str, direction: str,
     cv2.putText(frame, ts_str, (frame_w - 120, 36),
                 cv2.FONT_HERSHEY_DUPLEX, 0.65, (140, 140, 140), 1, cv2.LINE_AA)
 
-    # ── Прицельный квадрат по центру ─────────────────
+    
     box_w, box_h = int(frame_w * 0.55), int(frame_h * 0.22)
     cx, cy = frame_w // 2, int(frame_h * 0.58)
     x1, y1 = cx - box_w // 2, cy - box_h // 2
     x2, y2 = cx + box_w // 2, cy + box_h // 2
-    corner = 28   # длина уголка
+    corner = 28  
 
     box_col = col if (active and status in ("OPENING", "OPEN", "DENIED")) else (80, 200, 255)
 
-    # Полупрозрачная заливка прицела
+    
     roi = frame[y1:y2, x1:x2]
     fill = np.zeros_like(roi)
     fill[:] = box_col
     frame[y1:y2, x1:x2] = cv2.addWeighted(fill, 0.07, roi, 0.93, 0)
 
-    # Уголки прицела
+    
     thick = 3
     for (px, py, dx, dy) in [
         (x1, y1,  1,  1), (x2, y1, -1,  1),
@@ -244,13 +210,13 @@ def _draw_hud(frame: np.ndarray, spot_number: str, direction: str,
         cv2.line(frame, (px, py), (px + dx * corner, py), box_col, thick, cv2.LINE_AA)
         cv2.line(frame, (px, py), (px, py + dy * corner), box_col, thick, cv2.LINE_AA)
 
-    # Подпись под прицелом
+    
     hint = "Наведите номерной знак сюда"
     tw = cv2.getTextSize(hint, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)[0][0]
     cv2.putText(frame, hint, (cx - tw // 2, y2 + 22),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.5, box_col, 1, cv2.LINE_AA)
 
-    # ── Cooldown полоска ──────────────────────────────
+    
     elapsed = now - last_scan_ts
     if elapsed < SCAN_COOLDOWN and last_scan_ts > 0:
         remaining = SCAN_COOLDOWN - elapsed
@@ -261,7 +227,7 @@ def _draw_hud(frame: np.ndarray, spot_number: str, direction: str,
         cv2.putText(frame, f"Пауза: {remaining:.1f}с", (10, bar_y - 10),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 180, 220), 1, cv2.LINE_AA)
 
-    # ── Большой статусный баннер ──────────────────────
+   
     if active and status != "IDLE":
         labels = {
             "OPENING": "ПРОВЕРКА...",
@@ -276,7 +242,7 @@ def _draw_hud(frame: np.ndarray, spot_number: str, direction: str,
         cv2.rectangle(overlay2, (0, by1), (frame_w, by2), col, -1)
         cv2.addWeighted(overlay2, 0.82, frame, 0.18, 0, frame)
 
-        # Номер крупно
+        
         font_scale = 2.4
         thick_main = 4
         tw2 = cv2.getTextSize(s_plate, cv2.FONT_HERSHEY_DUPLEX, font_scale, thick_main)[0][0]
@@ -284,13 +250,13 @@ def _draw_hud(frame: np.ndarray, spot_number: str, direction: str,
                     (cx - tw2 // 2, by1 + 70),
                     cv2.FONT_HERSHEY_DUPLEX, font_scale, (255, 255, 255), thick_main, cv2.LINE_AA)
 
-        # Статус подпись
+        
         tw3 = cv2.getTextSize(banner_text, cv2.FONT_HERSHEY_SIMPLEX, 0.75, 2)[0][0]
         cv2.putText(frame, banner_text,
                     (cx - tw3 // 2, by2 - 12),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.75, (255, 255, 255), 2, cv2.LINE_AA)
 
-    # ── Последний номер внизу слева ───────────────────
+    
     if last_plate and (not active or status == "IDLE"):
         cv2.putText(frame, f"Последний: {last_plate}",
                     (14, frame_h - 18),
@@ -298,7 +264,7 @@ def _draw_hud(frame: np.ndarray, spot_number: str, direction: str,
 
 
 def run_camera(spot_number: str, direction: str):
-    # Если direction == "auto" — начинаем с entry, переключаем клавишами e/x
+   
     current_dir = "entry" if direction == "auto" else direction
     auto_mode   = direction == "auto"
 
@@ -312,7 +278,7 @@ def run_camera(spot_number: str, direction: str):
 
     reader = easyocr.Reader(["en", "ru"], gpu=False, verbose=False)
 
-    # Пробуем открыть камеру; если не получается — пробуем индекс 0
+    
     cap = cv2.VideoCapture(CAMERA_INDEX, _CAP_BACKEND)
     if not cap.isOpened() and CAMERA_INDEX != 0:
         print(f"⚠️  Камера {CAMERA_INDEX} недоступна, пробую камеру 0...")
@@ -324,7 +290,7 @@ def run_camera(spot_number: str, direction: str):
     cap.set(cv2.CAP_PROP_FRAME_WIDTH,  1280)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
 
-    # AVFoundation на Mac требует прогрева — читаем несколько кадров
+    
     print("⏳ Прогрев камеры...")
     for _ in range(30):
         cap.read()
@@ -353,7 +319,7 @@ def run_camera(spot_number: str, direction: str):
 
         in_cooldown = (time.time() - last_scan_ts) < SCAN_COOLDOWN and last_scan_ts > 0
 
-        # OCR только на каждый N-й кадр и вне cooldown
+        
         if frame_count % FRAME_SKIP == 0 and not in_cooldown:
             gray     = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             clahe    = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
@@ -373,7 +339,7 @@ def run_camera(spot_number: str, direction: str):
                     if confidence > best_conf:
                         best_plate = plate
                         best_conf  = confidence
-                    # Зелёная рамка вокруг найденного текста
+                    
                     pts = np.array([(int(p[0]), int(p[1])) for p in bbox])
                     cv2.polylines(frame, [pts], True, (0, 230, 80), 2, cv2.LINE_AA)
                     cv2.putText(frame, f"{plate}  {confidence:.0%}",
@@ -389,7 +355,7 @@ def run_camera(spot_number: str, direction: str):
                     daemon=True,
                 ).start()
 
-        # Подсказка режима в левом нижнем углу (авто-режим)
+        
         if auto_mode:
             dir_color = (0, 220, 80) if current_dir == "entry" else (0, 100, 255)
             dir_label = "ВЪЕЗД [e]  |  выезд [x]" if current_dir == "entry" else "въезд [e]  |  ВЫЕЗД [x]"
@@ -404,7 +370,7 @@ def run_camera(spot_number: str, direction: str):
             break
         elif auto_mode and key == ord("e"):
             current_dir = "entry"
-            last_plate  = ""   # сбросить cooldown при смене режима
+            last_plate  = ""  
             print(f"→ Режим: ВЪЕЗД")
         elif auto_mode and key == ord("x"):
             current_dir = "exit"
@@ -417,9 +383,6 @@ def run_camera(spot_number: str, direction: str):
         GPIO.cleanup()
 
 
-# ─────────────────────────────────────────────
-# ТОЧКА ВХОДА
-# ─────────────────────────────────────────────
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="QPark LPR Barrier Controller")
     parser.add_argument("--spot",    default=SPOT_NUMBER, help="Номер места (напр. SP-01)")

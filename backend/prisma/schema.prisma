@@ -15,9 +15,6 @@ model User {
   lastName      String?
   walletBalance Float     @default(0)
   bonusPoints   Int       @default(0)
-  noShowCount   Int       @default(0)
-  isBanned      Boolean   @default(false)
-  bannedUntil   DateTime?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
@@ -28,6 +25,7 @@ model User {
   payments             Payment[]
   renewalNotifications RenewalNotification[]
   complaints           Complaint[]
+  fines                Fine[]
 
   @@map("users")
 }
@@ -207,7 +205,7 @@ enum BookingStatus {
 
 enum RentalStatus {
   ACTIVE
-  EXPIRED
+  COMPLETED
   CANCELLED
 }
 
@@ -316,4 +314,20 @@ enum PromoCodeType {
   PERCENTAGE
   FIXED
   FIRST_RIDE
+}
+
+// ─── FINES (ШТРАФЫ) ──────────────────────────────────────
+model Fine {
+  id          String    @id @default(cuid())
+  userId      String
+  amount      Float
+  reason      String
+  ticketId    String?
+  isPaid      Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  paidAt      DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("fines")
 }

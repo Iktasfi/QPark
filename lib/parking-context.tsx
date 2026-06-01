@@ -13,7 +13,7 @@ const translations = {
     securityPrivacy: "Security & Privacy", privacyPolicy: "Privacy Policy",
     termsOfService: "Terms of Service", about: "About", appVersion: "App Version",
     build: "Build", deleteAccount: "Delete Account", selectLanguage: "Select Language",
-    noShowCounter: "No-Show Counter", contactSupport: "Contact support:", signOut: "Sign Out",
+    contactSupport: "Contact support:", signOut: "Sign Out",
     balance: "Balance", bonus: "Bonus Points", bonusPoints: "Bonus Points",
     myCars: "My Cars", add: "Add", cancel: "Cancel", noCarsRegistered: "No cars registered",
     manageBalance: "Manage your balance", currentBalance: "Current Balance",
@@ -131,7 +131,7 @@ const translations = {
     securityPrivacy: "Қауіпсіздік және құпиялылық", privacyPolicy: "Құпиялылық саясаты",
     termsOfService: "Қызмет көрсету шарттары", about: "Қосымша туралы",
     appVersion: "Нұсқасы", build: "Жинақ", deleteAccount: "Аккаунтты жою",
-    selectLanguage: "Тілді таңдаңыз", noShowCounter: "Келмеу санауышы",
+    selectLanguage: "Тілді таңдаңыз",
     contactSupport: "Қолдау қызметіне хабарласу:", signOut: "Шығу",
     balance: "Баланс", bonus: "Бонус ұпайлар", bonusPoints: "Бонус ұпайлар",
     myCars: "Менің көліктерім", add: "Қосу", cancel: "Болдырмау",
@@ -252,7 +252,7 @@ const translations = {
     securityPrivacy: "Безопасность и конфиденциальность", privacyPolicy: "Политика конфиденциальности",
     termsOfService: "Условия использования", about: "О приложении",
     appVersion: "Версия", build: "Сборка", deleteAccount: "Удалить аккаунт",
-    selectLanguage: "Выбрать язык", noShowCounter: "Счётчик неявок",
+    selectLanguage: "Выбрать язык",
     contactSupport: "Связаться с поддержкой:", signOut: "Выйти",
     balance: "Баланс", bonus: "Бонусные баллы", bonusPoints: "Бонусные баллы",
     myCars: "Мои автомобили", add: "Добавить", cancel: "Отмена",
@@ -402,9 +402,6 @@ export interface User {
   name: string
   balance: number
   bonusPoints: number
-  noShowCount: number
-  isBanned: boolean
-  bannedUntil?: Date
   cars: Car[]
   transactions: Transaction[]
   promoCode?: string
@@ -492,8 +489,7 @@ const generateInitialSpots = (): ParkingSpot[] => {
 
 export function mapDbUser(dbUser: {
   id: string; phoneNumber: string; firstName?: string | null; lastName?: string | null;
-  walletBalance: number; bonusPoints: number; noShowCount: number; isBanned: boolean;
-  bannedUntil?: string | Date | null;
+  walletBalance: number; bonusPoints: number;
   cars?: { id: string; brand: string; model: string; plateNumber: string }[];
   transactions?: { id: string; type: string; amount: number; description?: string | null; createdAt: string | Date }[];
 }): User {
@@ -505,9 +501,6 @@ export function mapDbUser(dbUser: {
       : "User",
     balance: dbUser.walletBalance,
     bonusPoints: dbUser.bonusPoints,
-    noShowCount: dbUser.noShowCount,
-    isBanned: dbUser.isBanned,
-    bannedUntil: dbUser.bannedUntil ? new Date(dbUser.bannedUntil) : undefined,
     cars: (dbUser.cars ?? []).map(c => ({ id: c.id, brand: c.brand, model: c.model, plateNumber: c.plateNumber })),
     transactions: (dbUser.transactions ?? []).map(t => ({
       id: t.id,

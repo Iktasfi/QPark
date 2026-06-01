@@ -62,7 +62,7 @@ const liveEventMeta: Record<string, { label: string; color: string; emoji: strin
   "payment-completed": { label: "Оплата прошла",        color: "#22c55e", emoji: "💳" },
 }
 
-interface DbUser { id: string; phoneNumber: string; firstName: string | null; lastName: string | null; walletBalance: number; isBanned: boolean; cars: { plateNumber: string; brand: string; model: string }[] }
+interface DbUser { id: string; phoneNumber: string; firstName: string | null; lastName: string | null; walletBalance: number; cars: { plateNumber: string; brand: string; model: string }[] }
 interface DbBooking { id: string; spotNumber: string; plateNumber: string; userName: string; status: string; startTime: string; totalCost: number }
 interface DbRental { id: string; spotNumber: string; plateNumber: string; userName: string; rentalDays: number; totalCost: number; status: string; endDate: string }
 interface DbTransaction { id: string; amount: number; type: string; description: string | null; balanceBefore: number; balanceAfter: number; stripePaymentIntentId: string | null; createdAt: string; user: { phoneNumber: string; firstName: string | null; lastName: string | null } }
@@ -564,10 +564,8 @@ export function AdminDashboard() {
                         </td>
                         <td className="py-3">
                           <span className="px-2.5 py-1 rounded-full text-xs font-medium"
-                            style={u.isBanned
-                              ? { background: "rgba(239,68,68,0.15)", color: "#ef4444" }
-                              : { background: "rgba(34,197,94,0.15)", color: "#22c55e" }}>
-                            {u.isBanned ? "Забанен" : "Активен"}
+                            style={{ background: "rgba(34,197,94,0.15)", color: "#22c55e" }}>
+                            Активен
                           </span>
                         </td>
                       </tr>

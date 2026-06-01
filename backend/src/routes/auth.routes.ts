@@ -100,12 +100,6 @@ router.post(
       }
 
 
-      const isBanned = await authService.isUserBanned(user.id);
-      if (isBanned) {
-        return res.status(403).json({ error: 'User is banned' });
-      }
-
-
       const token = authService.generateToken(user.id);
 
       res.json({

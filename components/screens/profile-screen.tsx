@@ -42,7 +42,7 @@ const termsContent: Record<Language, { sections: { title: string; body: string }
       { title: "1. Acceptance of Terms", body: "By using QPark, you agree to these Terms of Service. If you do not agree, please do not use our application." },
       { title: "2. Service Description", body: "QPark provides smart parking solutions including finding, reserving, and paying for parking spaces through our mobile application." },
       { title: "3. User Responsibilities", body: "Users must provide accurate information, follow parking regulations, and ensure timely payment for services used." },
-      { title: "4. No-Show Policy", body: "Failure to use a reserved parking spot may result in penalties. After 6 no-shows, your account may be suspended." },
+      { title: "4. No-Show Policy", body: "Failure to arrive within the 30-minute grace period results in booking cancellation and a partial refund penalty." },
       { title: "5. Limitation of Liability", body: "QPark is not responsible for car damage, theft, or any incidents occurring in parking facilities." },
       { title: "6. Contact", body: "For questions, contact us at 231074@astanait.edu.kz or +7 708 239 51 19" },
     ],
@@ -519,21 +519,6 @@ export function ProfileScreen() {
       </div>
 
       <div className="flex-1 px-4 py-4 overflow-y-auto pb-32">
-        <div className={`${darkMode ? "bg-[#5a6b87]" : "bg-[#7A8BA8]"} rounded-3xl p-4 mb-4 shadow-lg`}>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <AlertTriangle className="w-6 h-6 text-white" />
-              <div>
-                <p className="font-semibold text-white">{t.noShowCounter}</p>
-                <p className="text-sm text-white/70">{user?.noShowCount ?? 0} of 6 (ban at 6)</p>
-              </div>
-            </div>
-            <span className="px-3 py-1 bg-white/20 rounded-full text-xs font-medium text-white">
-              {user?.noShowCount ?? 0}/6
-            </span>
-          </div>
-        </div>
-
         <div className={`${darkMode ? "bg-[#5a6b87]" : "bg-[#7A8BA8]"} rounded-3xl p-4 mb-4 shadow-lg`}>
           <button
             onClick={() => { setShowPromoInput(!showPromoInput); setPromoMessage(null) }}

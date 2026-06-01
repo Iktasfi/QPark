@@ -9,9 +9,7 @@ export class BookingService {
       const now = new Date();
       const estimatedEndTime = new Date(now.getTime() + 30 * 60 * 1000);
 
-      // Get user's car plate if not provided
-      const user = await prisma.user.findUnique({ where: { id: userId }, select: { carPlate: true } });
-      const plate = plateNumber || user?.carPlate || '';
+      const plate = plateNumber || '';
 
       const booking = await prisma.booking.create({
         data: {
@@ -132,10 +130,6 @@ export class BookingService {
           logger.info(`💰 No-show refund: ${refundAmount}₸ → user ${booking.userId}`);
         }
 
-        await prisma.user.update({
-          where: { id: booking.userId },
-          data: { noShowCount: { increment: 1 } },
-        });
       }
 
       const updatedBooking = await prisma.booking.update({

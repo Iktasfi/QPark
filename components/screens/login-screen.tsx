@@ -17,7 +17,7 @@ const termsEN = [
   { title: "1. Acceptance of Terms", body: "By using QPark, you agree to these Terms of Service. If you do not agree, please do not use our application." },
   { title: "2. Service Description", body: "QPark provides smart parking solutions including finding, reserving, and paying for parking spaces through our mobile application." },
   { title: "3. User Responsibilities", body: "Users must provide accurate information, follow parking regulations, and ensure timely payment for services used." },
-  { title: "4. No-Show Policy", body: "Failure to use a reserved parking spot may result in penalties. After 6 no-shows, your account may be suspended." },
+  { title: "4. No-Show Policy", body: "Failure to arrive within the 30-minute grace period results in booking cancellation and a partial refund penalty." },
   { title: "5. Limitation of Liability", body: "QPark is not responsible for car damage, theft, or any incidents occurring in parking facilities." },
   { title: "6. Contact", body: "For questions, contact us at 231074@astanait.edu.kz or +7 708 239 51 19" },
 ]
@@ -132,8 +132,6 @@ export function LoginScreen() {
           name: "User",
           balance: 0,
           bonusPoints: 0,
-          noShowCount: 0,
-          isBanned: false,
           cars: [],
           transactions: [],
         })

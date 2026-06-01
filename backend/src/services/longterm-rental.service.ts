@@ -84,7 +84,7 @@ export class LongTermRentalService {
 
       const updatedRental = await prisma.longTermRental.update({
         where: { id: rentalId },
-        data: { status: 'EXPIRED' },
+        data: { status: 'COMPLETED' },
       });
 
 

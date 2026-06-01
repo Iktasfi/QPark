@@ -132,15 +132,19 @@ router.post('/accept-reassignment', async (req: Request, res: Response) => {
       data: { status: 'FREE', currentUserPlate: null, currentUserId: null },
     }).catch(() => {});
 
-    const user = await prisma.user.findUnique({ where: { id: userId } });
+    const booking = bookingId
+      ? await prisma.booking.findUnique({ where: { id: bookingId } })
+      : null;
+    const plate = booking?.plateNumber ?? null;
+
     await prisma.parkingSpot.update({
       where: { spotNumber: newSpotId },
-      data: { status: 'BOOKED', currentUserId: userId, currentUserPlate: user?.carPlate ?? null },
+      data: { status: 'BOOKED', currentUserId: userId, currentUserPlate: plate },
     }).catch(() => {});
 
     const { io } = await import('../server');
     io.emit('spot-status-changed', { spotNumber: oldSpotId, status: 'FREE', carPlate: null });
-    io.emit('spot-status-changed', { spotNumber: newSpotId, status: 'BOOKED', carPlate: user?.carPlate ?? null });
+    io.emit('spot-status-changed', { spotNumber: newSpotId, status: 'BOOKED', carPlate: plate });
 
     res.json({ success: true });
   } catch (error) {

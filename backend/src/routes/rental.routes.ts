@@ -169,7 +169,7 @@ router.post('/terminate-by-spot', async (req: Request, res: Response) => {
 
     const { io } = await import('../server');
     io.emit('spot-status-changed', { spotNumber, status: 'FREE', carPlate: null });
-    io.emit('rental-terminated', { rentalId: rental.id, spotNumber });
+    io.emit('rental-terminated', { rentalId: activeRentals[0].id, spotNumber });
 
     res.json({ success: true, message: 'Rental terminated' });
   } catch (error) {

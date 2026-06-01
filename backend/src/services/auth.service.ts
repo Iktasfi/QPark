@@ -5,7 +5,7 @@ import { prisma } from '../lib/prisma';
 
 export class AuthService {
   private readonly JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
-  private readonly JWT_EXPIRE = process.env.JWT_EXPIRE || '7d';
+  private readonly JWT_EXPIRE = process.env.JWT_EXPIRE || '24h';
 
 
   async registerUser(phoneNumber: string, firstName?: string, lastName?: string) {
@@ -174,91 +174,6 @@ export class AuthService {
   }
 
 
-  async checkAndApplyBan(userId: string) {
-    try {
-      const user = await prisma.user.findUnique({
-        where: { id: userId },
-      });
-
-      if (!user) {
-        throw new Error('User not found');
-      }
-
-      const BAN_THRESHOLD = parseInt(process.env.BAN_THRESHOLD || '6');
-      const BAN_DURATION = parseInt(process.env.BAN_DURATION || '259200');
-
-      if (user.noShowCount >= BAN_THRESHOLD) {
-        const bannedUntil = new Date(Date.now() + BAN_DURATION * 1000);
-
-        const updatedUser = await prisma.user.update({
-          where: { id: userId },
-          data: {
-            isBanned: true,
-            bannedUntil,
-            noShowCount: 0,
-          },
-        });
-
-        logger.warn(
-          `⚠️  User banned: ${userId}, until ${bannedUntil.toISOString()}`
-        );
-        return updatedUser;
-      }
-
-      return user;
-    } catch (error) {
-      logger.error('❌ Error checking ban:', error);
-      throw error;
-    }
-  }
-
-
-  async unbanUser(userId: string) {
-    try {
-      const user = await prisma.user.update({
-        where: { id: userId },
-        data: {
-          isBanned: false,
-          bannedUntil: null,
-          noShowCount: 0,
-        },
-      });
-
-      logger.info(`✅ User unbanned: ${userId}`);
-      return user;
-    } catch (error) {
-      logger.error('❌ Error unbanning user:', error);
-      throw error;
-    }
-  }
-
-
-  async isUserBanned(userId: string): Promise<boolean> {
-    try {
-      const user = await prisma.user.findUnique({
-        where: { id: userId },
-      });
-
-      if (!user) {
-        return false;
-      }
-
-      if (!user.isBanned) {
-        return false;
-      }
-
-
-      if (user.bannedUntil && user.bannedUntil < new Date()) {
-        await this.unbanUser(userId);
-        return false;
-      }
-
-      return user.isBanned;
-    } catch (error) {
-      logger.error('❌ Error checking ban status:', error);
-      return false;
-    }
-  }
 }
 
 export default new AuthService();
