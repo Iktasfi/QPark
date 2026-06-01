@@ -439,7 +439,7 @@ router.post('/:id/photo', async (req: Request, res: Response) => {
       const finalStatus = ocrStatus ?? 'UPLOADED';
 
       const updated = await prisma.longTermRental.update({
-        where: { id },
+        where: { id: rental.id },   // используем реальный ID из БД
         data: { photoUrl: storedUrl, photoUploadedAt: new Date(), photoStatus: finalStatus },
       });
       return res.json({ success: true, photoStatus: updated.photoStatus, autoVerified: !!ocrStatus });

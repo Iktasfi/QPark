@@ -1,17 +1,11 @@
-import cv2
-import easyocr
 import requests
 import time
 import re
 import argparse
 import threading
 import sys
-import platform
 import numpy as np
 from datetime import datetime
-
-_CAP_BACKEND = cv2.CAP_ANY
-
 
 _barrier_state = {
     "status": "IDLE",      
@@ -158,7 +152,7 @@ def run_demo(spot_number: str, direction: str):
 
 def _draw_hud(frame: np.ndarray, spot_number: str, direction: str,
               last_plate: str, last_scan_ts: float, frame_w: int, frame_h: int):
-    """Рисует весь интерфейс поверх кадра камеры."""
+    import cv2  # ленивый импорт — вызывается только из run_camera
     now = time.time()
     state = _get_barrier_state()
     status  = state["status"]
@@ -264,7 +258,10 @@ def _draw_hud(frame: np.ndarray, spot_number: str, direction: str,
 
 
 def run_camera(spot_number: str, direction: str):
-   
+    import cv2        # ленивый импорт — нужен только в режиме камеры
+    import easyocr    # тянет torch; не импортируем в --demo
+    _CAP_BACKEND = cv2.CAP_ANY
+
     current_dir = "entry" if direction == "auto" else direction
     auto_mode   = direction == "auto"
 

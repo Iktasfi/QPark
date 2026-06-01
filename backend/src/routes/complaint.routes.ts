@@ -63,42 +63,17 @@ router.post('/', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'spotId and reason are required' });
     }
 
-    // Upload photo
-    let storedPhotoUrl = photoUrl;
-    if (photoUrl && process.env.CLOUDINARY_CLOUD_NAME) {
-      try {
-        storedPhotoUrl = await uploadPhotoToCloudinary(photoUrl, 'qpark/complaints');
-      } catch {
-        logger.warn('⚠️ Cloudinary unavailable for complaint photo');
-      }
-    }
-
-    // Run OCR to detect violator's plate
-    let detectedPlate: string | null = null;
-    let violatorUserId: string | null = null;
-
-    if (storedPhotoUrl) {
-      detectedPlate = await detectPlateFromPhoto(storedPhotoUrl);
-
-      if (detectedPlate) {
-        // Look up the violator in DB by car plate
-        const violatorCar = await prisma.car.findFirst({
-          where: { plateNumber: { contains: detectedPlate.replace(/\s+/g, ''), mode: 'insensitive' } },
-          include: { user: true },
-        });
-        if (violatorCar) {
-          violatorUserId = violatorCar.userId;
-          logger.info(`🎯 Violator identified: ${violatorCar.user.firstName ?? violatorCar.user.phoneNumber} (plate: ${detectedPlate})`);
-        }
-      }
-    }
-
+    // Создаём жалобу сразу — без ожидания Cloudinary и OCR
+    // Cloudinary может висеть до 30+ сек и роняет Vercel proxy timeout
     const complaint = await prisma.complaint.create({
       data: {
-        userId, bookingId: bookingId ?? null, spotId, reason,
-        photoUrl: storedPhotoUrl ?? null,
-        detectedPlate: detectedPlate ?? null,
-        violatorUserId: violatorUserId ?? null,
+        userId,
+        bookingId: bookingId ?? null,
+        spotId,
+        reason,
+        photoUrl: photoUrl ?? null,   // пока base64; фоновый таск заменит на CDN URL
+        detectedPlate: null,
+        violatorUserId: null,
       },
       include: { user: { select: { firstName: true, phoneNumber: true } } },
     });
@@ -106,8 +81,54 @@ router.post('/', async (req: Request, res: Response) => {
     const { io } = await import('../server');
     io.emit('new-complaint', { complaintId: complaint.id, spotId, userId });
 
-    logger.info(`📢 Complaint created: ${complaint.id} | spot=${spotId} | plate=${detectedPlate ?? 'not detected'}`);
-    res.status(201).json({ success: true, complaint, detectedPlate, violatorFound: !!violatorUserId });
+    // Отвечаем клиенту НЕМЕДЛЕННО
+    res.status(201).json({ success: true, complaint, detectedPlate: null, violatorFound: false });
+
+    // Фоновые задачи: Cloudinary upload + OCR (не блокируют ответ)
+    setImmediate(async () => {
+      try {
+        let storedUrl = photoUrl as string | null;
+
+        if (photoUrl && process.env.CLOUDINARY_CLOUD_NAME) {
+          try {
+            storedUrl = await uploadPhotoToCloudinary(photoUrl, 'qpark/complaints');
+          } catch {
+            logger.warn('⚠️ Cloudinary upload failed for complaint', complaint.id);
+          }
+        }
+
+        let detectedPlate: string | null = null;
+        let violatorUserId: string | null = null;
+
+        if (storedUrl) {
+          detectedPlate = await detectPlateFromPhoto(storedUrl);
+          if (detectedPlate) {
+            const violatorCar = await prisma.car.findFirst({
+              where: { plateNumber: { contains: detectedPlate.replace(/\s+/g, ''), mode: 'insensitive' } },
+              include: { user: true },
+            });
+            if (violatorCar) {
+              violatorUserId = violatorCar.userId;
+              logger.info(`🎯 Violator identified: ${violatorCar.user.firstName ?? violatorCar.user.phoneNumber} (plate: ${detectedPlate})`);
+            }
+          }
+        }
+
+        await prisma.complaint.update({
+          where: { id: complaint.id },
+          data: {
+            photoUrl: storedUrl,
+            detectedPlate,
+            violatorUserId,
+          },
+        });
+
+        logger.info(`📢 Complaint enriched: ${complaint.id} | plate=${detectedPlate ?? 'none'}`);
+      } catch (bgErr) {
+        logger.error('❌ Background complaint processing failed:', bgErr);
+      }
+    });
+
   } catch (error) {
     logger.error('❌ Error creating complaint:', error);
     res.status(500).json({ error: 'Failed to submit complaint' });

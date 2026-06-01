@@ -559,7 +559,7 @@ router.post('/set-status', async (req: Request, res: Response) => {
         if (spot) {
           const now = new Date();
           const endDate = new Date(now.getTime() + Number(rentalDays) * 24 * 60 * 60 * 1000);
-          await prisma.longTermRental.create({
+          const rental = await prisma.longTermRental.create({
             data: {
               userId,
               spotId: spot.id,
@@ -572,6 +572,9 @@ router.post('/set-status', async (req: Request, res: Response) => {
               status: 'ACTIVE',
             },
           });
+          // bookingRecord используется в ответе — передаём rental как booking
+          // чтобы фронт сохранил настоящий ID (не фейковый booking-timestamp)
+          bookingRecord = { ...rental, _type: 'rental' };
         }
       } catch (e) {
         logger.warn('⚠️ Could not process long-term rental payment:', e);
