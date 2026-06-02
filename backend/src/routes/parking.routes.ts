@@ -159,14 +159,22 @@ router.post('/lpr/entry', async (req: Request, res: Response) => {
         io.emit('lpr-gate-denied', { carPlate, spotNumber, reason: `Номер не совпадает с бронью` });
         return res.json({ success: false, message: 'Plate does not match booking' });
       }
-    } else if ((spot.status === 'RESERVED' || spot.status === 'OCCUPIED') && spot.type === 'LONG_TERM') {
+    } else if (spot.status === 'RESERVED' || (spot.status === 'OCCUPIED' && spot.currentUserId)) {
+      // Long-term rental: spot is RESERVED (parked away) or OCCUPIED (currently parked)
+      // Check by active rental regardless of spot.type (spot may be SHORT_TERM type)
+      const rental = await prisma.longTermRental.findFirst({
+        where: { spotId: spot.id, status: 'ACTIVE' },
+      });
 
-      if (!plateMatches) {
+      if (!rental) {
+        io.emit('lpr-gate-denied', { carPlate, spotNumber, reason: `Место ${spot.status} — аренда не найдена` });
+        return res.json({ success: false, message: `Spot is ${spot.status} — no active rental` });
+      }
+
+      if (normalizePlate(rental.plateNumber) !== normalizePlate(carPlate)) {
         io.emit('lpr-gate-denied', { carPlate, spotNumber, reason: 'Номер не совпадает с арендой' });
         return res.json({ success: false, message: 'Plate does not match rental' });
       }
-
-
 
       const isExiting = spot.status === 'OCCUPIED';
       const toggledStatus = isExiting ? 'RESERVED' : 'OCCUPIED';
@@ -174,10 +182,7 @@ router.post('/lpr/entry', async (req: Request, res: Response) => {
 
       await prisma.parkingSpot.update({
         where: { spotNumber },
-        data: {
-          status: toggledStatus,
-          currentUserPlate: carPlate,
-        },
+        data: { status: toggledStatus, currentUserPlate: carPlate },
       });
 
       io.emit('lpr-gate-open', { carPlate, spotNumber, type: eventType });
@@ -236,9 +241,29 @@ router.post('/lpr/exit-lpr', async (req: Request, res: Response) => {
       return res.status(404).json({ success: false, message: 'Spot not found' });
     }
 
+    // Check for active long-term rental first (spot type may be SHORT_TERM even for long-term tenants)
+    const activeRental = await prisma.longTermRental.findFirst({
+      where: { spotId: spot.id, status: 'ACTIVE' },
+    });
+
+    if (activeRental) {
+      if (normalizePlate(activeRental.plateNumber) !== normalizePlate(carPlate)) {
+        io.emit('lpr-gate-denied', { carPlate, spotNumber, reason: 'Номер не совпадает с арендой' });
+        return res.json({ success: false, message: 'Plate does not match rental' });
+      }
+      await prisma.parkingSpot.update({
+        where: { spotNumber },
+        data: { status: 'RESERVED', currentUserPlate: carPlate, currentUserId: spot.currentUserId },
+      });
+      io.emit('lpr-gate-open', { carPlate, spotNumber, type: 'exit' });
+      io.emit('spot-status-changed', { spotNumber, status: 'RESERVED', carPlate });
+      logger.info(`✅ LPR long-term exit: ${carPlate} from ${spotNumber} → RESERVED`);
+      return res.json({ success: true, message: 'Gate opened for exit', newStatus: 'RESERVED' });
+    }
+
     if (spot.type === 'SHORT_TERM') {
 
-      
+
       const paidBooking = await prisma.booking.findFirst({
         where: {
           spotId: spot.id,
