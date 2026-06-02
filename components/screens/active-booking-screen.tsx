@@ -266,7 +266,10 @@ export function ActiveBookingScreen() {
           photoUrl: complaintPhotoUrl,
         }),
       })
-      if (!res.ok) throw new Error("Failed to send complaint")
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}))
+        throw new Error(errData.error || `Server error ${res.status}`)
+      }
       setComplaintSent(true)
       setShowComplaint(false)
     } catch (err) {
