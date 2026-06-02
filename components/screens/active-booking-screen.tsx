@@ -37,6 +37,8 @@ export function ActiveBookingScreen() {
   const elapsedSec = activeBooking ? Math.floor((now - new Date(activeBooking.startTime).getTime()) / 1000) : 0
   const timer = Math.max(0, 30 * 60 - elapsedSec)
 
+  const GRACE_SECONDS = 7 * 60
+
   const arrivedAtLocalRef = useRef<number | null>(null)
   useEffect(() => {
     if (isArrived && !arrivedAtLocalRef.current) {
@@ -46,9 +48,11 @@ export function ActiveBookingScreen() {
     }
   }, [isArrived])
 
-  const parkingDuration = isArrived && arrivedAtLocalRef.current
+  const rawElapsed = isArrived && arrivedAtLocalRef.current
     ? Math.floor((now - arrivedAtLocalRef.current) / 1000)
     : 0
+  const graceRemaining = Math.max(0, GRACE_SECONDS - rawElapsed)
+  const parkingDuration = Math.max(0, rawElapsed - GRACE_SECONDS)
   const [isPaying, setIsPaying] = useState(false)
   const [showGateOpened, setShowGateOpened] = useState(false)
   const [insufficientBalance, setInsufficientBalance] = useState<{ need: number; have: number } | null>(null)
@@ -437,23 +441,43 @@ export function ActiveBookingScreen() {
       )}
       
       {!isLongTerm && isArrived && (
-        <Card className="border-[#36549B] bg-[#36549B]/5">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <Clock className="h-8 w-8 text-[#36549B]" />
-                <div>
-                  <p className="text-sm text-muted-foreground">{t.parkingDuration}</p>
-                  <p className="text-3xl font-bold text-foreground">{formatTime(parkingDuration)}</p>
+        {graceRemaining > 0 ? (
+          <Card className="border-green-400 bg-green-50">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <Clock className="h-8 w-8 text-green-600" />
+                  <div>
+                    <p className="text-sm text-green-700 font-medium">Найдите и займите место</p>
+                    <p className="text-3xl font-bold text-green-800">{formatTime(graceRemaining)}</p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs text-green-600">Счётчик начнётся после</p>
+                  <p className="text-sm font-semibold text-green-700">0 &#8376;</p>
                 </div>
               </div>
-              <div className="text-right">
-                <p className="text-sm text-muted-foreground">{t.currentCost}</p>
-                <p className="text-2xl font-bold text-[#36549B]">{calculateCost()} &#8376;</p>
+            </CardContent>
+          </Card>
+        ) : (
+          <Card className="border-[#36549B] bg-[#36549B]/5">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <Clock className="h-8 w-8 text-[#36549B]" />
+                  <div>
+                    <p className="text-sm text-muted-foreground">{t.parkingDuration}</p>
+                    <p className="text-3xl font-bold text-foreground">{formatTime(parkingDuration)}</p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="text-sm text-muted-foreground">{t.currentCost}</p>
+                  <p className="text-2xl font-bold text-[#36549B]">{calculateCost()} &#8376;</p>
+                </div>
               </div>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        )}
       )}
 
       
