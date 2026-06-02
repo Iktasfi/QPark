@@ -846,7 +846,7 @@ export function ActiveBookingScreen() {
                 <>
                   <Camera className="h-6 w-6" />
                   <span>{t.complaintPhoto} <span className="text-red-500">*</span></span>
-                  <span className="text-xs text-orange-500/80">Сфотографируйте машину нарушителя — система определит номер</span>
+                  <span className="text-xs text-orange-500/80">Убедитесь, что видна машина нарушителя и место — система определит номер</span>
                 </>
               )}
               <input type="file" accept="image/*" capture="environment" className="hidden" onChange={handleComplaintPhotoUpload} />
