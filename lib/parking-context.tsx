@@ -499,7 +499,7 @@ export function mapDbUser(dbUser: {
 }
 
 function mapBackendSpot(s: { spotNumber: string; type: string; status: string; carPlate?: string | null }): ParkingSpot {
-  const num = parseInt(s.spotNumber.replace(/[^0-9]/g, ""), 10)
+  const num = parseInt(s.spotNumber.split("-").pop() || "0", 10)
   const statusMap: Record<string, SpotStatus> = {
     FREE: "FREE", BOOKED: "BOOKED", OCCUPIED: "OCCUPIED", RESERVED: "RESERVED", REPAIR: "REPAIR",
   }
