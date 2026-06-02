@@ -136,7 +136,47 @@ export function AdminDashboard() {
     socket.on("disconnect", () => setSocketConnected(false))
     if (socket.connected) setSocketConnected(true)
 
-    const onSpotStatusChanged = () => { fetchParkingData() }
+    // Обновляем место МГНОВЕННО из Socket события (без ожидания HTTP refetch)
+    // Точно так же как делает карта — иначе дашборд отстаёт на 1-2 секунды
+    const onSpotStatusChanged = (data: { spotNumber?: string; status?: string; carPlate?: string | null }) => {
+      if (data.spotNumber && data.status) {
+        setParkingData(prev => {
+          if (!prev) return prev
+          const updateTable = (table: ParkingSpot[][]) =>
+            table.map(row => row.map(s =>
+              s.spotNumber === data.spotNumber
+                ? { ...s, status: data.status!, carPlate: data.carPlate ?? '-' }
+                : s
+            ))
+          return {
+            ...prev,
+            statistics: {
+              ...prev.statistics,
+              shortTerm: {
+                ...prev.statistics.shortTerm,
+                free:     prev.tables.shortTerm.table.flat().filter(s => s.spotNumber !== data.spotNumber ? s.status === 'FREE' : data.status === 'FREE').length,
+                booked:   prev.tables.shortTerm.table.flat().filter(s => s.spotNumber !== data.spotNumber ? s.status === 'BOOKED' : data.status === 'BOOKED').length,
+                occupied: prev.tables.shortTerm.table.flat().filter(s => s.spotNumber !== data.spotNumber ? s.status === 'OCCUPIED' : data.status === 'OCCUPIED').length,
+                repair:   prev.tables.shortTerm.table.flat().filter(s => s.spotNumber !== data.spotNumber ? s.status === 'REPAIR' : data.status === 'REPAIR').length,
+              },
+              longTerm: {
+                ...prev.statistics.longTerm,
+                free:     prev.tables.longTerm.table.flat().filter(s => s.spotNumber !== data.spotNumber ? s.status === 'FREE' : data.status === 'FREE').length,
+                booked:   prev.tables.longTerm.table.flat().filter(s => s.spotNumber !== data.spotNumber ? s.status === 'BOOKED' : data.status === 'BOOKED').length,
+                occupied: prev.tables.longTerm.table.flat().filter(s => s.spotNumber !== data.spotNumber ? s.status === 'OCCUPIED' : data.status === 'OCCUPIED').length,
+                repair:   prev.tables.longTerm.table.flat().filter(s => s.spotNumber !== data.spotNumber ? s.status === 'REPAIR' : data.status === 'REPAIR').length,
+              },
+            },
+            tables: {
+              shortTerm: { ...prev.tables.shortTerm, table: updateTable(prev.tables.shortTerm.table) },
+              longTerm:  { ...prev.tables.longTerm,  table: updateTable(prev.tables.longTerm.table) },
+            },
+          }
+        })
+      }
+      // Обновляем Бронирования и Пользователи в фоне
+      fetchParkingData()
+    }
     const onBookingCreated = (data: Record<string, unknown>) => { addLiveEvent("booking-created", data); fetchParkingData() }
     const onBookingCompleted = (data: Record<string, unknown>) => { addLiveEvent("booking-completed", data); fetchParkingData() }
     const onBookingCancelled = (data: Record<string, unknown>) => { addLiveEvent("booking-cancelled", data); fetchParkingData() }
@@ -152,7 +192,7 @@ export function AdminDashboard() {
     socket.on("rental-created", onRentalCreated)
     socket.on("payment-completed", onPaymentCompleted)
 
-    const fallback = setInterval(fetchParkingData, 30000)
+    const fallback = setInterval(fetchParkingData, 5000)
 
     return () => {
       socket.off("connect"); socket.off("disconnect")
