@@ -441,7 +441,7 @@ export function ActiveBookingScreen() {
       )}
       
       {!isLongTerm && isArrived && (
-        {graceRemaining > 0 ? (
+        graceRemaining > 0 ? (
           <Card className="border-green-400 bg-green-50">
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
@@ -477,7 +477,7 @@ export function ActiveBookingScreen() {
               </div>
             </CardContent>
           </Card>
-        )}
+        )
       )}
 
       
