@@ -1,22 +1,26 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useParking, type SpotStatus } from "@/lib/parking-context"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import { Car, Wrench, Clock, Check, AlertCircle, ArrowLeft, Search, MapPin } from "lucide-react"
 
 const locations = [
-  { id: 1, name: "Парковка №1", address: "Улы Дала, 1, Астана",       spots: 30, range: [1, 30] },
-  { id: 2, name: "Парковка №2", address: "Сыганак, 5, Астана",         spots: 25, range: [1, 25] },
-  { id: 3, name: "Парковка №3", address: "Кабанбай батыр, 12, Астана", spots: 20, range: [1, 20] },
+  { id: 1, name: "Парковка №1", address: "Улы Дала, 1, Астана",       spots: 30, prefix: "SP" },
+  { id: 2, name: "Парковка №2", address: "Сыганак, 5, Астана",         spots: 25, prefix: "P2" },
+  { id: 3, name: "Парковка №3", address: "Кабанбай батыр, 12, Астана", spots: 20, prefix: "P3" },
 ]
 
 export function MapScreen() {
-  const { spots, setSelectedSpot, setCurrentScreen, t } = useParking()
+  const { spots, setSelectedSpot, setCurrentScreen, t, fetchSpotsForLocation } = useParking()
   const [searchQuery, setSearchQuery]         = useState("")
   const [selectedLocation, setSelectedLocation] = useState(locations[0])
   const [showDropdown, setShowDropdown]       = useState(false)
+
+  useEffect(() => {
+    fetchSpotsForLocation(selectedLocation.id)
+  }, [selectedLocation.id])
 
   const statusConfig = {
     FREE:     { color: "text-green-600",  icon: Check,        label: t.statusFree },
@@ -31,11 +35,7 @@ export function MapScreen() {
       || l.address.toLowerCase().includes(searchQuery.toLowerCase())
   )
 
-  const [min, max] = selectedLocation.range
-  const visibleSpots = spots.filter(s => {
-    const num = parseInt(s.number)
-    return num >= min && num <= max
-  })
+  const visibleSpots = spots.filter(s => s.id.startsWith(selectedLocation.prefix + "-"))
 
   const handleSpotClick = (spotId: string) => {
     const spot = spots.find(s => s.id === spotId)

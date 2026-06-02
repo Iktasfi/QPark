@@ -156,6 +156,17 @@ export function SpotDetailsScreen() {
           date: new Date(),
         }
         setUser({ ...user, balance: data.newBalance, transactions: [newTx, ...(user.transactions || [])] })
+      } else {
+        // Fallback: fetch fresh balance from backend to reflect any server-side deductions
+        try {
+          const meRes = await fetch("/backend/auth/me", {
+            headers: token ? { Authorization: `Bearer ${token}` } : {},
+          })
+          if (meRes.ok) {
+            const meData = await meRes.json()
+            if (user) setUser({ ...user, balance: meData.walletBalance, bonusPoints: meData.bonusPoints })
+          }
+        } catch {}
       }
 
       setCurrentScreen("booking-confirm")

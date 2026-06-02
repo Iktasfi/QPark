@@ -438,6 +438,7 @@ interface ParkingContextType {
   spots: ParkingSpot[]
   setSpots: (spots: ParkingSpot[]) => void
   updateSpot: (spotId: string, updates: Partial<ParkingSpot>) => void
+  fetchSpotsForLocation: (locationId: number) => Promise<void>
 
   activeBooking: Booking | null
   setActiveBooking: (booking: Booking | null) => void
@@ -595,6 +596,29 @@ export function ParkingProvider({ children }: { children: ReactNode }) {
           const mapped = mapBackendSpot(bs)
           if (idx >= 0) {
             updated[idx] = { ...updated[idx], status: mapped.status, plateNumber: mapped.plateNumber }
+          } else {
+            updated.push(mapped)
+          }
+        })
+        return updated
+      })
+    } catch {}
+  }
+
+  const fetchSpotsForLocation = async (locationId: number) => {
+    try {
+      const res = await fetch(`/backend/parking/spots/simple?locationId=${locationId}`)
+      if (!res.ok) return
+      const data: { spotNumber: string; type: string; status: string; carPlate?: string | null }[] = await res.json()
+      setSpots(prev => {
+        const updated = [...prev]
+        data.forEach(bs => {
+          const mapped = mapBackendSpot(bs)
+          const idx = updated.findIndex(s => s.id === bs.spotNumber)
+          if (idx >= 0) {
+            updated[idx] = { ...updated[idx], status: mapped.status, plateNumber: mapped.plateNumber }
+          } else {
+            updated.push(mapped)
           }
         })
         return updated
@@ -670,6 +694,7 @@ export function ParkingProvider({ children }: { children: ReactNode }) {
       spots,
       setSpots,
       updateSpot,
+      fetchSpotsForLocation,
       activeBooking,
       setActiveBooking,
       bookings,

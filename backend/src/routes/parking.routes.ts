@@ -460,7 +460,7 @@ router.post('/set-status', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Invalid status' });
     }
 
-    if (status === 'BOOKED' && userId && carPlate) {
+    if (status === 'BOOKED' && userId) {
       const minutes = Number(req.body.estimatedMinutes) || 60;
       const discount = Number(req.body.promoDiscount) || 0;
       const cost = Math.max(0, calculateShortTermCost(minutes) - discount);
@@ -488,7 +488,7 @@ router.post('/set-status', async (req: Request, res: Response) => {
     let bookingRecord: any = null;
     let newBalance: number | undefined;
 
-    if (status === 'BOOKED' && userId && carPlate) {
+    if (status === 'BOOKED' && userId) {
       const minutes = Number(req.body.estimatedMinutes) || 60;
       const discount = Number(req.body.promoDiscount) || 0;
       const cost = Math.max(0, calculateShortTermCost(minutes) - discount);
@@ -612,14 +612,48 @@ router.get('/spot-status/:spotNumber', async (req: Request, res: Response) => {
 });
 
 
+// Location prefix map: locationId → { prefix, shortTermCount, longTermCount }
+const LOCATION_CONFIG: Record<number, { prefix: string; short: number; long: number }> = {
+  1: { prefix: 'SP',  short: 15, long: 15 },
+  2: { prefix: 'P2',  short: 13, long: 12 },
+  3: { prefix: 'P3',  short: 10, long: 10 },
+};
+
+async function ensureLocationSpots(locationId: number) {
+  const cfg = LOCATION_CONFIG[locationId];
+  if (!cfg) return;
+  const existing = await prisma.parkingSpot.findFirst({ where: { spotNumber: { startsWith: cfg.prefix + '-' } } });
+  if (existing) return; // already created
+  const spots = [];
+  for (let i = 1; i <= cfg.short; i++) {
+    spots.push({ spotNumber: `${cfg.prefix}-${String(i).padStart(2, '0')}`, type: 'SHORT_TERM' as const, status: 'FREE' as const });
+  }
+  for (let i = cfg.short + 1; i <= cfg.short + cfg.long; i++) {
+    spots.push({ spotNumber: `${cfg.prefix}-${String(i).padStart(2, '0')}`, type: 'LONG_TERM' as const, status: 'FREE' as const });
+  }
+  await prisma.parkingSpot.createMany({ data: spots, skipDuplicates: true });
+  logger.info(`✅ Auto-created ${spots.length} spots for location ${locationId} (prefix: ${cfg.prefix})`);
+}
+
 router.get('/spots/simple', async (req: Request, res: Response) => {
   try {
-    const spots = await parkingService.getAllSpots();
-    const simpleSpots = spots.map(s => ({
+    const locationId = req.query.locationId ? Number(req.query.locationId) : null;
+
+    // Auto-create spots for this location if they don't exist yet
+    if (locationId && LOCATION_CONFIG[locationId]) {
+      await ensureLocationSpots(locationId);
+    }
+
+    const allSpots = await parkingService.getAllSpots();
+    const filtered = locationId && LOCATION_CONFIG[locationId]
+      ? allSpots.filter(s => s.spotNumber.startsWith(LOCATION_CONFIG[locationId!].prefix + '-'))
+      : allSpots;
+
+    const simpleSpots = filtered.map(s => ({
       spotNumber: s.spotNumber,
       type: s.type,
       status: s.status,
-      carPlate: s.currentUserPlate || '-'
+      carPlate: s.currentUserPlate || null,
     }));
     res.json(simpleSpots);
   } catch (error) {
