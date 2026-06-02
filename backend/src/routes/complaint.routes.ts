@@ -63,15 +63,13 @@ router.post('/', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'spotId and reason are required' });
     }
 
-    // Создаём жалобу сразу — без ожидания Cloudinary и OCR
-    // Cloudinary может висеть до 30+ сек и роняет Vercel proxy timeout
     const complaint = await prisma.complaint.create({
       data: {
         userId,
         bookingId: bookingId ?? null,
         spotId,
         reason,
-        photoUrl: photoUrl ?? null,   // пока base64; фоновый таск заменит на CDN URL
+        photoUrl: photoUrl ?? null,
         detectedPlate: null,
         violatorUserId: null,
       },
@@ -81,10 +79,64 @@ router.post('/', async (req: Request, res: Response) => {
     const { io } = await import('../server');
     io.emit('new-complaint', { complaintId: complaint.id, spotId, userId });
 
-    // Отвечаем клиенту НЕМЕДЛЕННО
-    res.status(201).json({ success: true, complaint, detectedPlate: null, violatorFound: false });
+    // Найти текущий спот жертвы (тип SHORT_TERM или LONG_TERM)
+    const violatedSpot = await prisma.parkingSpot.findUnique({ where: { spotNumber: spotId } });
+    const spotType = violatedSpot?.type ?? 'SHORT_TERM';
 
-    // Фоновые задачи: Cloudinary upload + OCR (не блокируют ответ)
+    // Найти ближайшее свободное место того же типа (не текущий спот)
+    const freeSpot = await prisma.parkingSpot.findFirst({
+      where: {
+        status: 'FREE',
+        type: spotType,
+        spotNumber: { not: spotId },
+      },
+      orderBy: { spotNumber: 'asc' },
+    });
+
+    if (freeSpot) {
+      // Зарезервировать место для жертвы
+      await prisma.parkingSpot.update({
+        where: { id: freeSpot.id },
+        data: { status: 'BOOKED', currentUserId: userId },
+      });
+      io.emit('spot-reassigned', { userId, newSpotId: freeSpot.spotNumber });
+      io.emit('spot-status-changed', { spotNumber: freeSpot.spotNumber, status: 'BOOKED' });
+      logger.info(`🔄 Reassigned victim ${userId} to spot ${freeSpot.spotNumber}`);
+    } else {
+      // Нет свободных мест — вернуть деньги за бронирование
+      let refundAmount = 0;
+      if (bookingId) {
+        const booking = await prisma.booking.findUnique({ where: { id: bookingId } });
+        if (booking) {
+          refundAmount = booking.totalCost ?? 0;
+          const victim = await prisma.user.findUnique({ where: { id: userId } });
+          const balanceBefore = victim?.walletBalance ?? 0;
+          await prisma.$transaction([
+            prisma.user.update({
+              where: { id: userId },
+              data: { walletBalance: { increment: refundAmount } },
+            }),
+            prisma.transaction.create({
+              data: {
+                userId,
+                amount: refundAmount,
+                type: 'REFUND',
+                description: 'Refund: no alternative spot available',
+                balanceBefore,
+                balanceAfter: balanceBefore + refundAmount,
+              },
+            }),
+          ]);
+        }
+      }
+      io.emit('no-spots-available', { userId, refundAmount });
+      logger.info(`😔 No free spots for victim ${userId}, refunded ${refundAmount}₸`);
+    }
+
+    // Отвечаем клиенту
+    res.status(201).json({ success: true, complaint, freeSpot: freeSpot?.spotNumber ?? null });
+
+    // Фон: Cloudinary + OCR + определение нарушителя
     setImmediate(async () => {
       try {
         let storedUrl = photoUrl as string | null;
@@ -116,14 +168,18 @@ router.post('/', async (req: Request, res: Response) => {
 
         await prisma.complaint.update({
           where: { id: complaint.id },
-          data: {
-            photoUrl: storedUrl,
-            detectedPlate,
-            violatorUserId,
-          },
+          data: { photoUrl: storedUrl, detectedPlate, violatorUserId },
         });
 
-        logger.info(`📢 Complaint enriched: ${complaint.id} | plate=${detectedPlate ?? 'none'}`);
+        // Уведомить админа об обновлённой жалобе (с определённым нарушителем)
+        const { io: ioInner } = await import('../server');
+        ioInner.emit('complaint-enriched', {
+          complaintId: complaint.id,
+          detectedPlate,
+          violatorFound: !!violatorUserId,
+        });
+
+        logger.info(`📢 Complaint enriched: ${complaint.id} | plate=${detectedPlate ?? 'none'} | violator=${violatorUserId ?? 'unknown'}`);
       } catch (bgErr) {
         logger.error('❌ Background complaint processing failed:', bgErr);
       }
