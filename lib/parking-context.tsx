@@ -462,29 +462,14 @@ const ParkingContext = createContext<ParkingContextType | undefined>(undefined)
 
 const generateInitialSpots = (): ParkingSpot[] => {
   const spots: ParkingSpot[] = []
-  for (let i = 1; i <= 15; i++) {
-    const status: SpotStatus = Math.random() > 0.6 ? "FREE" : 
-                               Math.random() > 0.5 ? "OCCUPIED" : 
-                               Math.random() > 0.5 ? "BOOKED" : "FREE"
+  for (let i = 1; i <= 30; i++) {
     spots.push({
       id: `SP-${String(i).padStart(2, "0")}`,
       number: i,
-      status,
-      type: "short-term",
+      status: "FREE",
+      type: "short-term", // default; actual type determined by booking (BOOKED=short, RESERVED=long)
     })
   }
-  for (let i = 16; i <= 30; i++) {
-    const status: SpotStatus = Math.random() > 0.7 ? "FREE" : 
-                               Math.random() > 0.5 ? "RESERVED" : 
-                               Math.random() > 0.3 ? "OCCUPIED" : "FREE"
-    spots.push({
-      id: `SP-${String(i).padStart(2, "0")}`,
-      number: i,
-      status: i === 22 ? "REPAIR" : status,
-      type: "long-term",
-    })
-  }
-  
   return spots
 }
 
@@ -514,15 +499,17 @@ export function mapDbUser(dbUser: {
 }
 
 function mapBackendSpot(s: { spotNumber: string; type: string; status: string; carPlate?: string | null }): ParkingSpot {
-  const num = parseInt(s.spotNumber.replace("SP-", ""), 10)
+  const num = parseInt(s.spotNumber.replace(/[^0-9]/g, ""), 10)
   const statusMap: Record<string, SpotStatus> = {
     FREE: "FREE", BOOKED: "BOOKED", OCCUPIED: "OCCUPIED", RESERVED: "RESERVED", REPAIR: "REPAIR",
   }
+  // Type is inferred from status: RESERVED = long-term rental, everything else = short-term
+  const type = s.status === "RESERVED" ? "long-term" : "short-term"
   return {
     id: s.spotNumber,
     number: num,
     status: statusMap[s.status] ?? "FREE",
-    type: s.type === "SHORT_TERM" ? "short-term" : "long-term",
+    type,
     plateNumber: s.carPlate ?? undefined,
   }
 }

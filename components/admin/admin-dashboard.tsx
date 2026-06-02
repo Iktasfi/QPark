@@ -85,6 +85,7 @@ export function AdminDashboard() {
   const [dbBookings, setDbBookings] = useState<DbBooking[]>([])
   const [dbRentals, setDbRentals] = useState<DbRental[]>([])
   const [dbTransactions, setDbTransactions] = useState<DbTransaction[]>([])
+  const [spotModal, setSpotModal] = useState<{ spot: ParkingSpot; booking?: DbBooking; rental?: DbRental } | null>(null)
   const [activeTab, setActiveTab] = useState<"spots" | "users" | "bookings" | "transactions" | "promo" | "locations" | "photos" | "complaints" | "applications">("spots")
   const [pendingPhotos, setPendingPhotos] = useState<{id: string; type: string; photoUrl: string | null; photoUploadedAt: string | null; spotNumber: string; plateNumber: string; userName: string}[]>([])
   const [complaints, setComplaints] = useState<{id: string; spotId: string; reason: string; photoUrl: string | null; status: string; createdAt: string; detectedPlate: string | null; violatorUserId: string | null; user: {firstName: string | null; phoneNumber: string}}[]>([])
@@ -328,20 +329,35 @@ export function AdminDashboard() {
 
   const renderSpotCard = (spot: ParkingSpot) => {
     const cfg = statusConfig[spot.status] ?? statusConfig["Свободно"]
+    const isActive = spot.status === "Забронировано" || spot.status === "BOOKED" || spot.status === "Занято" || spot.status === "OCCUPIED" || spot.status === "Резерв" || spot.status === "RESERVED"
+    const bookingType = (spot.status === "Резерв" || spot.status === "RESERVED") ? "Долгосрочная" : (spot.status === "Забронировано" || spot.status === "BOOKED") ? "Краткосрочная" : null
+
+    const openModal = () => {
+      if (!isActive) return
+      const booking = dbBookings.find(b => b.spotNumber === spot.spotNumber && (b.status === "PENDING" || b.status === "CONFIRMED"))
+      const rental = dbRentals.find(r => r.spotNumber === spot.spotNumber && r.status === "ACTIVE")
+      setSpotModal({ spot, booking, rental })
+    }
+
     return (
       <div key={spot.spotNumber} className="rounded-2xl p-3 border border-white/10 hover:border-white/20 transition-all"
         style={{ background: "rgba(255,255,255,0.04)" }}>
         <div className="flex items-center justify-between mb-2">
-          <span className="font-bold text-sm text-white">{spot.spotNumber}</span>
-          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full" style={{ background: cfg.badge, color: cfg.badgeText }}>
-            {cfg.label}
-          </span>
+          <button onClick={openModal} className={`font-bold text-sm text-left ${isActive ? "text-white hover:text-blue-300 cursor-pointer underline-offset-2 hover:underline" : "text-white/70 cursor-default"}`}>
+            {spot.spotNumber}
+          </button>
+          <div className="flex items-center gap-1">
+            {bookingType && (
+              <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full" style={{ background: bookingType === "Долгосрочная" ? "rgba(52,211,153,0.15)" : "rgba(96,165,250,0.15)", color: bookingType === "Долгосрочная" ? "#34d399" : "#60a5fa" }}>
+                {bookingType === "Долгосрочная" ? "Аренда" : "Бронь"}
+              </span>
+            )}
+            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full" style={{ background: cfg.badge, color: cfg.badgeText }}>
+              {cfg.label}
+            </span>
+          </div>
         </div>
-        <div className="flex items-center gap-1.5 mb-2">
-          <span className="w-1.5 h-1.5 rounded-full" style={{ background: spot.type === "SHORT_TERM" ? "#60a5fa" : "#34d399" }} />
-          <span className="text-[10px] text-white/40">{spot.type === "SHORT_TERM" ? "Краткосрочная" : "Долгосрочная"}</span>
-        </div>
-        {spot.carPlate !== "-" && (
+        {spot.carPlate && spot.carPlate !== "-" && (
           <div className="text-xs font-mono px-2 py-1 rounded-lg mb-2 text-white/70 border border-white/10" style={{ background: "rgba(255,255,255,0.05)" }}>
             {spot.carPlate}
           </div>
@@ -381,6 +397,81 @@ export function AdminDashboard() {
       </div>
     </div>
   )
+
+  const SpotModal = () => {
+    if (!spotModal) return null
+    const { spot, booking, rental } = spotModal
+    const user = booking
+      ? dbUsers.find(u => u.cars.some(c => c.plateNumber === booking.plateNumber))
+      : rental
+        ? dbUsers.find(u => u.cars.some(c => c.plateNumber === rental.plateNumber))
+        : undefined
+    const car = user?.cars.find(c => c.plateNumber === (booking?.plateNumber ?? rental?.plateNumber))
+    const isLong = !!rental
+    const startTime = booking?.startTime ? new Date(booking.startTime) : null
+    const endDate = rental?.endDate ? new Date(rental.endDate) : null
+    const daysLeft = endDate ? Math.max(0, Math.ceil((endDate.getTime() - Date.now()) / 86400000)) : null
+
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={() => setSpotModal(null)}>
+        <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+        <div className="relative w-full max-w-sm rounded-3xl p-6 border border-white/15 shadow-2xl" style={{ background: "linear-gradient(135deg, #1a2540 0%, #0f1623 100%)" }} onClick={e => e.stopPropagation()}>
+          <button onClick={() => setSpotModal(null)} className="absolute top-4 right-4 text-white/40 hover:text-white/80 text-lg">✕</button>
+
+          {/* Header */}
+          <div className="flex items-center gap-3 mb-5">
+            <div className="w-12 h-12 rounded-2xl flex items-center justify-center font-black text-white text-lg" style={{ background: "#354469" }}>
+              {spot.spotNumber.replace(/[^0-9]/g, "")}
+            </div>
+            <div>
+              <p className="text-white font-bold text-lg">{spot.spotNumber}</p>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full" style={{ background: isLong ? "rgba(52,211,153,0.15)" : "rgba(96,165,250,0.15)", color: isLong ? "#34d399" : "#60a5fa" }}>
+                  {isLong ? "Долгосрочная аренда" : "Краткосрочное бронирование"}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            {/* Car plate */}
+            <div className="rounded-xl px-4 py-3" style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)" }}>
+              <p className="text-white/40 text-[10px] uppercase tracking-wider mb-0.5">Номер машины</p>
+              <p className="text-white font-mono font-bold text-lg tracking-widest">{booking?.plateNumber ?? rental?.plateNumber ?? spot.carPlate ?? "—"}</p>
+              {car && <p className="text-white/50 text-xs mt-0.5">{car.brand} {car.model}</p>}
+            </div>
+
+            {/* User */}
+            <div className="rounded-xl px-4 py-3" style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)" }}>
+              <p className="text-white/40 text-[10px] uppercase tracking-wider mb-0.5">Пользователь</p>
+              <p className="text-white font-semibold text-sm">{booking?.userName ?? rental?.userName ?? "—"}</p>
+              {user && <p className="text-white/50 text-xs">{user.phoneNumber}</p>}
+            </div>
+
+            {/* Duration / time */}
+            {isLong && rental ? (
+              <div className="rounded-xl px-4 py-3" style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)" }}>
+                <p className="text-white/40 text-[10px] uppercase tracking-wider mb-0.5">Аренда</p>
+                <p className="text-white font-semibold text-sm">{rental.rentalDays} дней · {rental.totalCost.toLocaleString()} ₸</p>
+                {endDate && <p className="text-white/50 text-xs mt-0.5">До {endDate.toLocaleDateString("ru-RU")} · осталось {daysLeft} дн.</p>}
+              </div>
+            ) : booking ? (
+              <div className="rounded-xl px-4 py-3" style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)" }}>
+                <p className="text-white/40 text-[10px] uppercase tracking-wider mb-0.5">Бронирование</p>
+                <p className="text-white font-semibold text-sm">Стоимость: {booking.totalCost.toLocaleString()} ₸</p>
+                {startTime && <p className="text-white/50 text-xs mt-0.5">С {startTime.toLocaleString("ru-RU", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}</p>}
+              </div>
+            ) : null}
+
+            {/* Admin tip */}
+            <div className="rounded-xl px-4 py-3 text-xs text-yellow-300/70" style={{ background: "rgba(251,191,36,0.06)", border: "1px solid rgba(251,191,36,0.12)" }}>
+              💡 Нажмите ↺ на карточке чтобы освободить место, или используйте дропдаун для изменения статуса.
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   const tabs: { id: typeof activeTab; label: string; count: number }[] = [
     { id: "spots",        label: "Места",        count: total },
@@ -1285,6 +1376,7 @@ export function AdminDashboard() {
           </div>
         )}
       </div>
+      <SpotModal />
     </div>
   )
 }
