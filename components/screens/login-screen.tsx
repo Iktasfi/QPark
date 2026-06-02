@@ -23,7 +23,7 @@ const termsEN = [
 ]
 
 export function LoginScreen() {
-  const { setIsAuthenticated, setUser, setCurrentScreen, setIsNewUser } = useParking()
+  const { setIsAuthenticated, setUser, setCurrentScreen, setIsNewUser, setActiveBooking } = useParking()
   const [step, setStep] = useState<"phone" | "otp">("phone")
   const [phone, setPhone] = useState("+7")
   const [otp, setOtp] = useState(["", "", "", "", "", ""])
@@ -109,6 +109,9 @@ export function LoginScreen() {
         }
       } catch {}
 
+      // Clear previous user's booking before setting new user state
+      setActiveBooking(null)
+
       if (jwtToken) {
         try {
           const meRes = await fetch("/backend/auth/me", {
@@ -123,6 +126,16 @@ export function LoginScreen() {
         } catch {
           if (dbUser) setUser(mapDbUser(dbUser))
         }
+        // Restore active booking for the newly logged-in user
+        try {
+          const br = await fetch("/backend/bookings/restore", {
+            headers: { Authorization: `Bearer ${jwtToken}` },
+          })
+          if (br.ok) {
+            const restored = await br.json()
+            setActiveBooking(restored ?? null)
+          }
+        } catch {}
       } else if (dbUser) {
         setUser(mapDbUser(dbUser))
       } else {

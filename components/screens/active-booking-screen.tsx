@@ -68,6 +68,11 @@ export function ActiveBookingScreen() {
   const [complaintSent, setComplaintSent] = useState(false)
   const [newSpotOffer, setNewSpotOffer] = useState<{ spotId: string } | null>(null)
   const [noSpotsAvailable, setNoSpotsAvailable] = useState(false)
+  const [reassignedAt, setReassignedAt] = useState<number | null>(null)
+
+  const REASSIGN_GRACE = 7 * 60
+  const reassignElapsed = reassignedAt ? Math.floor((now - reassignedAt) / 1000) : 0
+  const reassignTimer = reassignedAt ? Math.max(0, REASSIGN_GRACE - reassignElapsed) : null
 
   const selectedCar = user?.cars.find(c => c.plateNumber === activeBooking?.plateNumber)
   
@@ -312,6 +317,7 @@ export function ActiveBookingScreen() {
       body: JSON.stringify({ oldSpotId: activeBooking.spotId, newSpotId: newSpotOffer.spotId, bookingId: activeBooking.id }),
     }).catch(() => {})
     setActiveBooking({ ...activeBooking, spotId: newSpotOffer.spotId })
+    setReassignedAt(Date.now())
     setNewSpotOffer(null)
   }
 
@@ -417,7 +423,33 @@ export function ActiveBookingScreen() {
         </div>
       </div>
       
-      {!isLongTerm && !isArrived && (
+      {!isLongTerm && !isArrived && reassignedAt !== null && (
+        <Card className={reassignTimer === 0 ? "border-destructive bg-destructive/5" : "border-orange-400 bg-orange-50"}>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              {reassignTimer === 0 ? (
+                <AlertTriangle className="h-8 w-8 text-destructive" />
+              ) : (
+                <Clock className="h-8 w-8 text-orange-600" />
+              )}
+              <div className="flex-1">
+                <p className="text-sm text-orange-700 font-medium">Переместитесь на новое место</p>
+                <p className="text-3xl font-bold text-foreground">{formatTime(reassignTimer ?? 0)}</p>
+              </div>
+              <div className="text-right">
+                <p className="text-xs text-muted-foreground">Новое место</p>
+                <p className="text-sm font-semibold text-foreground">{activeBooking?.spotId}</p>
+                <p className="text-xs text-muted-foreground">LPR зафиксирует вас</p>
+              </div>
+            </div>
+            {reassignTimer === 0 && (
+              <p className="mt-2 text-sm text-destructive">Время истекло — встаньте на место немедленно</p>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {!isLongTerm && !isArrived && reassignedAt === null && (
         <Card className={timer < 300 ? "border-destructive bg-destructive/5" : "border-red-200 bg-red-50"}>
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
