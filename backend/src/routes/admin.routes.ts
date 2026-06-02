@@ -304,7 +304,7 @@ router.post('/complaints/:id/reassign', async (req: Request, res: Response) => {
 router.post('/complaints/:id/fine', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { violatorUserId, amount = 900 } = req.body;
+    const { violatorUserId, amount = 700 } = req.body;
 
     const complaint = await prisma.complaint.findUnique({ where: { id } });
     if (!complaint) return res.status(404).json({ error: 'Complaint not found' });
@@ -340,7 +340,7 @@ router.post('/complaints/:id/fine', async (req: Request, res: Response) => {
               userId: violatorUserId,
               amount: -deductable,
               type: 'PAYMENT',
-              description: `Штраф 900₸ за нарушение парковки`,
+              description: `Штраф 700₸ за нарушение парковки (место ${complaint.spotId})`,
               balanceBefore: violator.walletBalance,
               balanceAfter: newBalance,
             },
@@ -361,6 +361,12 @@ router.post('/complaints/:id/fine', async (req: Request, res: Response) => {
     }
 
     await prisma.complaint.update({ where: { id }, data: { status: 'RESOLVED', resolvedAt: new Date() } });
+
+    if (violatorUserId) {
+      const { io } = await import('../server');
+      io.emit('fine-issued', { userId: violatorUserId, amount, complaintId: id, spotId: complaint.spotId });
+    }
+
     res.json({ success: true, fined: amount });
   } catch (error) {
     res.status(500).json({ error: 'Failed to fine' });

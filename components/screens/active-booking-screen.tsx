@@ -64,6 +64,7 @@ export function ActiveBookingScreen() {
   const [showComplaint, setShowComplaint] = useState(false)
   const [complaintReason, setComplaintReason] = useState("")
   const [complaintPhotoUrl, setComplaintPhotoUrl] = useState<string | null>(null)
+  const [complaintViolatorPlate, setComplaintViolatorPlate] = useState("")
   const [isSendingComplaint, setIsSendingComplaint] = useState(false)
   const [complaintSent, setComplaintSent] = useState(false)
   const [newSpotOffer, setNewSpotOffer] = useState<{ spotId: string } | null>(null)
@@ -269,6 +270,7 @@ export function ActiveBookingScreen() {
           spotId: activeBooking.spotId,
           reason: complaintReason,
           photoUrl: complaintPhotoUrl,
+          violatorPlateManual: complaintViolatorPlate.trim() || undefined,
         }),
       })
       if (!res.ok) {
@@ -823,6 +825,16 @@ export function ActiveBookingScreen() {
               rows={3}
               className="w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 px-4 py-3 text-sm text-foreground resize-none focus:outline-none focus:ring-2 focus:ring-orange-400 mb-3"
             />
+            <div className="mb-3">
+              <p className="text-xs text-gray-500 mb-1">Номер машины нарушителя <span className="text-gray-400">(если знаете)</span></p>
+              <input
+                type="text"
+                value={complaintViolatorPlate}
+                onChange={e => setComplaintViolatorPlate(e.target.value.toUpperCase())}
+                placeholder="Например: 125 ABC 01"
+                className="w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 px-4 py-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-orange-400 font-mono tracking-wider uppercase"
+              />
+            </div>
             <label className={`flex flex-col items-center justify-center gap-2 w-full py-4 rounded-xl border-2 text-sm font-medium cursor-pointer mb-2 transition-all ${complaintPhotoUrl ? "border-green-400 bg-green-50 dark:bg-green-900/20 text-green-700" : "border-dashed border-orange-300 bg-orange-50/50 text-orange-600 hover:border-orange-400"}`}>
               {complaintPhotoUrl ? (
                 <>

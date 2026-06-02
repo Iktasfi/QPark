@@ -56,11 +56,20 @@ async function detectPlateFromPhoto(photoUrl: string): Promise<string | null> {
 // POST /complaints — submit a complaint
 router.post('/', async (req: Request, res: Response) => {
   try {
-    const { bookingId, spotId, reason, photoUrl } = req.body;
+    const { bookingId, spotId, reason, photoUrl, violatorPlateManual } = req.body;
     const userId = req.userId!;
 
     if (!spotId || !reason) {
       return res.status(400).json({ error: 'spotId and reason are required' });
+    }
+
+    // If user provided a plate manually, try to find the violator right away
+    let initialViolatorUserId: string | null = null;
+    if (violatorPlateManual) {
+      const violatorCar = await prisma.car.findFirst({
+        where: { plateNumber: { contains: violatorPlateManual.replace(/\s+/g, ''), mode: 'insensitive' } },
+      });
+      if (violatorCar) initialViolatorUserId = violatorCar.userId;
     }
 
     const complaint = await prisma.complaint.create({
@@ -70,8 +79,8 @@ router.post('/', async (req: Request, res: Response) => {
         spotId,
         reason,
         photoUrl: photoUrl ?? null,
-        detectedPlate: null,
-        violatorUserId: null,
+        detectedPlate: violatorPlateManual ?? null,
+        violatorUserId: initialViolatorUserId,
       },
       include: { user: { select: { firstName: true, phoneNumber: true } } },
     });
@@ -142,19 +151,24 @@ router.post('/', async (req: Request, res: Response) => {
           }
         }
 
-        let detectedPlate: string | null = null;
-        let violatorUserId: string | null = null;
+        // OCR plate detection — if OCR finds something, it overrides manual input
+        let detectedPlate: string | null = violatorPlateManual ?? null;
+        let violatorUserId: string | null = initialViolatorUserId;
         if (storedUrl) {
-          detectedPlate = await detectPlateFromPhoto(storedUrl);
-          if (detectedPlate) {
+          const ocrPlate = await detectPlateFromPhoto(storedUrl);
+          if (ocrPlate) {
+            detectedPlate = ocrPlate;
             const violatorCar = await prisma.car.findFirst({
-              where: { plateNumber: { contains: detectedPlate.replace(/\s+/g, ''), mode: 'insensitive' } },
+              where: { plateNumber: { contains: ocrPlate.replace(/\s+/g, ''), mode: 'insensitive' } },
               include: { user: true },
             });
             if (violatorCar) {
               violatorUserId = violatorCar.userId;
-              logger.info(`🎯 Violator: ${violatorCar.user.firstName ?? violatorCar.user.phoneNumber} (${detectedPlate})`);
+              logger.info(`🎯 Violator (OCR): ${violatorCar.user.firstName ?? violatorCar.user.phoneNumber} (${ocrPlate})`);
             }
+          } else if (detectedPlate && !violatorUserId) {
+            // OCR failed but manual plate provided — already looked up above, log it
+            logger.info(`🎯 Violator plate (manual): ${detectedPlate}${violatorUserId ? '' : ' — not in DB'}`);
           }
         }
 
@@ -186,8 +200,13 @@ router.post('/accept-reassignment', async (req: Request, res: Response) => {
     const newSpot = await prisma.parkingSpot.findUnique({ where: { spotNumber: newSpotId } });
     if (!newSpot) return res.status(404).json({ error: 'New spot not found' });
 
+    // Adjust booking startTime so the 30-min countdown shows exactly 7 min remaining
     if (bookingId) {
-      await prisma.booking.update({ where: { id: bookingId }, data: { spotId: newSpot.id } }).catch(() => {});
+      const adjustedStart = new Date(Date.now() - (30 - 7) * 60 * 1000);
+      await prisma.booking.update({
+        where: { id: bookingId },
+        data: { spotId: newSpot.id, startTime: adjustedStart },
+      }).catch(() => {});
     }
 
     await prisma.parkingSpot.update({
@@ -208,6 +227,23 @@ router.post('/accept-reassignment', async (req: Request, res: Response) => {
     const { io } = await import('../server');
     io.emit('spot-status-changed', { spotNumber: oldSpotId, status: 'FREE', carPlate: null });
     io.emit('spot-status-changed', { spotNumber: newSpotId, status: 'BOOKED', carPlate: plate });
+
+    // After 7 min, auto-mark spot as OCCUPIED (user should be parked by then)
+    setTimeout(async () => {
+      try {
+        const spot = await prisma.parkingSpot.findUnique({ where: { spotNumber: newSpotId } });
+        if (spot?.status === 'BOOKED') {
+          await prisma.parkingSpot.update({
+            where: { spotNumber: newSpotId },
+            data: { status: 'OCCUPIED' },
+          });
+          io.emit('spot-status-changed', { spotNumber: newSpotId, status: 'OCCUPIED', carPlate: plate });
+          logger.info(`🚗 Auto-OCCUPIED spot ${newSpotId} after 7-min reassignment grace`);
+        }
+      } catch (err) {
+        logger.warn(`⚠️ Failed to auto-OCCUPIED spot ${newSpotId}:`, err);
+      }
+    }, 7 * 60 * 1000);
 
     res.json({ success: true });
   } catch (error) {

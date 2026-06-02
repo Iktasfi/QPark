@@ -564,6 +564,7 @@ export function ParkingProvider({ children }: { children: ReactNode }) {
         if (res.ok) {
           const dbUser = await res.json()
           setUser(mapDbUser(dbUser))
+          ;(window as typeof window & { __qparkUserId?: string }).__qparkUserId = dbUser.id
           setIsAuthenticated(true)
           try {
             const br = await fetch("/backend/bookings/restore", {
@@ -623,6 +624,13 @@ export function ParkingProvider({ children }: { children: ReactNode }) {
     const handleBookingCancelled = () => { fetchSpotsFromBackend() }
     const handleRentalCreated = () => { fetchSpotsFromBackend() }
     const handleBookingExtended = () => { fetchSpotsFromBackend() }
+    const handleFineIssued = (data: { userId: string; amount: number; spotId: string }) => {
+      const currentUserId = (window as typeof window & { __qparkUserId?: string }).__qparkUserId
+      if (currentUserId && data.userId === currentUserId) {
+        alert(`⚠️ Вам выписан штраф ${data.amount}₸ за нарушение парковки (место ${data.spotId}).\nСумма списана с вашего кошелька.`)
+        setUser(prev => prev ? { ...prev, balance: Math.max(0, prev.balance - data.amount) } : prev)
+      }
+    }
 
     socket.on("spot-status-changed", handleSpotStatusChanged)
     socket.on("booking-created", handleBookingCreated)
@@ -630,6 +638,7 @@ export function ParkingProvider({ children }: { children: ReactNode }) {
     socket.on("booking-cancelled", handleBookingCancelled)
     socket.on("rental-created", handleRentalCreated)
     socket.on("booking-extended", handleBookingExtended)
+    socket.on("fine-issued", handleFineIssued)
 
     return () => {
       socket.off("spot-status-changed", handleSpotStatusChanged)
@@ -638,6 +647,7 @@ export function ParkingProvider({ children }: { children: ReactNode }) {
       socket.off("booking-cancelled", handleBookingCancelled)
       socket.off("rental-created", handleRentalCreated)
       socket.off("booking-extended", handleBookingExtended)
+      socket.off("fine-issued", handleFineIssued)
     }
   }, [])
 

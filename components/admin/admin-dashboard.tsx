@@ -947,30 +947,34 @@ export function AdminDashboard() {
                           <img src={c.photoUrl} alt="complaint" className="w-20 h-20 rounded-lg object-cover shrink-0" />
                         )}
                       </div>
-                      {/* OCR detected plate block */}
+                      {/* Detected / manual plate block */}
                       {c.detectedPlate && (
                         <div className="rounded-xl px-4 py-3 flex items-center justify-between" style={{ background: "rgba(251,191,36,0.1)", border: "1px solid rgba(251,191,36,0.3)" }}>
                           <div>
-                            <p className="text-yellow-300 text-xs font-semibold mb-0.5">🔍 OCR обнаружил номер</p>
+                            <p className="text-yellow-300 text-xs font-semibold mb-0.5">{c.violatorUserId ? "🔍 Номер нарушителя" : "📝 Номер (введён вручную)"}</p>
                             <p className="text-white font-bold text-lg tracking-widest">{c.detectedPlate}</p>
-                            <p className="text-white/50 text-xs">{c.violatorUserId ? "✅ Пользователь найден в системе" : "⚠️ Пользователь не найден в БД"}</p>
+                            <p className="text-white/50 text-xs">{c.violatorUserId ? "✅ Пользователь найден в системе" : "⚠️ Пользователь не зарегистрирован в QPark"}</p>
                           </div>
                           {c.violatorUserId && c.status === "PENDING" && (
                             <button
                               onClick={async () => {
                                 const token = localStorage.getItem("admin_token") || localStorage.getItem("qpark_token")
-                                await fetch(`${RAILWAY}/admin/complaints/${c.id}/fine`, {
+                                const res = await fetch(`${RAILWAY}/admin/complaints/${c.id}/fine`, {
                                   method: "POST",
                                   headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-                                  body: JSON.stringify({ violatorUserId: c.violatorUserId, amount: 500 }),
+                                  body: JSON.stringify({ violatorUserId: c.violatorUserId, amount: 700 }),
                                 })
-                                setComplaints(prev => prev.map(x => x.id === c.id ? { ...x, status: "RESOLVED" } : x))
-                                alert(`✅ Штраф 500₸ выписан нарушителю автоматически`)
+                                if (res.ok) {
+                                  setComplaints(prev => prev.map(x => x.id === c.id ? { ...x, status: "RESOLVED" } : x))
+                                  alert(`✅ Штраф 700₸ списан с нарушителя`)
+                                } else {
+                                  alert("❌ Ошибка при выписке штрафа")
+                                }
                               }}
                               className="px-4 py-3 rounded-xl text-sm font-bold text-white transition-all hover:opacity-80 shrink-0"
                               style={{ background: "rgba(220,38,38,0.7)" }}
                             >
-                              ⚡ Штраф 500₸
+                              ⚡ Штраф 700₸
                             </button>
                           )}
                         </div>
@@ -999,23 +1003,25 @@ export function AdminDashboard() {
                           >
                             🔄 Найти новое место
                           </button>
-                          {!c.violatorUserId && (
-                            <button
-                              onClick={async () => {
-                                const token = localStorage.getItem("admin_token") || localStorage.getItem("qpark_token")
-                                await fetch(`${RAILWAY}/admin/complaints/${c.id}/fine`, {
-                                  method: "POST",
-                                  headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-                                  body: JSON.stringify({ amount: 500 }),
-                                })
+                          <button
+                            onClick={async () => {
+                              const token = localStorage.getItem("admin_token") || localStorage.getItem("qpark_token")
+                              const res = await fetch(`${RAILWAY}/admin/complaints/${c.id}/fine`, {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+                                body: JSON.stringify({ violatorUserId: c.violatorUserId ?? undefined, amount: 700 }),
+                              })
+                              if (res.ok) {
                                 setComplaints(prev => prev.map(x => x.id === c.id ? { ...x, status: "RESOLVED" } : x))
-                                alert("✅ Штраф выписан вручную")
-                              }}
-                              className="px-4 py-2 rounded-xl text-sm font-semibold text-white bg-red-600/70 hover:bg-red-600 transition-all"
-                            >
-                              ⚡ Штраф вручную
-                            </button>
-                          )}
+                                alert(c.violatorUserId ? "✅ Штраф 700₸ списан с нарушителя" : "✅ Жалоба закрыта (нарушитель не в системе)")
+                              } else {
+                                alert("❌ Ошибка")
+                              }
+                            }}
+                            className="px-4 py-2 rounded-xl text-sm font-semibold text-white bg-red-600/70 hover:bg-red-600 transition-all"
+                          >
+                            {c.violatorUserId ? "⚡ Штраф 700₸" : "✓ Закрыть"}
+                          </button>
                         </div>
                       )}
                     </div>
