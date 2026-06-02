@@ -97,20 +97,17 @@ export function AdminDashboard() {
   const [locationAdded, setLocationAdded] = useState(false)
   const [b2bSent, setB2bSent] = useState(false)
   const mockLocations = [
-    { id: 1, name: "Парковка №1", address: "Улы Дала, 1", spots: 30, free: 12, status: "Активна", spotRange: [1, 30] },
-    { id: 2, name: "Парковка №2", address: "Сыганак, 5",  spots: 25, free: 8,  status: "Активна", spotRange: [1, 25] },
-    { id: 3, name: "Парковка №3", address: "Кабанбай батыр, 12", spots: 20, free: 5, status: "Активна", spotRange: [1, 20] },
+    { id: 1, name: "Парковка №1", address: "Улы Дала, 1", spots: 30, free: 12, status: "Активна", prefix: "SP" },
+    { id: 2, name: "Парковка №2", address: "Сыганак, 5",  spots: 25, free: 8,  status: "Активна", prefix: "P2" },
+    { id: 3, name: "Парковка №3", address: "Кабанбай батыр, 12", spots: 20, free: 5, status: "Активна", prefix: "P3" },
   ]
   const [selectedLocationId, setSelectedLocationId] = useState(1)
   const selectedLocation = mockLocations.find(l => l.id === selectedLocationId)!
 
   const filterSpotsByLocation = (table: ParkingSpot[][]) => {
-    const [min, max] = selectedLocation.spotRange
+    const prefix = selectedLocation.prefix
     return table.map(row =>
-      row.filter(spot => {
-        const num = parseInt(spot.spotNumber.replace("SP-", ""))
-        return num >= min && num <= max
-      })
+      row.filter(spot => spot.spotNumber.startsWith(prefix + "-"))
     ).filter(row => row.length > 0)
   }
   const [promoCodes, setPromoCodes] = useState<{id: string; code: string; discount: number; type: string; usedCount: number; maxUses: number | null; isActive: boolean; expiresAt: string | null}[]>([])
