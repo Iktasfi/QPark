@@ -103,6 +103,50 @@ router.get('/users', async (req: Request, res: Response) => {
 });
 
 
+// Find user by car plate + their booking history
+router.get('/users/find-by-plate', async (req: Request, res: Response) => {
+  try {
+    const { plate } = req.query as { plate: string };
+    if (!plate) return res.status(400).json({ error: 'plate is required' });
+
+    const norm = plate.replace(/\s/g, '').toUpperCase();
+    const car = await prisma.car.findFirst({
+      where: { plateNumber: { contains: norm, mode: 'insensitive' } },
+      include: {
+        user: {
+          include: {
+            bookings: { orderBy: { createdAt: 'desc' }, take: 10, include: { spot: true } },
+            longTermRentals: { orderBy: { createdAt: 'desc' }, take: 5, include: { spot: true } },
+            fines: { orderBy: { createdAt: 'desc' }, take: 5 },
+          },
+        },
+      },
+    });
+
+    if (!car) return res.json(null);
+
+    const u = car.user;
+    res.json({
+      id: u.id,
+      firstName: u.firstName,
+      lastName: u.lastName,
+      phoneNumber: u.phoneNumber,
+      walletBalance: u.walletBalance,
+      car: { plateNumber: car.plateNumber, brand: car.brand, model: car.model },
+      bookings: u.bookings.map(b => ({
+        id: b.id, spotNumber: b.spot?.spotNumber, status: b.status,
+        startTime: b.startTime, totalCost: b.totalCost, isPaid: b.isPaid,
+      })),
+      fines: u.fines.map(f => ({
+        id: f.id, amount: f.amount, reason: f.reason,
+        isPaid: f.isPaid, createdAt: f.createdAt,
+      })),
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to find user' });
+  }
+});
+
 router.get('/spots', async (req: Request, res: Response) => {
   try {
     const spots = await prisma.parkingSpot.findMany({ orderBy: { spotNumber: 'asc' } });

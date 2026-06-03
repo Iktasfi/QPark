@@ -86,6 +86,10 @@ export function AdminDashboard() {
   const [dbRentals, setDbRentals] = useState<DbRental[]>([])
   const [dbTransactions, setDbTransactions] = useState<DbTransaction[]>([])
   const [spotModal, setSpotModal] = useState<{ spot: ParkingSpot; booking?: DbBooking; rental?: DbRental } | null>(null)
+  type ViolatorInfo = { id: string; firstName: string | null; lastName: string | null; phoneNumber: string; walletBalance: number; car: { plateNumber: string; brand: string; model: string }; bookings: { id: string; spotNumber: string; status: string; startTime: string; totalCost: number; isPaid: boolean }[]; fines: { id: string; amount: number; reason: string; isPaid: boolean; createdAt: string }[] }
+  const [plateInputs, setPlateInputs] = useState<Record<string, string>>({})
+  const [violatorLookup, setViolatorLookup] = useState<Record<string, ViolatorInfo | null | "loading">>({})
+  const [showHistory, setShowHistory] = useState<Record<string, boolean>>({})
   const [activeTab, setActiveTab] = useState<"spots" | "users" | "bookings" | "transactions" | "promo" | "locations" | "photos" | "complaints" | "applications">("spots")
   const [pendingPhotos, setPendingPhotos] = useState<{id: string; type: string; photoUrl: string | null; photoUploadedAt: string | null; spotNumber: string; plateNumber: string; userName: string}[]>([])
   const [complaints, setComplaints] = useState<{id: string; spotId: string; reason: string; photoUrl: string | null; status: string; createdAt: string; detectedPlate: string | null; violatorUserId: string | null; user: {firstName: string | null; phoneNumber: string}}[]>([])
@@ -1035,8 +1039,6 @@ export function AdminDashboard() {
               ) : (
                 <div className="space-y-4">
                   {complaints.map(c => {
-                    const violator = c.violatorUserId ? dbUsers.find(u => u.id === c.violatorUserId) : null
-                    const violatorCar = violator?.cars.find(car => car.plateNumber.replace(/\s/g,"").toUpperCase() === (c.detectedPlate ?? "").replace(/\s/g,"").toUpperCase()) ?? violator?.cars[0]
                     const statusMeta: Record<string, { label: string; color: string; bg: string }> = {
                       PENDING:    { label: "⏳ Ожидает",    color: "#fb923c", bg: "rgba(251,146,60,0.15)" },
                       REASSIGNED: { label: "🔄 Переназначен", color: "#34d399", bg: "rgba(52,211,153,0.15)" },
@@ -1071,57 +1073,135 @@ export function AdminDashboard() {
                             )}
                           </div>
 
-                          {/* Violator block */}
-                          {c.detectedPlate ? (
-                            <div className="rounded-xl p-3 space-y-2" style={{ background: violator ? "rgba(239,68,68,0.08)" : "rgba(251,191,36,0.08)", border: `1px solid ${violator ? "rgba(239,68,68,0.25)" : "rgba(251,191,36,0.25)"}` }}>
-                              <p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: violator ? "#f87171" : "#fbbf24" }}>
-                                {violator ? "🎯 Нарушитель найден в системе" : "📝 Номер нарушителя"}
-                              </p>
-                              <div className="flex items-center justify-between gap-3">
-                                <div>
-                                  <p className="text-white font-black text-xl font-mono tracking-widest">{c.detectedPlate}</p>
-                                  {violator ? (
-                                    <div className="mt-1 space-y-0.5">
-                                      <p className="text-white/80 text-xs font-semibold">{violator.firstName ?? "—"}</p>
-                                      <p className="text-white/50 text-xs">{violator.phoneNumber}</p>
-                                      {violatorCar && <p className="text-white/40 text-xs">{violatorCar.brand} {violatorCar.model}</p>}
-                                      <p className="text-white/40 text-xs">Баланс: <span className={violator.walletBalance >= 900 ? "text-green-400" : "text-red-400"}>{violator.walletBalance.toLocaleString()} ₸</span></p>
-                                    </div>
-                                  ) : (
-                                    <p className="text-white/40 text-xs mt-1">Не зарегистрирован в QPark</p>
+                          {/* Violator search block */}
+                          {(() => {
+                            const initPlate = c.detectedPlate ?? ""
+                            const inputVal = plateInputs[c.id] ?? initPlate
+                            const found = violatorLookup[c.id]
+                            const isLoading = found === "loading"
+                            const info = (found && found !== "loading") ? found as ViolatorInfo : null
+                            const notFound = found === null
+
+                            const lookupPlate = async (plate: string) => {
+                              if (!plate.trim()) return
+                              setViolatorLookup(prev => ({ ...prev, [c.id]: "loading" }))
+                              const token = localStorage.getItem("admin_token") || localStorage.getItem("qpark_token")
+                              const res = await fetch(`${RAILWAY}/admin/users/find-by-plate?plate=${encodeURIComponent(plate)}`, { headers: { Authorization: `Bearer ${token}` } })
+                              const data = res.ok ? await res.json() : null
+                              setViolatorLookup(prev => ({ ...prev, [c.id]: data }))
+                              if (data) setComplaints(prev => prev.map(x => x.id === c.id ? { ...x, detectedPlate: plate, violatorUserId: data.id } : x))
+                            }
+
+                            const issueFine = async (userId: string, name: string) => {
+                              if (!confirm(`Выписать штраф 900₸ пользователю ${name}?`)) return
+                              const token = localStorage.getItem("admin_token") || localStorage.getItem("qpark_token")
+                              const res = await fetch(`${RAILWAY}/admin/complaints/${c.id}/fine`, {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+                                body: JSON.stringify({ violatorUserId: userId, amount: 900 }),
+                              })
+                              if (res.ok) setComplaints(prev => prev.map(x => x.id === c.id ? { ...x, status: "RESOLVED" } : x))
+                              else alert("❌ Ошибка")
+                            }
+
+                            return (
+                              <div className="rounded-xl overflow-hidden border border-white/10" style={{ background: "rgba(255,255,255,0.03)" }}>
+                                {/* Plate search */}
+                                <div className="px-3 py-2.5 border-b border-white/8">
+                                  <p className="text-[10px] text-white/40 uppercase tracking-wider mb-1.5">Номер нарушителя</p>
+                                  <div className="flex gap-2">
+                                    <input
+                                      value={inputVal}
+                                      onChange={e => setPlateInputs(prev => ({ ...prev, [c.id]: e.target.value.toUpperCase() }))}
+                                      onKeyDown={e => e.key === "Enter" && lookupPlate(inputVal)}
+                                      placeholder="Введите номер авто..."
+                                      className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white font-mono text-sm tracking-wider focus:outline-none focus:border-white/30 placeholder-white/20"
+                                    />
+                                    <button
+                                      onClick={() => lookupPlate(inputVal)}
+                                      disabled={isLoading}
+                                      className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white transition-all hover:opacity-80 disabled:opacity-40"
+                                      style={{ background: "#354469" }}
+                                    >
+                                      {isLoading ? "⏳" : "🔍 Найти"}
+                                    </button>
+                                  </div>
+                                  {c.detectedPlate && initPlate === inputVal && (
+                                    <p className="text-[10px] text-yellow-400/70 mt-1">📷 OCR распознал: {c.detectedPlate}</p>
                                   )}
                                 </div>
-                                {violator && c.status === "PENDING" && (
-                                  <button
-                                    onClick={async () => {
-                                      if (!confirm(`Выписать штраф 900₸ пользователю ${violator.firstName ?? violator.phoneNumber}?`)) return
-                                      const token = localStorage.getItem("admin_token") || localStorage.getItem("qpark_token")
-                                      const res = await fetch(`${RAILWAY}/admin/complaints/${c.id}/fine`, {
-                                        method: "POST",
-                                        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-                                        body: JSON.stringify({ violatorUserId: c.violatorUserId, amount: 900 }),
-                                      })
-                                      if (res.ok) {
-                                        setComplaints(prev => prev.map(x => x.id === c.id ? { ...x, status: "RESOLVED" } : x))
-                                      } else {
-                                        alert("❌ Ошибка при выписке штрафа")
-                                      }
-                                    }}
-                                    className="flex flex-col items-center gap-1 px-4 py-3 rounded-xl font-bold text-white transition-all hover:scale-105 active:scale-95 shrink-0"
-                                    style={{ background: "linear-gradient(135deg, #dc2626, #991b1b)" }}
-                                  >
-                                    <span className="text-lg">⚡</span>
-                                    <span className="text-xs">Штраф</span>
-                                    <span className="text-sm font-black">900 ₸</span>
-                                  </button>
+
+                                {/* Result */}
+                                {info && (
+                                  <div className="p-3 space-y-2">
+                                    <div className="flex items-start justify-between gap-3">
+                                      <div className="flex items-center gap-2">
+                                        <div className="w-9 h-9 rounded-full flex items-center justify-center font-bold text-white text-sm shrink-0" style={{ background: "linear-gradient(135deg,#dc2626,#7f1d1d)" }}>
+                                          {(info.firstName ?? info.phoneNumber).charAt(0).toUpperCase()}
+                                        </div>
+                                        <div>
+                                          <p className="text-white font-semibold text-sm">{info.firstName ?? "—"} {info.lastName ?? ""}</p>
+                                          <p className="text-white/50 text-xs">{info.phoneNumber}</p>
+                                          <p className="text-white/40 text-xs">{info.car.brand} {info.car.model} · <span className="font-mono">{info.car.plateNumber}</span></p>
+                                        </div>
+                                      </div>
+                                      <div className="text-right shrink-0">
+                                        <p className="text-[10px] text-white/30">Баланс</p>
+                                        <p className={`font-bold text-sm ${info.walletBalance >= 900 ? "text-green-400" : "text-red-400"}`}>{info.walletBalance.toLocaleString()} ₸</p>
+                                        {info.walletBalance < 900 && <p className="text-[10px] text-red-400/70">Не хватает</p>}
+                                      </div>
+                                    </div>
+
+                                    {/* Stats row */}
+                                    <div className="grid grid-cols-3 gap-1.5">
+                                      {[
+                                        { label: "Броней", val: info.bookings.length },
+                                        { label: "Штрафов", val: info.fines.length },
+                                        { label: "Штрафы оплачены", val: `${info.fines.filter(f => f.isPaid).length}/${info.fines.length}` },
+                                      ].map(s => (
+                                        <div key={s.label} className="rounded-lg px-2 py-1.5 text-center" style={{ background: "rgba(255,255,255,0.05)" }}>
+                                          <p className="text-white font-bold text-sm">{s.val}</p>
+                                          <p className="text-white/30 text-[9px]">{s.label}</p>
+                                        </div>
+                                      ))}
+                                    </div>
+
+                                    {/* History toggle */}
+                                    <button onClick={() => setShowHistory(prev => ({ ...prev, [c.id]: !prev[c.id] }))}
+                                      className="text-[10px] text-white/40 hover:text-white/60 transition-colors w-full text-left">
+                                      {showHistory[c.id] ? "▲ Скрыть историю" : "▼ Показать историю бронирований"}
+                                    </button>
+                                    {showHistory[c.id] && (
+                                      <div className="space-y-1 max-h-32 overflow-y-auto">
+                                        {info.bookings.map(b => (
+                                          <div key={b.id} className="flex items-center justify-between px-2 py-1 rounded-lg text-xs" style={{ background: "rgba(255,255,255,0.04)" }}>
+                                            <span className="text-white/60">{b.spotNumber} · {new Date(b.startTime).toLocaleDateString("ru-RU")}</span>
+                                            <span className={`px-1.5 py-0.5 rounded text-[9px] font-medium ${b.status === "COMPLETED" ? "bg-green-500/20 text-green-400" : b.status === "CANCELLED" ? "bg-gray-500/20 text-gray-400" : "bg-blue-500/20 text-blue-400"}`}>{b.status}</span>
+                                            <span className="text-white/40">{b.totalCost} ₸</span>
+                                          </div>
+                                        ))}
+                                        {info.bookings.length === 0 && <p className="text-white/20 text-xs text-center py-2">Нет броней</p>}
+                                      </div>
+                                    )}
+
+                                    {/* Fine button */}
+                                    {c.status === "PENDING" && (
+                                      <button
+                                        onClick={() => issueFine(info.id, info.firstName ?? info.phoneNumber)}
+                                        className="w-full py-3 rounded-xl font-bold text-white text-sm transition-all hover:opacity-90 active:scale-98"
+                                        style={{ background: "linear-gradient(135deg, #dc2626 0%, #991b1b 100%)" }}
+                                      >
+                                        ⚡ Выписать штраф 900 ₸ — {info.firstName ?? info.phoneNumber}
+                                      </button>
+                                    )}
+                                  </div>
+                                )}
+                                {notFound && (
+                                  <div className="px-3 py-2.5 text-xs text-white/30">⚠️ Пользователь с таким номером не найден в системе</div>
                                 )}
                               </div>
-                            </div>
-                          ) : (
-                            <div className="rounded-xl px-3 py-2 text-xs text-white/30 border border-white/8" style={{ background: "rgba(255,255,255,0.03)" }}>
-                              📷 Фото ещё не загружено или OCR не распознал номер
-                            </div>
-                          )}
+                            )
+                          })()}
 
                           {/* Action buttons */}
                           {c.status === "PENDING" && (
