@@ -48,7 +48,8 @@ router.get('/spots', async (req: Request, res: Response) => {
             spotNumber: spot.spotNumber,
             icon: statusIcons[spot.status as keyof typeof statusIcons] || '⚪',
             status: spot.status,
-            carPlate: spot.currentUserPlate || '-',
+            carPlate: spot.currentUserPlate || null,
+            currentUserId: spot.currentUserId || null,
             type: type
           });
         }
@@ -264,10 +265,10 @@ router.post('/lpr/exit-lpr', async (req: Request, res: Response) => {
     if (spot.type === 'SHORT_TERM') {
 
 
+      // Look for any active booking (paid or reassigned — isPaid may be false for reassigned spots)
       const paidBooking = await prisma.booking.findFirst({
         where: {
           spotId: spot.id,
-          isPaid: true,
           status: { in: ['COMPLETED', 'CONFIRMED', 'PENDING'] },
         },
         orderBy: { createdAt: 'desc' },
@@ -278,10 +279,15 @@ router.post('/lpr/exit-lpr', async (req: Request, res: Response) => {
           ? normalizePlate(paidBooking.plateNumber) === normalizePlate(carPlate)
           : true;
 
-        if (!plateOk) {
-          io.emit('lpr-gate-denied', { carPlate, spotNumber, reason: 'Номер не совпадает с оплаченной бронью' });
+        // Also allow if the spot's currentUserPlate matches (handles reassigned spots)
+        const spotPlateOk = spot.currentUserPlate
+          ? normalizePlate(spot.currentUserPlate) === normalizePlate(carPlate)
+          : false;
+
+        if (!plateOk && !spotPlateOk) {
+          io.emit('lpr-gate-denied', { carPlate, spotNumber, reason: 'Номер не совпадает с бронью' });
           logger.warn(`⛔ LPR exit denied (plate mismatch): ${carPlate} vs ${paidBooking.plateNumber} at ${spotNumber}`);
-          return res.json({ success: false, message: 'Plate does not match paid booking' });
+          return res.json({ success: false, message: 'Plate does not match booking' });
         }
 
         if (paidBooking.status !== 'COMPLETED') {

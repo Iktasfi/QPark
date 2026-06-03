@@ -13,7 +13,8 @@ interface ParkingSpot {
   spotNumber: string
   icon: string
   status: string
-  carPlate: string
+  carPlate: string | null
+  currentUserId: string | null
   type: string
 }
 
@@ -335,7 +336,7 @@ export function AdminDashboard() {
 
     const openModal = () => {
       if (!isActive) return
-      const booking = dbBookings.find(b => b.spotNumber === spot.spotNumber && (b.status === "PENDING" || b.status === "CONFIRMED"))
+      const booking = dbBookings.find(b => b.spotNumber === spot.spotNumber && (b.status === "PENDING" || b.status === "CONFIRMED" || b.status === "ACTIVE"))
       const rental = dbRentals.find(r => r.spotNumber === spot.spotNumber && r.status === "ACTIVE")
       setSpotModal({ spot, booking, rental })
     }
@@ -402,12 +403,14 @@ export function AdminDashboard() {
   const SpotModal = () => {
     if (!spotModal) return null
     const { spot, booking, rental } = spotModal
+    // Look up user: try by booking/rental plate, then by currentUserId directly
     const user = booking
-      ? dbUsers.find(u => u.cars.some(c => c.plateNumber === booking.plateNumber))
+      ? (dbUsers.find(u => u.cars.some(c => c.plateNumber === booking.plateNumber)) ?? dbUsers.find(u => u.id === spot.currentUserId))
       : rental
-        ? dbUsers.find(u => u.cars.some(c => c.plateNumber === rental.plateNumber))
-        : undefined
-    const car = user?.cars.find(c => c.plateNumber === (booking?.plateNumber ?? rental?.plateNumber))
+        ? (dbUsers.find(u => u.cars.some(c => c.plateNumber === rental.plateNumber)) ?? dbUsers.find(u => u.id === spot.currentUserId))
+        : dbUsers.find(u => u.id === spot.currentUserId)
+    const plate = booking?.plateNumber || rental?.plateNumber || spot.carPlate || user?.cars[0]?.plateNumber
+    const car = user?.cars.find(c => c.plateNumber === plate) ?? user?.cars[0]
     const isLong = !!rental
     const startTime = booking?.startTime ? new Date(booking.startTime) : null
     const endDate = rental?.endDate ? new Date(rental.endDate) : null
@@ -438,7 +441,7 @@ export function AdminDashboard() {
             {/* Car plate */}
             <div className="rounded-xl px-4 py-3" style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)" }}>
               <p className="text-white/40 text-[10px] uppercase tracking-wider mb-0.5">Номер машины</p>
-              <p className="text-white font-mono font-bold text-lg tracking-widest">{booking?.plateNumber ?? rental?.plateNumber ?? spot.carPlate ?? "—"}</p>
+              <p className="text-white font-mono font-bold text-lg tracking-widest">{plate || "—"}</p>
               {car && <p className="text-white/50 text-xs mt-0.5">{car.brand} {car.model}</p>}
             </div>
 
