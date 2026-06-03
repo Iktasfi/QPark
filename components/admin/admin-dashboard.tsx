@@ -62,7 +62,7 @@ const liveEventMeta: Record<string, { label: string; color: string; emoji: strin
   "payment-completed": { label: "Оплата прошла",        color: "#22c55e", emoji: "💳" },
 }
 
-interface DbUser { id: string; phoneNumber: string; firstName: string | null; lastName: string | null; walletBalance: number; cars: { plateNumber: string; brand: string; model: string }[] }
+interface DbUser { id: string; phoneNumber: string; firstName: string | null; lastName: string | null; walletBalance: number; cars: { id: string; plateNumber: string; brand: string; model: string }[] }
 interface DbBooking { id: string; spotNumber: string; plateNumber: string; userName: string; status: string; startTime: string; totalCost: number }
 interface DbRental { id: string; spotNumber: string; plateNumber: string; userName: string; rentalDays: number; totalCost: number; status: string; endDate: string }
 interface DbTransaction { id: string; amount: number; type: string; description: string | null; balanceBefore: number; balanceAfter: number; stripePaymentIntentId: string | null; createdAt: string; user: { phoneNumber: string; firstName: string | null; lastName: string | null } }
@@ -1011,109 +1011,164 @@ export function AdminDashboard() {
 
         {activeTab === "complaints" && (
           <div className="space-y-4">
+            {/* Stats row */}
+            <div className="grid grid-cols-3 gap-3">
+              {[
+                { label: "Всего жалоб", value: complaints.length, color: "#60a5fa", bg: "rgba(96,165,250,0.1)" },
+                { label: "Ожидают решения", value: complaints.filter(c => c.status === "PENDING").length, color: "#fb923c", bg: "rgba(251,146,60,0.1)" },
+                { label: "Решено", value: complaints.filter(c => c.status !== "PENDING").length, color: "#4ade80", bg: "rgba(74,222,128,0.1)" },
+              ].map(s => (
+                <div key={s.label} className="rounded-2xl p-4 border border-white/10" style={{ background: s.bg }}>
+                  <p className="text-3xl font-black" style={{ color: s.color }}>{s.value}</p>
+                  <p className="text-white/50 text-xs mt-1">{s.label}</p>
+                </div>
+              ))}
+            </div>
+
             <div className={CARD} style={CARD_BG}>
-              <p className="text-white/70 text-sm font-semibold mb-4">Жалобы пользователей ({complaints.length})</p>
+              <p className="text-white/70 text-sm font-semibold mb-4">Жалобы пользователей</p>
               {complaints.length === 0 ? (
-                <p className="text-white/50 text-sm text-center py-8">Жалоб нет</p>
+                <div className="flex flex-col items-center py-12 text-center">
+                  <p className="text-4xl mb-3">✅</p>
+                  <p className="text-white/50 text-sm">Жалоб нет — всё спокойно</p>
+                </div>
               ) : (
-                <div className="space-y-3">
-                  {complaints.map(c => (
-                    <div key={c.id} className="rounded-xl p-4 space-y-3" style={{ background: "rgba(255,255,255,0.05)" }}>
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${c.status === "PENDING" ? "bg-orange-500/20 text-orange-300" : c.status === "REASSIGNED" ? "bg-green-500/20 text-green-300" : c.status === "REFUNDED" ? "bg-blue-500/20 text-blue-300" : "bg-gray-500/20 text-gray-300"}`}>
-                              {c.status}
-                            </span>
-                            <span className="text-white/60 text-xs">Место: <span className="text-white font-bold">{c.spotId}</span></span>
-                            <span className="text-white/40 text-xs">{new Date(c.createdAt).toLocaleString("ru-RU", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
+                <div className="space-y-4">
+                  {complaints.map(c => {
+                    const violator = c.violatorUserId ? dbUsers.find(u => u.id === c.violatorUserId) : null
+                    const violatorCar = violator?.cars.find(car => car.plateNumber.replace(/\s/g,"").toUpperCase() === (c.detectedPlate ?? "").replace(/\s/g,"").toUpperCase()) ?? violator?.cars[0]
+                    const statusMeta: Record<string, { label: string; color: string; bg: string }> = {
+                      PENDING:    { label: "⏳ Ожидает",    color: "#fb923c", bg: "rgba(251,146,60,0.15)" },
+                      REASSIGNED: { label: "🔄 Переназначен", color: "#34d399", bg: "rgba(52,211,153,0.15)" },
+                      REFUNDED:   { label: "💸 Возврат",    color: "#60a5fa", bg: "rgba(96,165,250,0.15)" },
+                      RESOLVED:   { label: "✅ Решено",     color: "#a3a3a3", bg: "rgba(163,163,163,0.1)" },
+                    }
+                    const meta = statusMeta[c.status] ?? statusMeta.RESOLVED
+                    return (
+                      <div key={c.id} className="rounded-2xl overflow-hidden border border-white/10" style={{ background: "rgba(255,255,255,0.04)" }}>
+                        {/* Card header */}
+                        <div className="flex items-center justify-between px-4 py-3 border-b border-white/8" style={{ background: "rgba(255,255,255,0.03)" }}>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-bold px-2.5 py-1 rounded-full" style={{ background: meta.bg, color: meta.color }}>{meta.label}</span>
+                            <span className="text-white font-bold text-sm">Место {c.spotId}</span>
                           </div>
-                          <p className="text-white/50 text-xs">{c.user.firstName ?? c.user.phoneNumber}</p>
-                          <p className="text-white/80 text-sm mt-1">{c.reason}</p>
+                          <span className="text-white/30 text-xs">{new Date(c.createdAt).toLocaleString("ru-RU", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
                         </div>
-                        {c.photoUrl && (
-                          <img src={c.photoUrl} alt="complaint" className="w-20 h-20 rounded-lg object-cover shrink-0" />
-                        )}
-                      </div>
-                      {/* Detected / manual plate block */}
-                      {c.detectedPlate && (
-                        <div className="rounded-xl px-4 py-3 flex items-center justify-between" style={{ background: "rgba(251,191,36,0.1)", border: "1px solid rgba(251,191,36,0.3)" }}>
-                          <div>
-                            <p className="text-yellow-300 text-xs font-semibold mb-0.5">{c.violatorUserId ? "🔍 Номер нарушителя" : "📝 Номер (введён вручную)"}</p>
-                            <p className="text-white font-bold text-lg tracking-widest">{c.detectedPlate}</p>
-                            <p className="text-white/50 text-xs">{c.violatorUserId ? "✅ Пользователь найден в системе" : "⚠️ Пользователь не зарегистрирован в QPark"}</p>
+
+                        <div className="p-4 space-y-3">
+                          {/* Complainant */}
+                          <div className="flex items-start gap-3">
+                            <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0" style={{ background: "#354469" }}>
+                              {(c.user.firstName ?? c.user.phoneNumber).charAt(0).toUpperCase()}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-white/40 text-[10px] uppercase tracking-wider">Подал жалобу</p>
+                              <p className="text-white text-sm font-medium">{c.user.firstName ?? c.user.phoneNumber}</p>
+                              <p className="text-white/60 text-xs mt-0.5 leading-relaxed">"{c.reason}"</p>
+                            </div>
+                            {c.photoUrl && (
+                              <img src={c.photoUrl} alt="фото" className="w-16 h-16 rounded-xl object-cover shrink-0 border border-white/10" />
+                            )}
                           </div>
-                          {c.violatorUserId && c.status === "PENDING" && (
-                            <button
-                              onClick={async () => {
-                                const token = localStorage.getItem("admin_token") || localStorage.getItem("qpark_token")
-                                const res = await fetch(`${RAILWAY}/admin/complaints/${c.id}/fine`, {
-                                  method: "POST",
-                                  headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-                                  body: JSON.stringify({ violatorUserId: c.violatorUserId, amount: 700 }),
-                                })
-                                if (res.ok) {
-                                  setComplaints(prev => prev.map(x => x.id === c.id ? { ...x, status: "RESOLVED" } : x))
-                                  alert(`✅ Штраф 700₸ списан с нарушителя`)
-                                } else {
-                                  alert("❌ Ошибка при выписке штрафа")
-                                }
-                              }}
-                              className="px-4 py-3 rounded-xl text-sm font-bold text-white transition-all hover:opacity-80 shrink-0"
-                              style={{ background: "rgba(220,38,38,0.7)" }}
-                            >
-                              ⚡ Штраф 700₸
-                            </button>
+
+                          {/* Violator block */}
+                          {c.detectedPlate ? (
+                            <div className="rounded-xl p-3 space-y-2" style={{ background: violator ? "rgba(239,68,68,0.08)" : "rgba(251,191,36,0.08)", border: `1px solid ${violator ? "rgba(239,68,68,0.25)" : "rgba(251,191,36,0.25)"}` }}>
+                              <p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: violator ? "#f87171" : "#fbbf24" }}>
+                                {violator ? "🎯 Нарушитель найден в системе" : "📝 Номер нарушителя"}
+                              </p>
+                              <div className="flex items-center justify-between gap-3">
+                                <div>
+                                  <p className="text-white font-black text-xl font-mono tracking-widest">{c.detectedPlate}</p>
+                                  {violator ? (
+                                    <div className="mt-1 space-y-0.5">
+                                      <p className="text-white/80 text-xs font-semibold">{violator.firstName ?? "—"}</p>
+                                      <p className="text-white/50 text-xs">{violator.phoneNumber}</p>
+                                      {violatorCar && <p className="text-white/40 text-xs">{violatorCar.brand} {violatorCar.model}</p>}
+                                      <p className="text-white/40 text-xs">Баланс: <span className={violator.walletBalance >= 900 ? "text-green-400" : "text-red-400"}>{violator.walletBalance.toLocaleString()} ₸</span></p>
+                                    </div>
+                                  ) : (
+                                    <p className="text-white/40 text-xs mt-1">Не зарегистрирован в QPark</p>
+                                  )}
+                                </div>
+                                {violator && c.status === "PENDING" && (
+                                  <button
+                                    onClick={async () => {
+                                      if (!confirm(`Выписать штраф 900₸ пользователю ${violator.firstName ?? violator.phoneNumber}?`)) return
+                                      const token = localStorage.getItem("admin_token") || localStorage.getItem("qpark_token")
+                                      const res = await fetch(`${RAILWAY}/admin/complaints/${c.id}/fine`, {
+                                        method: "POST",
+                                        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+                                        body: JSON.stringify({ violatorUserId: c.violatorUserId, amount: 900 }),
+                                      })
+                                      if (res.ok) {
+                                        setComplaints(prev => prev.map(x => x.id === c.id ? { ...x, status: "RESOLVED" } : x))
+                                      } else {
+                                        alert("❌ Ошибка при выписке штрафа")
+                                      }
+                                    }}
+                                    className="flex flex-col items-center gap-1 px-4 py-3 rounded-xl font-bold text-white transition-all hover:scale-105 active:scale-95 shrink-0"
+                                    style={{ background: "linear-gradient(135deg, #dc2626, #991b1b)" }}
+                                  >
+                                    <span className="text-lg">⚡</span>
+                                    <span className="text-xs">Штраф</span>
+                                    <span className="text-sm font-black">900 ₸</span>
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="rounded-xl px-3 py-2 text-xs text-white/30 border border-white/8" style={{ background: "rgba(255,255,255,0.03)" }}>
+                              📷 Фото ещё не загружено или OCR не распознал номер
+                            </div>
+                          )}
+
+                          {/* Action buttons */}
+                          {c.status === "PENDING" && (
+                            <div className="flex gap-2 pt-1">
+                              <button
+                                onClick={async () => {
+                                  const token = localStorage.getItem("admin_token") || localStorage.getItem("qpark_token")
+                                  const res = await fetch(`${RAILWAY}/admin/complaints/${c.id}/reassign`, {
+                                    method: "POST",
+                                    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+                                  })
+                                  const data = await res.json()
+                                  if (data.action === "reassigned") {
+                                    setComplaints(prev => prev.map(x => x.id === c.id ? { ...x, status: "REASSIGNED" } : x))
+                                    alert(`✅ Пользователь перенесён на ${data.newSpotId}`)
+                                  } else if (data.action === "refunded") {
+                                    setComplaints(prev => prev.map(x => x.id === c.id ? { ...x, status: "REFUNDED" } : x))
+                                    alert(`💸 Нет свободных мест. Возврат ${data.refundAmount}₸`)
+                                  }
+                                }}
+                                className="flex-1 py-2.5 rounded-xl text-xs font-semibold text-white transition-all hover:opacity-80"
+                                style={{ background: "#354469" }}
+                              >
+                                🔄 Найти новое место
+                              </button>
+                              {!c.violatorUserId && (
+                                <button
+                                  onClick={async () => {
+                                    const token = localStorage.getItem("admin_token") || localStorage.getItem("qpark_token")
+                                    const res = await fetch(`${RAILWAY}/admin/complaints/${c.id}/fine`, {
+                                      method: "POST",
+                                      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+                                      body: JSON.stringify({ amount: 900 }),
+                                    })
+                                    if (res.ok) setComplaints(prev => prev.map(x => x.id === c.id ? { ...x, status: "RESOLVED" } : x))
+                                  }}
+                                  className="px-4 py-2.5 rounded-xl text-xs font-semibold text-white/60 border border-white/10 hover:bg-white/5 transition-all"
+                                >
+                                  ✓ Закрыть
+                                </button>
+                              )}
+                            </div>
                           )}
                         </div>
-                      )}
-
-                      {c.status === "PENDING" && (
-                        <div className="flex gap-2">
-                          <button
-                            onClick={async () => {
-                              const token = localStorage.getItem("admin_token") || localStorage.getItem("qpark_token")
-                              const res = await fetch(`${RAILWAY}/admin/complaints/${c.id}/reassign`, {
-                                method: "POST",
-                                headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-                              })
-                              const data = await res.json()
-                              if (data.action === "reassigned") {
-                                setComplaints(prev => prev.map(x => x.id === c.id ? { ...x, status: "REASSIGNED" } : x))
-                                alert(`✅ Пользователь перенесён на ${data.newSpotId}`)
-                              } else if (data.action === "refunded") {
-                                setComplaints(prev => prev.map(x => x.id === c.id ? { ...x, status: "REFUNDED" } : x))
-                                alert(`💸 Нет свободных мест. Возврат ${data.refundAmount}₸`)
-                              }
-                            }}
-                            className="flex-1 py-2 rounded-xl text-sm font-semibold text-white transition-all hover:opacity-80"
-                            style={{ background: "#354469" }}
-                          >
-                            🔄 Найти новое место
-                          </button>
-                          <button
-                            onClick={async () => {
-                              const token = localStorage.getItem("admin_token") || localStorage.getItem("qpark_token")
-                              const res = await fetch(`${RAILWAY}/admin/complaints/${c.id}/fine`, {
-                                method: "POST",
-                                headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-                                body: JSON.stringify({ violatorUserId: c.violatorUserId ?? undefined, amount: 700 }),
-                              })
-                              if (res.ok) {
-                                setComplaints(prev => prev.map(x => x.id === c.id ? { ...x, status: "RESOLVED" } : x))
-                                alert(c.violatorUserId ? "✅ Штраф 700₸ списан с нарушителя" : "✅ Жалоба закрыта (нарушитель не в системе)")
-                              } else {
-                                alert("❌ Ошибка")
-                              }
-                            }}
-                            className="px-4 py-2 rounded-xl text-sm font-semibold text-white bg-red-600/70 hover:bg-red-600 transition-all"
-                          >
-                            {c.violatorUserId ? "⚡ Штраф 700₸" : "✓ Закрыть"}
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  ))}
+                      </div>
+                    )
+                  })}
                 </div>
               )}
             </div>
