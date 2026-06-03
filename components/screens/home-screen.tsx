@@ -7,8 +7,11 @@ import Image from "next/image"
 export function HomeScreen() {
   const { setCurrentScreen, user, setUser, activeBooking, t, spots } = useParking()
 
-  const freeShortTerm = spots.filter(s => s.type === "short-term" && s.status === "FREE").length
-  const freeLongTerm = spots.filter(s => s.type === "long-term" && s.status === "FREE").length
+  const freeSpots = spots.filter(s => s.status === "FREE").length
+  const bookedSpots = spots.filter(s => s.status === "BOOKED" || s.status === "OCCUPIED" || s.status === "RESERVED").length
+  // Legacy — kept for t.shortTerm / t.longTerm labels below
+  const freeShortTerm = freeSpots
+  const freeLongTerm = bookedSpots
   const [activeTab, setActiveTab] = useState("home")
 
   useEffect(() => {
@@ -81,17 +84,17 @@ export function HomeScreen() {
         <div className="mb-8">
           <div className="grid grid-cols-2 gap-6">
             <button onClick={() => setCurrentScreen("map")} className="bg-[#F0EDED] dark:bg-gray-800 rounded-[20px] p-5 text-left hover:bg-[#E5DCDC] dark:hover:bg-gray-700 transition-colors" style={{boxShadow: '0 10px 20px rgba(0,0,0,0.08)'}}>
-              <h4 className="text-[#333333] dark:text-white font-extrabold text-sm leading-tight mb-3">{t.shortTerm}</h4>
-              <p className="text-gray-600 dark:text-gray-400 text-sm mb-4">{freeShortTerm} {t.spotsAvailable}</p>
+              <h4 className="text-[#333333] dark:text-white font-extrabold text-sm leading-tight mb-3">{t.spotsAvailable}</h4>
+              <p className="text-gray-600 dark:text-gray-400 text-sm mb-4">{freeSpots} мест свободно</p>
               <div className="flex gap-2">
                 {[1,2,3].map(i => <div key={i} className="w-3 h-3 bg-green-500 rounded-full" />)}
               </div>
             </button>
             <button onClick={() => setCurrentScreen("map")} className="bg-[#F0EDED] dark:bg-gray-800 rounded-[20px] p-5 text-left hover:bg-[#E5DCDC] dark:hover:bg-gray-700 transition-colors" style={{boxShadow: '0 10px 20px rgba(0,0,0,0.08)'}}>
-              <h4 className="text-[#333333] dark:text-white font-extrabold text-sm leading-tight mb-3">{t.longTerm}</h4>
-              <p className="text-gray-600 dark:text-gray-400 text-sm mb-4">{freeLongTerm} {t.spotsAvailable}</p>
+              <h4 className="text-[#333333] dark:text-white font-extrabold text-sm leading-tight mb-3">Занято</h4>
+              <p className="text-gray-600 dark:text-gray-400 text-sm mb-4">{bookedSpots} мест занято</p>
               <div className="flex gap-2">
-                {[1,2].map(i => <div key={i} className="w-3 h-3 bg-green-500 rounded-full" />)}
+                {[1,2].map(i => <div key={i} className="w-3 h-3 bg-orange-400 rounded-full" />)}
               </div>
             </button>
           </div>
