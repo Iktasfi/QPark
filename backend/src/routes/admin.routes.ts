@@ -109,9 +109,14 @@ router.get('/users/find-by-plate', async (req: Request, res: Response) => {
     const { plate } = req.query as { plate: string };
     if (!plate) return res.status(400).json({ error: 'plate is required' });
 
-    const norm = plate.replace(/\s/g, '').toUpperCase();
+    // Search with both original and no-spaces version to handle "444 YSH 01" vs "444YSH01"
     const car = await prisma.car.findFirst({
-      where: { plateNumber: { contains: norm, mode: 'insensitive' } },
+      where: {
+        OR: [
+          { plateNumber: { contains: plate.trim(), mode: 'insensitive' } },
+          { plateNumber: { contains: plate.replace(/\s/g, ''), mode: 'insensitive' } },
+        ],
+      },
       include: {
         user: {
           include: {
