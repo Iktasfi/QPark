@@ -60,16 +60,16 @@ router.get('/spots', async (req: Request, res: Response) => {
     };
 
     const allSorted = spots.slice().sort((a, b) => a.spotNumber.localeCompare(b.spotNumber));
-    const universalTable = createTable(allSorted, 'UNIVERSAL');
 
-    const stats = {
-      total: spots.length,
-      free: spots.filter(s => s.status === 'FREE').length,
-      booked: spots.filter(s => s.status === 'BOOKED').length,
-      occupied: spots.filter(s => s.status === 'OCCUPIED').length,
-      reserved: spots.filter(s => s.status === 'RESERVED').length,
-      repair: spots.filter(s => s.status === 'REPAIR').length,
-    };
+    // All spots are UNIVERSAL — keep backward-compatible structure for admin dashboard
+    // by putting all spots into shortTerm and leaving longTerm empty
+    const allTable = createTable(allSorted, 'UNIVERSAL');
+    const emptyTable: ReturnType<typeof createTable> = [];
+
+    const freeCount     = spots.filter(s => s.status === 'FREE').length;
+    const bookedCount   = spots.filter(s => s.status === 'BOOKED').length;
+    const occupiedCount = spots.filter(s => s.status === 'OCCUPIED').length;
+    const repairCount   = spots.filter(s => s.status === 'REPAIR').length;
 
     const result = {
       title: '🚗 Парковка QPark - Текущий статус',
@@ -81,12 +81,21 @@ router.get('/spots', async (req: Request, res: Response) => {
         'RESERVED': 'Резерв',
         'REPAIR': 'Ремонт'
       },
-      statistics: stats,
+      statistics: {
+        total: spots.length,
+        free: freeCount,
+        booked: bookedCount,
+        occupied: occupiedCount,
+        repair: repairCount,
+        // legacy fields expected by admin dashboard
+        shortTerm: { total: spots.length, free: freeCount, booked: bookedCount, occupied: occupiedCount, repair: repairCount },
+        longTerm:  { total: 0, free: 0, booked: 0, occupied: 0, repair: 0 },
+      },
       tables: {
-        universal: {
-          title: '🅿️ Универсальная парковка (тип брони выбирает водитель)',
-          table: universalTable
-        }
+        // legacy keys expected by admin dashboard
+        shortTerm: { title: '🅿️ Парковка QPark', table: allTable },
+        longTerm:  { title: '', table: emptyTable },
+        universal: { title: '🅿️ Универсальная парковка', table: allTable },
       }
     };
 
