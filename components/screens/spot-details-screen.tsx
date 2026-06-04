@@ -43,6 +43,7 @@ export function SpotDetailsScreen() {
   const [promoApplied, setPromoApplied]         = useState<{ discount: number; code: string } | null>(null)
   const [promoError, setPromoError]             = useState("")
   const [promoLoading, setPromoLoading]         = useState(false)
+  const [useBonusPoints, setUseBonusPoints]     = useState(false)
 
   if (!selectedSpot) {
     return (
@@ -60,7 +61,11 @@ export function SpotDetailsScreen() {
     if (bookingType === "short-term") return calcShortTermPrice(selectedDuration)
     return 150
   }
-  const getPrice = () => Math.max(0, getBasePrice() - (promoApplied?.discount || 0))
+  const afterPromo  = () => Math.max(0, getBasePrice() - (promoApplied?.discount || 0))
+  const bonusDiscount = useBonusPoints
+    ? Math.min(user?.bonusPoints || 0, afterPromo())
+    : 0
+  const getPrice = () => Math.max(0, afterPromo() - bonusDiscount)
 
   const handleApplyPromo = async () => {
     if (!promoCode.trim()) return
@@ -113,6 +118,7 @@ export function SpotDetailsScreen() {
           rentalDays: selectedRentalDays ?? undefined,
           estimatedMinutes: bookingType === 'short-term' ? selectedDuration : undefined,
           promoDiscount: promoApplied?.discount ?? 0,
+          bonusDiscount,
         }),
       })
 
@@ -433,17 +439,23 @@ export function SpotDetailsScreen() {
                 </div>
               )}
               <Separator className="my-2" />
+              {(promoApplied || bonusDiscount > 0) && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Сумма</span>
+                  <span className="text-muted-foreground line-through">{getBasePrice().toLocaleString()} ₸</span>
+                </div>
+              )}
               {promoApplied && (
-                <>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Сумма</span>
-                    <span className="text-muted-foreground line-through">{getBasePrice().toLocaleString()} ₸</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-green-600 font-medium">Промокод {promoApplied.code}</span>
-                    <span className="text-green-600 font-medium">−{promoApplied.discount} ₸</span>
-                  </div>
-                </>
+                <div className="flex justify-between text-sm">
+                  <span className="text-green-600 font-medium">🎟 {promoApplied.code}</span>
+                  <span className="text-green-600 font-medium">−{promoApplied.discount} ₸</span>
+                </div>
+              )}
+              {bonusDiscount > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-yellow-600 font-medium">⭐ Бонусы</span>
+                  <span className="text-yellow-600 font-medium">−{bonusDiscount} ₸</span>
+                </div>
               )}
               <div className="flex justify-between">
                 <span className="font-medium text-foreground">Итого</span>
@@ -452,6 +464,27 @@ export function SpotDetailsScreen() {
             </div>
           </CardContent>
         </Card>
+      )}
+
+      {/* Bonus points toggle */}
+      {bookingType && (user?.bonusPoints || 0) > 0 && (
+        <div className="w-full flex items-center justify-between px-4 py-3 rounded-xl border border-yellow-300/50 dark:border-yellow-700/40 bg-yellow-50/60 dark:bg-yellow-900/10">
+          <div>
+            <p className="text-sm font-semibold text-foreground">⭐ Бонусные баллы</p>
+            <p className="text-xs text-muted-foreground">
+              {user?.bonusPoints} баллов ·{" "}
+              {useBonusPoints
+                ? `сэкономите ${bonusDiscount} ₸`
+                : `доступно ${user?.bonusPoints} ₸`}
+            </p>
+          </div>
+          <button
+            onClick={() => setUseBonusPoints(v => !v)}
+            className={`w-12 h-7 rounded-full transition-colors flex-shrink-0 ${useBonusPoints ? "bg-yellow-500" : "bg-gray-300 dark:bg-gray-600"}`}
+          >
+            <div className={`w-5 h-5 bg-white rounded-full shadow-md transition-transform mx-1 ${useBonusPoints ? "translate-x-5" : "translate-x-0"}`} />
+          </button>
+        </div>
       )}
 
       {/* Promo code */}
