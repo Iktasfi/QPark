@@ -401,9 +401,23 @@ router.post('/complaints/:id/detect-plate', async (req: Request, res: Response) 
 
     if (!plate) return res.json({ plate: null, message: 'Plate not found in photo' });
 
-    // Save detected plate and try to find owner
+    // Reformat plate to standard spaced format: "444YSH01" → "444 YSH 01"
+    const formatPlate = (p: string) => {
+      const noSpaces = p.replace(/\s/g, '');
+      const m = noSpaces.match(/^(\d{3})([A-Z]{2,3})(\d{2})$/i);
+      return m ? `${m[1]} ${m[2].toUpperCase()} ${m[3]}` : p.toUpperCase();
+    };
+    plate = formatPlate(plate);
+    const plateNoSpaces = plate.replace(/\s/g, '');
+
+    // Search by exact formatted plate OR by stripped version
     const car = await prisma.car.findFirst({
-      where: { plateNumber: { contains: plate.replace(/\s+/g, ''), mode: 'insensitive' } },
+      where: {
+        OR: [
+          { plateNumber: { contains: plate, mode: 'insensitive' } },
+          { plateNumber: { contains: plateNoSpaces, mode: 'insensitive' } },
+        ],
+      },
       include: { user: true },
     });
 

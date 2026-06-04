@@ -519,7 +519,7 @@ export function AdminDashboard() {
     { id: "bookings",     label: "Бронирования", count: dbBookings.length + dbRentals.length },
     { id: "transactions", label: "Транзакции",   count: dbTransactions.length },
     { id: "promo",        label: "Промокоды",    count: promoCodes.length },
-    { id: "complaints",   label: "⚠️ Жалобы",    count: complaints.filter(c => c.status === "PENDING").length },
+    { id: "complaints",   label: "⚠️ Жалобы",    count: complaints.filter(c => c.status === "PENDING" || c.status === "OPEN").length },
     { id: "applications", label: "📋 Заявки",    count: applications.filter(a => a.status === "NEW").length },
     { id: "support",      label: "💬 Чат",       count: supportConversations.reduce((s, c) => s + c.unreadCount, 0) },
     { id: "locations",    label: "Локации",      count: mockLocations.length },
@@ -1059,8 +1059,8 @@ export function AdminDashboard() {
             <div className="grid grid-cols-3 gap-3">
               {[
                 { label: "Всего жалоб", value: complaints.length, color: "#60a5fa", bg: "rgba(96,165,250,0.1)" },
-                { label: "Ожидают решения", value: complaints.filter(c => c.status === "PENDING").length, color: "#fb923c", bg: "rgba(251,146,60,0.1)" },
-                { label: "Решено", value: complaints.filter(c => c.status !== "PENDING").length, color: "#4ade80", bg: "rgba(74,222,128,0.1)" },
+                { label: "Ожидают решения", value: complaints.filter(c => c.status === "PENDING" || c.status === "OPEN").length, color: "#fb923c", bg: "rgba(251,146,60,0.1)" },
+                { label: "Решено", value: complaints.filter(c => c.status === "RESOLVED" || c.status === "CLOSED" || c.status === "REASSIGNED" || c.status === "REFUNDED").length, color: "#4ade80", bg: "rgba(74,222,128,0.1)" },
               ].map(s => (
                 <div key={s.label} className="rounded-2xl p-4 border border-white/10" style={{ background: s.bg }}>
                   <p className="text-3xl font-black" style={{ color: s.color }}>{s.value}</p>
@@ -1081,11 +1081,13 @@ export function AdminDashboard() {
                   {complaints.map(c => {
                     const statusMeta: Record<string, { label: string; color: string; bg: string }> = {
                       PENDING:    { label: "⏳ Ожидает",    color: "#fb923c", bg: "rgba(251,146,60,0.15)" },
+                      OPEN:       { label: "⏳ Ожидает",    color: "#fb923c", bg: "rgba(251,146,60,0.15)" },
                       REASSIGNED: { label: "🔄 Переназначен", color: "#34d399", bg: "rgba(52,211,153,0.15)" },
                       REFUNDED:   { label: "💸 Возврат",    color: "#60a5fa", bg: "rgba(96,165,250,0.15)" },
                       RESOLVED:   { label: "✅ Решено",     color: "#a3a3a3", bg: "rgba(163,163,163,0.1)" },
+                      CLOSED:     { label: "✅ Решено",     color: "#a3a3a3", bg: "rgba(163,163,163,0.1)" },
                     }
-                    const meta = statusMeta[c.status] ?? statusMeta.RESOLVED
+                    const meta = statusMeta[c.status] ?? statusMeta.CLOSED
                     return (
                       <div key={c.id} className="rounded-2xl overflow-hidden border border-white/10" style={{ background: "rgba(255,255,255,0.04)" }}>
                         {/* Card header */}
@@ -1140,7 +1142,7 @@ export function AdminDashboard() {
                                 headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
                                 body: JSON.stringify({ violatorUserId: userId, amount: 900 }),
                               })
-                              if (res.ok) setComplaints(prev => prev.map(x => x.id === c.id ? { ...x, status: "RESOLVED" } : x))
+                              if (res.ok) setComplaints(prev => prev.map(x => x.id === c.id ? { ...x, status: "CLOSED" } : x))
                               else alert("❌ Ошибка")
                             }
 
@@ -1257,7 +1259,7 @@ export function AdminDashboard() {
                                     )}
 
                                     {/* Fine button */}
-                                    {c.status === "PENDING" && (
+                                    {(c.status === "PENDING" || c.status === "OPEN") && (
                                       <button
                                         onClick={() => issueFine(info.id, info.firstName ?? info.phoneNumber)}
                                         className="w-full py-3 rounded-xl font-bold text-white text-sm transition-all hover:opacity-90 active:scale-98"
@@ -1276,7 +1278,7 @@ export function AdminDashboard() {
                           })()}
 
                           {/* Action buttons */}
-                          {c.status === "PENDING" && (
+                          {(c.status === "PENDING" || c.status === "OPEN") && (
                             <div className="flex gap-2 pt-1">
                               <button
                                 onClick={async () => {
@@ -1308,7 +1310,7 @@ export function AdminDashboard() {
                                       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
                                       body: JSON.stringify({ amount: 900 }),
                                     })
-                                    if (res.ok) setComplaints(prev => prev.map(x => x.id === c.id ? { ...x, status: "RESOLVED" } : x))
+                                    if (res.ok) setComplaints(prev => prev.map(x => x.id === c.id ? { ...x, status: "CLOSED" } : x))
                                   }}
                                   className="px-4 py-2.5 rounded-xl text-xs font-semibold text-white/60 border border-white/10 hover:bg-white/5 transition-all"
                                 >
