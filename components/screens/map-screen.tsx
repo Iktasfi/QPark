@@ -7,9 +7,16 @@ import { cn } from "@/lib/utils"
 import { Car, Wrench, Clock, Check, AlertCircle, ArrowLeft, Search, MapPin } from "lucide-react"
 
 const locations = [
-  { id: 1, name: "Парковка №1", address: "Улы Дала, 1, Астана",       spots: 30, prefix: "SP" },
-  { id: 2, name: "Парковка №2", address: "Сыганак, 5, Астана",         spots: 25, prefix: "P2" },
-  { id: 3, name: "Парковка №3", address: "Кабанбай батыр, 12, Астана", spots: 20, prefix: "P3" },
+  { id: 1,  name: "Парковка №1",  address: "Улы Дала, 1, Астана",              spots: 30, prefix: "SP"  },
+  { id: 2,  name: "Парковка №2",  address: "Сыганак, 5, Астана",               spots: 25, prefix: "P2"  },
+  { id: 3,  name: "Парковка №3",  address: "Кабанбай батыр, 12, Астана",       spots: 20, prefix: "P3"  },
+  { id: 4,  name: "Парковка №4",  address: "Туран, 24, Астана",                spots: 19, prefix: "P4"  },
+  { id: 5,  name: "Парковка №5",  address: "пр. Республики, 9, Астана",        spots: 22, prefix: "P5"  },
+  { id: 6,  name: "Парковка №6",  address: "Достық, 13, Астана",               spots: 14, prefix: "P6"  },
+  { id: 7,  name: "Парковка №7",  address: "Сарыарқа, 7, Астана",              spots: 17, prefix: "P7"  },
+  { id: 8,  name: "Парковка №8",  address: "Бейбітшілік, 17, Астана",          spots: 16, prefix: "P8"  },
+  { id: 9,  name: "Парковка №9",  address: "Иманов, 21, Астана",               spots: 21, prefix: "P9"  },
+  { id: 10, name: "Парковка №10", address: "Хан Шатыр, пр. Туран, 3, Астана", spots: 18, prefix: "P10" },
 ]
 
 export function MapScreen() {

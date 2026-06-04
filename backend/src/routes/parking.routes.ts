@@ -5,6 +5,7 @@ import { calculateShortTermCost, getLongTermPrice } from '../utils/pricing';
 import { logger } from '../server';
 import jwt from 'jsonwebtoken';
 import { prisma } from '../lib/prisma';
+import { rentalExpiryQueue } from '../jobs/queues';
 
 const router = Router();
 
@@ -58,29 +59,16 @@ router.get('/spots', async (req: Request, res: Response) => {
       return table;
     };
 
-    const shortTermSpots = spots.filter(s => s.type === 'SHORT_TERM').sort((a, b) => a.spotNumber.localeCompare(b.spotNumber));
-    const longTermSpots = spots.filter(s => s.type === 'LONG_TERM').sort((a, b) => a.spotNumber.localeCompare(b.spotNumber));
-
-    const shortTermTable = createTable(shortTermSpots, 'SHORT_TERM');
-    const longTermTable = createTable(longTermSpots, 'LONG_TERM');
-
+    const allSorted = spots.slice().sort((a, b) => a.spotNumber.localeCompare(b.spotNumber));
+    const universalTable = createTable(allSorted, 'UNIVERSAL');
 
     const stats = {
       total: spots.length,
-      shortTerm: {
-        total: shortTermSpots.length,
-        free: shortTermSpots.filter(s => s.status === 'FREE').length,
-        booked: shortTermSpots.filter(s => s.status === 'BOOKED').length,
-        occupied: shortTermSpots.filter(s => s.status === 'OCCUPIED').length,
-        repair: shortTermSpots.filter(s => s.status === 'REPAIR').length
-      },
-      longTerm: {
-        total: longTermSpots.length,
-        free: longTermSpots.filter(s => s.status === 'FREE').length,
-        booked: longTermSpots.filter(s => s.status === 'BOOKED').length,
-        occupied: longTermSpots.filter(s => s.status === 'OCCUPIED').length,
-        repair: longTermSpots.filter(s => s.status === 'REPAIR').length
-      }
+      free: spots.filter(s => s.status === 'FREE').length,
+      booked: spots.filter(s => s.status === 'BOOKED').length,
+      occupied: spots.filter(s => s.status === 'OCCUPIED').length,
+      reserved: spots.filter(s => s.status === 'RESERVED').length,
+      repair: spots.filter(s => s.status === 'REPAIR').length,
     };
 
     const result = {
@@ -95,13 +83,9 @@ router.get('/spots', async (req: Request, res: Response) => {
       },
       statistics: stats,
       tables: {
-        shortTerm: {
-          title: '🅿️ Краткосрочная парковка',
-          table: shortTermTable
-        },
-        longTerm: {
-          title: '🅿️ Долгосрочная парковка',
-          table: longTermTable
+        universal: {
+          title: '🅿️ Универсальная парковка (тип брони выбирает водитель)',
+          table: universalTable
         }
       }
     };
@@ -116,8 +100,7 @@ router.get('/spots', async (req: Request, res: Response) => {
 
 router.get('/spots/available', async (req: Request, res: Response) => {
   try {
-    const { type = 'SHORT_TERM' } = req.query;
-    const spots = await parkingService.getAvailableSpots(type as 'SHORT_TERM' | 'LONG_TERM');
+    const spots = await parkingService.getAvailableSpots();
     res.json(spots);
   } catch (error) {
     logger.error('❌ Error fetching available spots:', error);
@@ -262,77 +245,59 @@ router.post('/lpr/exit-lpr', async (req: Request, res: Response) => {
       return res.json({ success: true, message: 'Gate opened for exit', newStatus: 'RESERVED' });
     }
 
-    if (spot.type === 'SHORT_TERM') {
-
-
-      // Look for any active booking (paid or reassigned — isPaid may be false for reassigned spots)
-      const paidBooking = await prisma.booking.findFirst({
-        where: {
-          spotId: spot.id,
-          status: { in: ['COMPLETED', 'CONFIRMED', 'PENDING'] },
-        },
-        orderBy: { createdAt: 'desc' },
-      });
-
-      if (paidBooking) {
-        const plateOk = paidBooking.plateNumber
-          ? normalizePlate(paidBooking.plateNumber) === normalizePlate(carPlate)
-          : true;
-
-        // Also allow if the spot's currentUserPlate matches (handles reassigned spots)
-        const spotPlateOk = spot.currentUserPlate
-          ? normalizePlate(spot.currentUserPlate) === normalizePlate(carPlate)
-          : false;
-
-        if (!plateOk && !spotPlateOk) {
-          io.emit('lpr-gate-denied', { carPlate, spotNumber, reason: 'Номер не совпадает с бронью' });
-          logger.warn(`⛔ LPR exit denied (plate mismatch): ${carPlate} vs ${paidBooking.plateNumber} at ${spotNumber}`);
-          return res.json({ success: false, message: 'Plate does not match booking' });
-        }
-
-        if (paidBooking.status !== 'COMPLETED') {
-          await prisma.booking.update({
-            where: { id: paidBooking.id },
-            data: { status: 'COMPLETED', actualEndTime: new Date() },
-          });
-        }
-
-        await prisma.parkingSpot.update({
-          where: { spotNumber },
-          data: { status: 'FREE', currentUserPlate: null, currentUserId: null },
-        });
-        io.emit('lpr-gate-open', { carPlate, spotNumber, type: 'exit' });
-        io.emit('spot-status-changed', { spotNumber, status: 'FREE', carPlate: null });
-        logger.info(`✅ LPR exit (paid): ${carPlate} from ${spotNumber} → FREE`);
-        return res.json({ success: true, message: 'Gate opened', newStatus: 'FREE' });
-      }
-
-      
-      const unpaidBooking = await prisma.booking.findFirst({
-        where: { spotId: spot.id, status: { in: ['PENDING', 'CONFIRMED'] } },
-        orderBy: { createdAt: 'desc' },
-      });
-
-      const reason = unpaidBooking
-        ? 'Оплатите парковку в приложении перед выездом'
-        : 'Активная бронь не найдена';
-
-      io.emit('lpr-gate-denied', { carPlate, spotNumber, reason });
-      logger.warn(`⛔ LPR exit denied (unpaid): ${carPlate} at ${spotNumber}`);
-      return res.json({ success: false, message: reason });
-    }
-
-
-    await prisma.parkingSpot.update({
-      where: { spotNumber },
-      data: { status: 'RESERVED', currentUserPlate: spot.currentUserPlate, currentUserId: spot.currentUserId },
+    // Short-term booking exit: all spots are universal, check for a booking
+    const paidBooking = await prisma.booking.findFirst({
+      where: {
+        spotId: spot.id,
+        status: { in: ['COMPLETED', 'CONFIRMED', 'PENDING'] },
+      },
+      orderBy: { createdAt: 'desc' },
     });
 
-    io.emit('lpr-gate-open', { carPlate, spotNumber, type: 'exit' });
-    io.emit('spot-status-changed', { spotNumber, status: 'RESERVED', carPlate });
+    if (paidBooking) {
+      const plateOk = paidBooking.plateNumber
+        ? normalizePlate(paidBooking.plateNumber) === normalizePlate(carPlate)
+        : true;
 
-    logger.info(`✅ LPR exit: ${carPlate} from ${spotNumber} → RESERVED`);
-    res.json({ success: true, message: 'Gate opened for exit', newStatus: 'RESERVED' });
+      const spotPlateOk = spot.currentUserPlate
+        ? normalizePlate(spot.currentUserPlate) === normalizePlate(carPlate)
+        : false;
+
+      if (!plateOk && !spotPlateOk) {
+        io.emit('lpr-gate-denied', { carPlate, spotNumber, reason: 'Номер не совпадает с бронью' });
+        logger.warn(`⛔ LPR exit denied (plate mismatch): ${carPlate} vs ${paidBooking.plateNumber} at ${spotNumber}`);
+        return res.json({ success: false, message: 'Plate does not match booking' });
+      }
+
+      if (paidBooking.status !== 'COMPLETED') {
+        await prisma.booking.update({
+          where: { id: paidBooking.id },
+          data: { status: 'COMPLETED', actualEndTime: new Date() },
+        });
+      }
+
+      await prisma.parkingSpot.update({
+        where: { spotNumber },
+        data: { status: 'FREE', currentUserPlate: null, currentUserId: null },
+      });
+      io.emit('lpr-gate-open', { carPlate, spotNumber, type: 'exit' });
+      io.emit('spot-status-changed', { spotNumber, status: 'FREE', carPlate: null });
+      logger.info(`✅ LPR exit (paid): ${carPlate} from ${spotNumber} → FREE`);
+      return res.json({ success: true, message: 'Gate opened', newStatus: 'FREE' });
+    }
+
+    const unpaidBooking = await prisma.booking.findFirst({
+      where: { spotId: spot.id, status: { in: ['PENDING', 'CONFIRMED'] } },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const reason = unpaidBooking
+      ? 'Оплатите парковку в приложении перед выездом'
+      : 'Активная бронь не найдена';
+
+    io.emit('lpr-gate-denied', { carPlate, spotNumber, reason });
+    logger.warn(`⛔ LPR exit denied (unpaid): ${carPlate} at ${spotNumber}`);
+    res.json({ success: false, message: reason });
   } catch (error) {
     logger.error('❌ Error handling LPR exit:', error);
     res.status(500).json({ error: 'Failed to process exit' });
@@ -358,11 +323,16 @@ router.post('/lpr/scan', async (req: Request, res: Response) => {
     const occupiedSpot = occupiedSpots.find(s => s.currentUserPlate && normalizePlate(s.currentUserPlate) === normPlate);
 
     if (occupiedSpot) {
-      
       const spotNumber = occupiedSpot.spotNumber;
-      let newStatus: string;
 
-      if (occupiedSpot.type === 'LONG_TERM') {
+      // If there is an active long-term rental the spot goes RESERVED (tenant may return);
+      // otherwise it is a short-term booking and the spot goes FREE.
+      const scanRental = await prisma.longTermRental.findFirst({
+        where: { spotId: occupiedSpot.id, status: 'ACTIVE' },
+      });
+
+      let newStatus: string;
+      if (scanRental) {
         newStatus = 'RESERVED';
         await prisma.parkingSpot.update({
           where: { spotNumber },
@@ -603,8 +573,19 @@ router.post('/set-status', async (req: Request, res: Response) => {
               status: 'ACTIVE',
             },
           });
-          // bookingRecord используется в ответе — передаём rental как booking
-          // чтобы фронт сохранил настоящий ID (не фейковый booking-timestamp)
+          // Attach rentalId to the payment transaction
+          if (payment?.transactionId) {
+            await prisma.transaction.update({
+              where: { id: payment.transactionId },
+              data: { rentalId: rental.id },
+            });
+          }
+          // Schedule auto-expiry job exactly when the rental period ends
+          await rentalExpiryQueue.add(
+            'rental-expiry',
+            { rentalId: rental.id },
+            { delay: endDate.getTime() - Date.now(), jobId: `expiry-${rental.id}` },
+          );
           bookingRecord = { ...rental, _type: 'rental' };
         }
       } catch (e) {
@@ -645,9 +626,16 @@ router.get('/spot-status/:spotNumber', async (req: Request, res: Response) => {
 
 // Location prefix map: locationId → { prefix, shortTermCount, longTermCount }
 const LOCATION_CONFIG: Record<number, { prefix: string; short: number; long: number }> = {
-  1: { prefix: 'SP',  short: 15, long: 15 },
-  2: { prefix: 'P2',  short: 13, long: 12 },
-  3: { prefix: 'P3',  short: 10, long: 10 },
+  1:  { prefix: 'SP',  short: 15, long: 15 },  // 30 — Улы Дала
+  2:  { prefix: 'P2',  short: 13, long: 12 },  // 25 — Сыганак
+  3:  { prefix: 'P3',  short: 10, long: 10 },  // 20 — Кабанбай батыр
+  4:  { prefix: 'P4',  short: 10, long:  9 },  // 19 — Туран
+  5:  { prefix: 'P5',  short: 12, long: 10 },  // 22 — пр. Республики
+  6:  { prefix: 'P6',  short:  7, long:  7 },  // 14 — Достык
+  7:  { prefix: 'P7',  short:  9, long:  8 },  // 17 — Сарыарка
+  8:  { prefix: 'P8',  short:  8, long:  8 },  // 16 — Бейбітшілік
+  9:  { prefix: 'P9',  short: 11, long: 10 },  // 21 — Иманов
+  10: { prefix: 'P10', short:  9, long:  9 },  // 18 — Хан Шатыр
 };
 
 async function ensureLocationSpots(locationId: number) {
@@ -656,11 +644,8 @@ async function ensureLocationSpots(locationId: number) {
   const existing = await prisma.parkingSpot.findFirst({ where: { spotNumber: { startsWith: cfg.prefix + '-' } } });
   if (existing) return; // already created
   const spots = [];
-  for (let i = 1; i <= cfg.short; i++) {
-    spots.push({ spotNumber: `${cfg.prefix}-${String(i).padStart(2, '0')}`, type: 'SHORT_TERM' as const, status: 'FREE' as const });
-  }
-  for (let i = cfg.short + 1; i <= cfg.short + cfg.long; i++) {
-    spots.push({ spotNumber: `${cfg.prefix}-${String(i).padStart(2, '0')}`, type: 'LONG_TERM' as const, status: 'FREE' as const });
+  for (let i = 1; i <= cfg.short + cfg.long; i++) {
+    spots.push({ spotNumber: `${cfg.prefix}-${String(i).padStart(2, '0')}`, type: 'UNIVERSAL' as const, status: 'FREE' as const });
   }
   await prisma.parkingSpot.createMany({ data: spots, skipDuplicates: true });
   logger.info(`✅ Auto-created ${spots.length} spots for location ${locationId} (prefix: ${cfg.prefix})`);
@@ -697,8 +682,7 @@ router.get('/spots/simple', async (req: Request, res: Response) => {
 router.get('/spots/text', async (req: Request, res: Response) => {
   try {
     const spots = await parkingService.getAllSpots();
-    const shortTermSpots = spots.filter(s => s.type === 'SHORT_TERM').sort((a, b) => a.spotNumber.localeCompare(b.spotNumber));
-    const longTermSpots = spots.filter(s => s.type === 'LONG_TERM').sort((a, b) => a.spotNumber.localeCompare(b.spotNumber));
+    const allSortedSpots = spots.slice().sort((a, b) => a.spotNumber.localeCompare(b.spotNumber));
 
     const statusIcons = {
       'FREE': '🟢',
@@ -709,45 +693,25 @@ router.get('/spots/text', async (req: Request, res: Response) => {
     };
 
     let textOutput = '\n🚗 ПАРКОВКА QPARK - ТЕКУЩИЙ СТАТУС\n';
-    textOutput += '=' .repeat(50) + '\n\n';
-
+    textOutput += '='.repeat(50) + '\n\n';
 
     textOutput += '📍 ЛЕГЕНДА:\n';
     Object.entries(statusIcons).forEach(([status, icon]) => {
-      const statusText = {
-        'FREE': 'Свободно',
-        'BOOKED': 'Забронировано',
-        'OCCUPIED': 'Занято',
-        'RESERVED': 'Резерв',
-        'REPAIR': 'Ремонт'
-      }[status];
-      textOutput += `   ${icon} ${statusText}\n`;
+      const statusText: Record<string, string> = {
+        'FREE': 'Свободно', 'BOOKED': 'Забронировано',
+        'OCCUPIED': 'Занято', 'RESERVED': 'Резерв', 'REPAIR': 'Ремонт',
+      };
+      textOutput += `   ${icon} ${statusText[status]}\n`;
     });
     textOutput += '\n';
 
-
-    textOutput += '🅿️ КРАТКОСРОЧНАЯ ПАРКОВКА:\n';
+    textOutput += '🅿️ УНИВЕРСАЛЬНАЯ ПАРКОВКА (тип брони выбирает водитель):\n';
     textOutput += '-'.repeat(40) + '\n';
 
-    for (let i = 0; i < shortTermSpots.length; i += 5) {
+    for (let i = 0; i < allSortedSpots.length; i += 5) {
       textOutput += '   ';
-      for (let j = 0; j < 5 && i + j < shortTermSpots.length; j++) {
-        const spot = shortTermSpots[i + j];
-        const icon = statusIcons[spot.status as keyof typeof statusIcons] || '⚪';
-        textOutput += `${icon} ${spot.spotNumber.padEnd(8)}`;
-      }
-      textOutput += '\n';
-    }
-    textOutput += '\n';
-
-
-    textOutput += '🅿️ ДОЛГОСРОЧНАЯ ПАРКОВКА:\n';
-    textOutput += '-'.repeat(40) + '\n';
-
-    for (let i = 0; i < longTermSpots.length; i += 5) {
-      textOutput += '   ';
-      for (let j = 0; j < 5 && i + j < longTermSpots.length; j++) {
-        const spot = longTermSpots[i + j];
+      for (let j = 0; j < 5 && i + j < allSortedSpots.length; j++) {
+        const spot = allSortedSpots[i + j];
         const icon = statusIcons[spot.status as keyof typeof statusIcons] || '⚪';
         textOutput += `${icon} ${spot.spotNumber.padEnd(8)}`;
       }
