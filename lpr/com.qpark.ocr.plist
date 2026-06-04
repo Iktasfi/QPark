@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.qpark.ocr</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>/Users/inkar/QPark/lpr/start_ocr.sh</string>
+    </array>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>/Users/inkar/QPark/lpr/ocr.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/inkar/QPark/lpr/ocr.log</string>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/inkar/QPark/lpr</string>
+</dict>
+</plist>
