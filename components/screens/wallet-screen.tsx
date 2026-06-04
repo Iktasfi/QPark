@@ -10,6 +10,7 @@ export function WalletScreen() {
   const { user, setUser, setCurrentScreen, darkMode, t } = useParking()
   const [view, setView] = useState<"main" | "topup">("main")
   const [selectedAmount, setSelectedAmount] = useState<number | null>(null)
+  const [customAmount, setCustomAmount] = useState("")
   const [mounted, setMounted] = useState(false)
 
   useEffect(() => { setMounted(true) }, [])
@@ -59,9 +60,11 @@ export function WalletScreen() {
             {topUpAmounts.map((amount) => (
               <button
                 key={amount}
-                onClick={() => setSelectedAmount(amount)}
+                onClick={() => { setSelectedAmount(amount); setCustomAmount("") }}
                 className={`py-5 rounded-2xl border-2 text-xl font-bold transition-all ${
-                  darkMode
+                  selectedAmount === amount && !customAmount
+                    ? "border-[#495E8E] bg-[#495E8E]/10"
+                    : darkMode
                     ? "bg-gray-800 text-white border-gray-700 hover:border-[#495E8E]"
                     : "bg-white text-[#1a1a2e] border-gray-200 hover:border-[#495E8E]"
                 }`}
@@ -70,6 +73,42 @@ export function WalletScreen() {
               </button>
             ))}
           </div>
+
+          {/* Custom amount input */}
+          <div className={`rounded-2xl border-2 transition-all overflow-hidden ${
+            customAmount && Number(customAmount) >= 100
+              ? "border-[#495E8E]"
+              : darkMode ? "border-gray-700" : "border-gray-200"
+          } ${darkMode ? "bg-gray-800" : "bg-white"}`}>
+            <div className="flex items-center px-4 py-3 gap-3">
+              <span className={`text-lg font-bold ${darkMode ? "text-gray-400" : "text-gray-400"}`}>₸</span>
+              <input
+                type="number"
+                min={100}
+                value={customAmount}
+                onChange={e => {
+                  setCustomAmount(e.target.value)
+                  if (e.target.value) setSelectedAmount(null)
+                }}
+                placeholder="Введите сумму вручную..."
+                className={`flex-1 text-xl font-bold bg-transparent outline-none ${
+                  darkMode ? "text-white placeholder:text-gray-600" : "text-[#1a1a2e] placeholder:text-gray-400"
+                }`}
+              />
+              {customAmount && Number(customAmount) >= 100 && (
+                <button
+                  onClick={() => setSelectedAmount(Number(customAmount))}
+                  className="px-4 py-2 bg-[#495E8E] text-white rounded-xl text-sm font-semibold hover:bg-[#3d4c73] transition-colors"
+                >
+                  Далее →
+                </button>
+              )}
+            </div>
+            {customAmount && Number(customAmount) < 100 && (
+              <p className="px-4 pb-2 text-xs text-red-400">Минимальная сумма — 100₸</p>
+            )}
+          </div>
+
           <button
             onClick={() => setView("main")}
             className={`w-full py-4 rounded-2xl ${darkMode ? "bg-gray-700 text-gray-300" : "bg-gray-200 text-gray-700"} font-semibold`}
