@@ -507,10 +507,12 @@ export function ActiveBookingScreen() {
                     <p className="text-3xl font-bold text-foreground">{formatTime(parkingDuration)}</p>
                   </div>
                 </div>
-                <div className="text-right">
-                  <p className="text-sm text-muted-foreground">{t.currentCost}</p>
-                  <p className="text-2xl font-bold text-[#36549B]">{calculateCost()} &#8376;</p>
-                </div>
+                {activeBooking?.isPaid && (
+                  <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-green-100 dark:bg-green-900/30">
+                    <Check className="h-4 w-4 text-green-600" />
+                    <span className="text-sm font-semibold text-green-700 dark:text-green-400">Оплачено</span>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -597,7 +599,7 @@ export function ActiveBookingScreen() {
         </CardContent>
       </Card>
       
-      {!isLongTerm && isArrived && (
+      {!isLongTerm && isArrived && !activeBooking?.isPaid && (
         <Card>
           <CardContent className="p-4">
             <h3 className="mb-3 font-medium text-foreground">{t.costBreakdown}</h3>
@@ -622,14 +624,25 @@ export function ActiveBookingScreen() {
       
       <div className="space-y-2 mt-2">
         {isArrived && !isLongTerm && (
-          <Button 
-            size="lg" 
+          <Button
+            size="lg"
             className="w-full gap-2 bg-[#354469] hover:bg-[#354469]/90"
             onClick={handlePayAndExit}
             disabled={isPaying}
           >
-            <CreditCard className="h-5 w-5" />
-            {isPaying ? t.processing : `${calculateCost()} ₸ ${t.payAndExit}`}
+            {isPaying ? (
+              t.processing
+            ) : activeBooking?.isPaid ? (
+              <>
+                <Check className="h-5 w-5" />
+                Завершить парковку
+              </>
+            ) : (
+              <>
+                <CreditCard className="h-5 w-5" />
+                {`${calculateCost()} ₸ ${t.payAndExit}`}
+              </>
+            )}
           </Button>
         )}
         
