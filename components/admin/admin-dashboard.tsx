@@ -102,9 +102,16 @@ export function AdminDashboard() {
   const [locationAdded, setLocationAdded] = useState(false)
   const [b2bSent, setB2bSent] = useState(false)
   const mockLocations = [
-    { id: 1, name: "Парковка №1", address: "Улы Дала, 1", spots: 30, free: 12, status: "Активна", prefix: "SP" },
-    { id: 2, name: "Парковка №2", address: "Сыганак, 5",  spots: 25, free: 8,  status: "Активна", prefix: "P2" },
-    { id: 3, name: "Парковка №3", address: "Кабанбай батыр, 12", spots: 20, free: 5, status: "Активна", prefix: "P3" },
+    { id: 1,  name: "Парковка №1",  address: "Улы Дала, 1",              spots: 30, free: 12, status: "Активна", prefix: "SP"  },
+    { id: 2,  name: "Парковка №2",  address: "Сыганак, 5",               spots: 25, free: 8,  status: "Активна", prefix: "P2"  },
+    { id: 3,  name: "Парковка №3",  address: "Кабанбай батыр, 12",       spots: 20, free: 5,  status: "Активна", prefix: "P3"  },
+    { id: 4,  name: "Парковка №4",  address: "Туран, 24",                spots: 19, free: 19, status: "Активна", prefix: "P4"  },
+    { id: 5,  name: "Парковка №5",  address: "пр. Республики, 9",        spots: 22, free: 22, status: "Активна", prefix: "P5"  },
+    { id: 6,  name: "Парковка №6",  address: "Достық, 13",               spots: 14, free: 14, status: "Активна", prefix: "P6"  },
+    { id: 7,  name: "Парковка №7",  address: "Сарыарқа, 7",              spots: 17, free: 17, status: "Активна", prefix: "P7"  },
+    { id: 8,  name: "Парковка №8",  address: "Бейбітшілік, 17",          spots: 16, free: 16, status: "Активна", prefix: "P8"  },
+    { id: 9,  name: "Парковка №9",  address: "Иманов, 21",               spots: 21, free: 21, status: "Активна", prefix: "P9"  },
+    { id: 10, name: "Парковка №10", address: "Хан Шатыр, пр. Туран, 3", spots: 18, free: 18, status: "Активна", prefix: "P10" },
   ]
   const [selectedLocationId, setSelectedLocationId] = useState(1)
   const selectedLocation = mockLocations.find(l => l.id === selectedLocationId)!
