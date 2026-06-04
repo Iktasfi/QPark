@@ -1,5 +1,5 @@
 import Stripe from 'stripe';
-import { calculateShortTermCost } from '../utils/pricing';
+import { calculateShortTermCost, calculateCashback, PRICING } from '../utils/pricing';
 import { logger } from '../server';
 import { prisma } from '../lib/prisma';
 
@@ -86,7 +86,7 @@ export class PaymentService {
     ]);
 
     logger.info(`✅ Long-term rental paid: ${userId}, ${spotNumber}, -${totalCost}₸`);
-    return { transaction, walletBalance: updatedUser.walletBalance };
+    return { transaction, transactionId: transaction.id, walletBalance: updatedUser.walletBalance };
   }
 
   async checkoutBooking(spotNumber: string, userId: string) {
@@ -129,13 +129,15 @@ export class PaymentService {
     const parkingCost = calculateShortTermCost(paidMinutes);
     const alreadyPaidWaiting = booking.minutesExtended > 0 ? 75 : 0;
     const netCharge = Math.max(0, parkingCost - alreadyPaidWaiting);
-    const bonusEarned = Math.floor(parkingCost * 0.01);
+    const bonusEarned = calculateCashback(parkingCost);
 
     if (user.walletBalance < netCharge) {
       throw new Error(`Insufficient balance: need ${netCharge}₸, have ${user.walletBalance}₸`);
     }
 
-    const [updatedBooking, _transaction, updatedUser] = await prisma.$transaction([
+    const balanceAfterPayment = user.walletBalance - netCharge;
+
+    const [updatedBooking, , updatedUser] = await prisma.$transaction([
       prisma.booking.update({
         where: { id: booking.id },
         data: { actualEndTime: now, status: 'COMPLETED', totalCost: parkingCost, isPaid: true },
@@ -147,7 +149,8 @@ export class PaymentService {
           type: 'PAYMENT',
           description: `Краткосрочная парковка ${spotNumber}, ${paidMinutes} мин`,
           balanceBefore: user.walletBalance,
-          balanceAfter: user.walletBalance - netCharge,
+          balanceAfter: balanceAfterPayment,
+          bookingId: booking.id,
         },
       }),
       prisma.user.update({
@@ -159,7 +162,22 @@ export class PaymentService {
       }),
     ]);
 
-    logger.info(`✅ Checkout: ${userId} → ${spotNumber}, cost ${parkingCost}₸, net ${netCharge}₸, bonus +${bonusEarned}`);
+    // Separate CASHBACK transaction so the bonus appears in transaction history
+    if (bonusEarned > 0) {
+      await prisma.transaction.create({
+        data: {
+          userId,
+          amount: bonusEarned,
+          type: 'CASHBACK',
+          description: `Кэшбэк ${PRICING.CASHBACK_PERCENTAGE}% за парковку ${spotNumber}`,
+          balanceBefore: balanceAfterPayment,
+          balanceAfter: balanceAfterPayment,
+          bookingId: booking.id,
+        },
+      });
+    }
+
+    logger.info(`✅ Checkout: ${userId} → ${spotNumber}, cost ${parkingCost}₸, net ${netCharge}₸, cashback +${bonusEarned} pts`);
     return {
       booking: updatedBooking,
       parkingCost,
@@ -205,6 +223,7 @@ export class PaymentService {
           description: `Продление ожидания ${spotNumber} +30 мин`,
           balanceBefore: user.walletBalance,
           balanceAfter: user.walletBalance - EXTEND_COST,
+          bookingId: booking.id,
         },
       }),
       prisma.user.update({

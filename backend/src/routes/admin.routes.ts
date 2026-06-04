@@ -3,6 +3,7 @@ import authService from '../services/auth.service';
 import promoCodeService from '../services/promocode.service';
 import { logger } from '../server';
 import { prisma } from '../lib/prisma';
+import { findFreeSpotNearby } from '../utils/spots';
 
 const router = Router();
 
@@ -294,14 +295,8 @@ router.post('/complaints/:id/reassign', async (req: Request, res: Response) => {
     const complaint = await prisma.complaint.findUnique({ where: { id } });
     if (!complaint) return res.status(404).json({ error: 'Complaint not found' });
 
-    // Find a free spot of same type as the original
-    const originalSpot = await prisma.parkingSpot.findUnique({ where: { spotNumber: complaint.spotId } });
-    const spotType = originalSpot?.type ?? 'SHORT_TERM';
-
-    const freeSpot = await prisma.parkingSpot.findFirst({
-      where: { status: 'FREE', type: spotType, spotNumber: { not: complaint.spotId } },
-      orderBy: { spotNumber: 'asc' },
-    });
+    // Find free spot: same parking location first, then nearest other
+    const freeSpot = await findFreeSpotNearby(complaint.spotId);
 
     const { io } = await import('../server');
 
@@ -353,7 +348,7 @@ router.post('/complaints/:id/reassign', async (req: Request, res: Response) => {
 router.post('/complaints/:id/fine', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { violatorUserId, amount = 700 } = req.body;
+    const { violatorUserId, amount = 900 } = req.body;
 
     const complaint = await prisma.complaint.findUnique({ where: { id } });
     if (!complaint) return res.status(404).json({ error: 'Complaint not found' });
@@ -361,13 +356,15 @@ router.post('/complaints/:id/fine', async (req: Request, res: Response) => {
     if (violatorUserId) {
       const violator = await prisma.user.findUnique({ where: { id: violatorUserId } });
       if (violator) {
-        // Сколько реально можем списать
         const deductable = Math.min(violator.walletBalance, amount);
         const debt = amount - deductable;
         const newBalance = Math.max(0, violator.walletBalance - amount);
+        const newViolationCount = violator.violationCount + 1;
+        // Auto-ban: 3+ violations → 7-day temporary ban (diploma section 3.5.6.3)
+        const shouldBan = newViolationCount >= 3;
+        const bannedUntil = shouldBan ? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) : undefined;
 
         await prisma.$transaction([
-          // Журнал штрафа
           prisma.fine.create({
             data: {
               userId: violatorUserId,
@@ -378,23 +375,24 @@ router.post('/complaints/:id/fine', async (req: Request, res: Response) => {
               paidAt: deductable >= amount ? new Date() : null,
             },
           }),
-          // Кошелёк не уходит ниже 0
           prisma.user.update({
             where: { id: violatorUserId },
-            data: { walletBalance: newBalance },
+            data: {
+              walletBalance: newBalance,
+              violationCount: { increment: 1 },
+              ...(shouldBan ? { isBanned: true, bannedUntil } : {}),
+            },
           }),
-          // Запись в транзакции — штраф
           prisma.transaction.create({
             data: {
               userId: violatorUserId,
               amount: -deductable,
               type: 'PAYMENT',
-              description: `Штраф 700₸ за нарушение парковки (место ${complaint.spotId})`,
+              description: `Штраф 900₸ за нарушение парковки (место ${complaint.spotId})`,
               balanceBefore: violator.walletBalance,
               balanceAfter: newBalance,
             },
           }),
-          // Если баланса не хватило — записываем долг отдельной строкой
           ...(debt > 0 ? [prisma.transaction.create({
             data: {
               userId: violatorUserId,
@@ -406,13 +404,83 @@ router.post('/complaints/:id/fine', async (req: Request, res: Response) => {
             },
           })] : []),
         ]);
+
+        if (shouldBan) {
+          logger.info(`🚫 Auto-ban: user ${violatorUserId} has ${newViolationCount} violations — banned until ${bannedUntil}`);
+        }
       }
     }
 
-    await prisma.complaint.update({ where: { id }, data: { status: 'RESOLVED', resolvedAt: new Date() } });
+    await prisma.complaint.update({ where: { id }, data: { status: 'CLOSED', resolvedAt: new Date() } });
 
+    // ── Correct spot statuses to reflect reality ──────────────────────────────
+    // The violator physically occupied the victim's spot, but has their own
+    // booking on a different spot. We:
+    //   1. Cancel the violator's original booking and free that spot
+    //   2. Mark the violated spot as OCCUPIED by the violator
     if (violatorUserId) {
       const { io } = await import('../server');
+
+      const violatedSpot = await prisma.parkingSpot.findUnique({
+        where: { spotNumber: complaint.spotId },
+      });
+
+      if (violatedSpot) {
+        // Find violator's active booking on a DIFFERENT spot
+        const violatorBooking = await prisma.booking.findFirst({
+          where: {
+            userId: violatorUserId,
+            status: { in: ['PENDING', 'CONFIRMED'] },
+            spotId: { not: violatedSpot.id },
+          },
+          include: { spot: true },
+        });
+
+        // Get violator's plate: prefer car record, fall back to OCR-detected plate
+        const violatorCar = await prisma.car.findFirst({
+          where: { userId: violatorUserId },
+          orderBy: { createdAt: 'desc' },
+        });
+        const violatorPlate = violatorCar?.plateNumber ?? complaint.detectedPlate ?? null;
+
+        // Mark violated spot as OCCUPIED by the violator (they're physically there)
+        // and optionally cancel their phantom booking on the other spot
+        await prisma.$transaction([
+          prisma.parkingSpot.update({
+            where: { id: violatedSpot.id },
+            data: { status: 'OCCUPIED', currentUserId: violatorUserId, currentUserPlate: violatorPlate },
+          }),
+          ...(violatorBooking ? [
+            prisma.booking.update({
+              where: { id: violatorBooking.id },
+              data: { status: 'CANCELLED', actualEndTime: new Date() },
+            }),
+            prisma.parkingSpot.update({
+              where: { id: violatorBooking.spotId },
+              data: { status: 'FREE', currentUserPlate: null, currentUserId: null },
+            }),
+          ] : []),
+        ]);
+
+        // Notify frontend about both spot changes
+        io.emit('spot-status-changed', {
+          spotNumber: complaint.spotId,
+          status: 'OCCUPIED',
+          carPlate: violatorPlate,
+        });
+        if (violatorBooking) {
+          io.emit('spot-status-changed', {
+            spotNumber: violatorBooking.spot.spotNumber,
+            status: 'FREE',
+            carPlate: null,
+          });
+          logger.info(
+            `🔄 Spot correction: freed ${violatorBooking.spot.spotNumber} (phantom booking), ` +
+            `marked ${complaint.spotId} OCCUPIED by violator ${violatorUserId}`,
+          );
+        }
+      }
+
       io.emit('fine-issued', { userId: violatorUserId, amount, complaintId: id, spotId: complaint.spotId });
     }
 

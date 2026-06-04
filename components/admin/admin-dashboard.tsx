@@ -91,11 +91,16 @@ export function AdminDashboard() {
   const [plateInputs, setPlateInputs] = useState<Record<string, string>>({})
   const [violatorLookup, setViolatorLookup] = useState<Record<string, ViolatorInfo | null | "loading">>({})
   const [showHistory, setShowHistory] = useState<Record<string, boolean>>({})
-  const [activeTab, setActiveTab] = useState<"spots" | "users" | "bookings" | "transactions" | "promo" | "locations" | "photos" | "complaints" | "applications">("spots")
+  const [activeTab, setActiveTab] = useState<"spots" | "users" | "bookings" | "transactions" | "promo" | "locations" | "photos" | "complaints" | "applications" | "support">("spots")
   const [pendingPhotos, setPendingPhotos] = useState<{id: string; type: string; photoUrl: string | null; photoUploadedAt: string | null; spotNumber: string; plateNumber: string; userName: string}[]>([])
   const [complaints, setComplaints] = useState<{id: string; spotId: string; reason: string; photoUrl: string | null; status: string; createdAt: string; detectedPlate: string | null; violatorUserId: string | null; user: {firstName: string | null; phoneNumber: string}}[]>([])
   const [applications, setApplications] = useState<{id: string; companyName: string; ownerName: string; phone: string; email: string | null; address: string; city: string; spotsCount: number; description: string | null; status: string; adminNote: string | null; createdAt: string}[]>([])
   const [showAddLocation, setShowAddLocation] = useState(false)
+  const [supportConversations, setSupportConversations] = useState<{userId: string; userName: string; phoneNumber: string; lastMessage: string; lastMessageAt: string; fromAdmin: boolean; unreadCount: number}[]>([])
+  const [selectedSupportUser, setSelectedSupportUser] = useState<string | null>(null)
+  const [supportMessages, setSupportMessages] = useState<{id: string; text: string; fromAdmin: boolean; createdAt: string}[]>([])
+  const [supportReply, setSupportReply] = useState("")
+  const [supportSending, setSupportSending] = useState(false)
   const [showB2BForm, setShowB2BForm] = useState(false)
   const [locationForm, setLocationForm] = useState({ name: "", address: "", spots: "" })
   const [b2bForm, setB2bForm] = useState({ companyName: "", ownerName: "", phone: "", address: "", spots: "", docs: "" })
@@ -202,6 +207,27 @@ export function AdminDashboard() {
     socket.on("rental-created", onRentalCreated)
     socket.on("payment-completed", onPaymentCompleted)
 
+    // Support chat: new message from user
+    const onSupportMessage = (data: { userId: string; text: string; userName: string; createdAt: string }) => {
+      setSupportConversations(prev => {
+        const existing = prev.find(c => c.userId === data.userId)
+        if (existing) {
+          return prev.map(c => c.userId === data.userId
+            ? { ...c, lastMessage: data.text, lastMessageAt: data.createdAt, fromAdmin: false, unreadCount: c.unreadCount + 1 }
+            : c)
+        }
+        return [{ userId: data.userId, userName: data.userName, phoneNumber: "", lastMessage: data.text, lastMessageAt: data.createdAt, fromAdmin: false, unreadCount: 1 }, ...prev]
+      })
+      // If this conversation is open, append the message
+      setSelectedSupportUser(cur => {
+        if (cur === data.userId) {
+          setSupportMessages(p => [...p, { id: `tmp-${Date.now()}`, text: data.text, fromAdmin: false, createdAt: data.createdAt }])
+        }
+        return cur
+      })
+    }
+    socket.on("support-new-message", onSupportMessage)
+
     const fallback = setInterval(fetchParkingData, 5000)
 
     return () => {
@@ -213,6 +239,7 @@ export function AdminDashboard() {
       socket.off("booking-extended", onBookingExtended)
       socket.off("rental-created", onRentalCreated)
       socket.off("payment-completed", onPaymentCompleted)
+      socket.off("support-new-message", onSupportMessage)
       clearInterval(fallback)
     }
   }, [])
@@ -248,6 +275,8 @@ export function AdminDashboard() {
         if (complaintsRes.ok) setComplaints(await complaintsRes.json())
         const appsRes = await fetch(`${RAILWAY}/admin/applications`, { headers: { Authorization: `Bearer ${token}` } })
         if (appsRes.ok) setApplications(await appsRes.json())
+        const supportRes = await fetch(`${RAILWAY}/support/admin/conversations`)
+        if (supportRes.ok) setSupportConversations(await supportRes.json())
       }
       setError(null)
     } catch (err) {
@@ -492,6 +521,7 @@ export function AdminDashboard() {
     { id: "promo",        label: "Промокоды",    count: promoCodes.length },
     { id: "complaints",   label: "⚠️ Жалобы",    count: complaints.filter(c => c.status === "PENDING").length },
     { id: "applications", label: "📋 Заявки",    count: applications.filter(a => a.status === "NEW").length },
+    { id: "support",      label: "💬 Чат",       count: supportConversations.reduce((s, c) => s + c.unreadCount, 0) },
     { id: "locations",    label: "Локации",      count: mockLocations.length },
   ]
 
@@ -1371,6 +1401,98 @@ export function AdminDashboard() {
                 </div>
               )}
             </div>
+          </div>
+        )}
+
+        {activeTab === "support" && (
+          <div className="space-y-4">
+            {selectedSupportUser ? (
+              /* ── Chat thread ── */
+              <div className={CARD} style={CARD_BG}>
+                <div className="flex items-center gap-3 mb-4">
+                  <button
+                    onClick={() => { setSelectedSupportUser(null); setSupportMessages([]) }}
+                    className="p-1.5 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors"
+                  >← Назад</button>
+                  <p className="text-white font-semibold">
+                    {supportConversations.find(c => c.userId === selectedSupportUser)?.userName ?? selectedSupportUser}
+                  </p>
+                </div>
+                <div className="space-y-3 max-h-96 overflow-y-auto mb-4 pr-1">
+                  {supportMessages.map(msg => (
+                    <div key={msg.id} className={`flex ${msg.fromAdmin ? "justify-end" : "justify-start"}`}>
+                      <div className={`max-w-[75%] px-4 py-2.5 rounded-2xl text-sm ${msg.fromAdmin ? "bg-[#495E8E] text-white" : "bg-white/10 text-gray-200"}`}>
+                        {!msg.fromAdmin && <p className="text-xs text-gray-400 mb-1">Пользователь</p>}
+                        <p>{msg.text}</p>
+                        <p className="text-xs mt-1 opacity-50 text-right">{new Date(msg.createdAt).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}</p>
+                      </div>
+                    </div>
+                  ))}
+                  {supportMessages.length === 0 && <p className="text-gray-400 text-sm text-center py-4">Нет сообщений</p>}
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    value={supportReply}
+                    onChange={e => setSupportReply(e.target.value)}
+                    onKeyDown={async e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (!supportReply.trim() || supportSending) return; setSupportSending(true); const text = supportReply.trim(); setSupportReply(""); const res = await fetch(`${RAILWAY}/support/admin/reply`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ userId: selectedSupportUser, text }) }); if (res.ok) { const msg = await res.json(); setSupportMessages(p => [...p, msg]) } setSupportSending(false) }}}
+                    placeholder="Написать ответ..."
+                    className="flex-1 px-4 py-2.5 rounded-xl bg-white/10 border border-white/20 text-white placeholder:text-gray-400 text-sm focus:outline-none focus:border-white/40"
+                  />
+                  <button
+                    disabled={!supportReply.trim() || supportSending}
+                    onClick={async () => {
+                      if (!supportReply.trim() || supportSending) return
+                      setSupportSending(true)
+                      const text = supportReply.trim()
+                      setSupportReply("")
+                      const res = await fetch(`${RAILWAY}/support/admin/reply`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ userId: selectedSupportUser, text }) })
+                      if (res.ok) { const msg = await res.json(); setSupportMessages(p => [...p, msg]) }
+                      setSupportSending(false)
+                    }}
+                    className="px-4 py-2.5 bg-[#495E8E] text-white rounded-xl text-sm font-medium disabled:opacity-50 hover:bg-[#3d4c73] transition-colors"
+                  >
+                    {supportSending ? "..." : "Отправить"}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              /* ── Conversations list ── */
+              <div className={CARD} style={CARD_BG}>
+                <h3 className="text-white font-semibold mb-4">💬 Обращения в поддержку</h3>
+                {supportConversations.length === 0 ? (
+                  <p className="text-gray-400 text-sm text-center py-8">Обращений пока нет</p>
+                ) : (
+                  <div className="space-y-2">
+                    {supportConversations.map(conv => (
+                      <button
+                        key={conv.userId}
+                        onClick={async () => {
+                          setSelectedSupportUser(conv.userId)
+                          const res = await fetch(`${RAILWAY}/support/admin/messages/${conv.userId}`)
+                          if (res.ok) setSupportMessages(await res.json())
+                          setSupportConversations(p => p.map(c => c.userId === conv.userId ? { ...c, unreadCount: 0 } : c))
+                        }}
+                        className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-white/10 transition-colors text-left"
+                      >
+                        <div className="w-10 h-10 rounded-full bg-[#495E8E]/40 flex items-center justify-center flex-shrink-0">
+                          <span className="text-white font-bold text-sm">{(conv.userName ?? "?")[0].toUpperCase()}</span>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between">
+                            <p className="text-white font-medium text-sm">{conv.userName}</p>
+                            <p className="text-gray-400 text-xs">{new Date(conv.lastMessageAt).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}</p>
+                          </div>
+                          <p className="text-gray-400 text-xs truncate">{conv.fromAdmin ? "Вы: " : ""}{conv.lastMessage}</p>
+                        </div>
+                        {conv.unreadCount > 0 && (
+                          <span className="w-5 h-5 rounded-full bg-blue-500 text-white text-xs flex items-center justify-center flex-shrink-0">{conv.unreadCount}</span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 

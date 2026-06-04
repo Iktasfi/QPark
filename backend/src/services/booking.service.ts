@@ -1,11 +1,18 @@
 import { calculateShortTermCost, getFreeTravelTimeRemaining } from '../utils/pricing';
 import { logger } from '../server';
 import { prisma } from '../lib/prisma';
+import { noShowQueue } from '../jobs/queues';
 
 export class BookingService {
 
   async createShortTermBooking(userId: string, spotId: string, plateNumber: string = '') {
     try {
+      const user = await prisma.user.findUnique({ where: { id: userId } });
+      if (user?.isBanned) {
+        const until = user.bannedUntil ? ` до ${user.bannedUntil.toLocaleDateString('ru-RU')}` : '';
+        throw new Error(`Аккаунт заблокирован из-за нарушений${until}. Обратитесь в поддержку.`);
+      }
+
       const now = new Date();
       const estimatedEndTime = new Date(now.getTime() + 30 * 60 * 1000);
 
@@ -31,6 +38,13 @@ export class BookingService {
         where: { id: spotId },
         data: { status: 'BOOKED', currentUserPlate: plate, currentUserId: userId },
       });
+
+      // Delayed job: auto-cancel if driver doesn't show up within 30 minutes
+      await noShowQueue.add(
+        'no-show-check',
+        { bookingId: booking.id },
+        { delay: 30 * 60 * 1000, jobId: `noshow-${booking.id}` },
+      );
 
       logger.info(`✅ Short-term booking created: ${booking.id}`);
       return booking;
@@ -103,14 +117,8 @@ export class BookingService {
 
       // No-show refund logic
       if (isNoShow && booking.totalCost && booking.totalCost > 0) {
-        const isLongTerm = booking.spot?.type === 'LONG_TERM';
-        if (isLongTerm) {
-          // Keep 900₸ (1 day), refund the rest
-          refundAmount = Math.max(0, booking.totalCost - 900);
-        } else {
-          // Short-term: refund 50%
-          refundAmount = Math.floor(booking.totalCost * 0.5);
-        }
+        // Booking model is always short-term; spot type is no longer relevant
+        refundAmount = Math.floor(booking.totalCost * 0.5);
 
         if (refundAmount > 0) {
           await prisma.user.update({

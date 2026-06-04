@@ -48,12 +48,22 @@ def ocr():
 
     spot_to_find = data.get("spot", "")  # Например "SP-07"
 
-    # Декодируем base64
+    # Декодируем изображение: поддерживаем URL и base64
     try:
-        img_b64 = data["image"]
-        if img_b64.startswith("data:"):
-            img_b64 = img_b64.split(",", 1)[1]
-        img_bytes = base64.b64decode(img_b64)
+        img_src = data["image"]
+        if img_src.startswith("http://") or img_src.startswith("https://"):
+            # Скачиваем по URL (Cloudinary и т.д.)
+            import requests as req_lib
+            resp = req_lib.get(img_src, timeout=15)
+            resp.raise_for_status()
+            img_bytes = resp.content
+        else:
+            # base64
+            img_b64 = img_src
+            if img_b64.startswith("data:"):
+                img_b64 = img_b64.split(",", 1)[1]
+            img_bytes = base64.b64decode(img_b64)
+
         arr = np.frombuffer(img_bytes, np.uint8)
         img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
         if img is None:

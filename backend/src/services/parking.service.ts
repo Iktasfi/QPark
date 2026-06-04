@@ -39,13 +39,10 @@ export class ParkingService {
   }
 
 
-  async getAvailableSpots(type: 'SHORT_TERM' | 'LONG_TERM' = 'SHORT_TERM') {
+  async getAvailableSpots(_type?: string) {
     try {
       const spots = await prisma.parkingSpot.findMany({
-        where: {
-          type,
-          status: 'FREE',
-        },
+        where: { status: 'FREE' },
         orderBy: { spotNumber: 'asc' },
       });
 
@@ -224,19 +221,10 @@ export class ParkingService {
       const spotsData = [];
 
 
-      for (let i = 1; i <= 15; i++) {
+      for (let i = 1; i <= 30; i++) {
         spotsData.push({
           spotNumber: `SP-${String(i).padStart(2, '0')}`,
-          type: 'SHORT_TERM' as const,
-          status: 'FREE' as const,
-        });
-      }
-
-
-      for (let i = 16; i <= 30; i++) {
-        spotsData.push({
-          spotNumber: `SP-${String(i).padStart(2, '0')}`,
-          type: 'LONG_TERM' as const,
+          type: 'UNIVERSAL' as const,
           status: 'FREE' as const,
         });
       }

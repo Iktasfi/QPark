@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { useParking, mapDbUser, type Language } from "@/lib/parking-context"
 import { Input } from "@/components/ui/input"
-import { AlertTriangle, Trash2, LogOut, Settings, Bell, User, ChevronRight, Moon, Globe, Shield, HelpCircle, ChevronLeft, Pencil, X, Check, Building2, ExternalLink } from "lucide-react"
+import { AlertTriangle, Trash2, LogOut, Settings, Bell, User, ChevronRight, Moon, Globe, Shield, HelpCircle, ChevronLeft, Pencil, X, Check, Building2, ExternalLink, MessageCircle } from "lucide-react"
 import Image from "next/image"
 
 const privacyContent: Record<Language, { sections: { title: string; body: string }[] }> = {
@@ -632,6 +632,28 @@ export function ProfileScreen() {
           )}
         </div>
 
+        {/* Support chat */}
+        <button
+          onClick={() => setCurrentScreen("support")}
+          className={`${darkMode ? "bg-[#5a6b87]" : "bg-[#7A8BA8]"} rounded-3xl p-4 mb-3 shadow-lg w-full flex items-center justify-between active:scale-95 transition-transform`}
+        >
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-white/20 flex items-center justify-center">
+              <MessageCircle className="w-5 h-5 text-white" />
+            </div>
+            <div className="text-left">
+              <p className="font-semibold text-white text-sm">
+                {language === "kk" ? "Қолдау қызметі" : language === "en" ? "Support Chat" : "Чат поддержки"}
+              </p>
+              <p className="text-white/60 text-xs">
+                {language === "kk" ? "Сұрақтарыңызды жіберіңіз" : language === "en" ? "Ask us anything" : "Задайте вопрос — ответим быстро"}
+              </p>
+            </div>
+          </div>
+          <ChevronRight className="w-4 h-4 text-white/60 flex-shrink-0" />
+        </button>
+
+        {/* Landlords */}
         <button
           onClick={() => window.open("https://q-park.vercel.app/apply", "_blank")}
           className={`${darkMode ? "bg-[#5a6b87]" : "bg-[#7A8BA8]"} rounded-3xl p-4 mb-4 shadow-lg w-full flex items-center justify-between active:scale-95 transition-transform`}

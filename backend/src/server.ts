@@ -16,7 +16,10 @@ import adminRoutes from './routes/admin.routes';
 import testRoutes from './routes/test.routes';
 import complaintRoutes from './routes/complaint.routes';
 import applicationRoutes from './routes/application.routes';
+import supportRoutes from './routes/support.routes';
 import { prisma } from './lib/prisma';
+import { startNoShowWorker } from './jobs/noshow.worker';
+import { startRentalExpiryWorker } from './jobs/rental-expiry.worker';
 
 
 dotenv.config();
@@ -56,6 +59,7 @@ app.use('/admin', adminRoutes);
 app.use('/test', testRoutes);
 app.use('/complaints', complaintRoutes);
 app.use('/applications', applicationRoutes);
+app.use('/support', supportRoutes);
 
 
 app.get('/health', (req: Request, res: Response) => {
@@ -90,6 +94,12 @@ io.on('connection', (socket) => {
     logger.info(`User left spot ${spotNumber}`);
   });
 
+  // Support chat: user joins their personal room to receive admin replies
+  socket.on('join-support', (userId: string) => {
+    socket.join(`support-${userId}`);
+    logger.info(`User ${userId} joined support room`);
+  });
+
   socket.on('disconnect', () => {
     logger.info(`User disconnected: ${socket.id}`);
   });
@@ -101,6 +111,14 @@ export { app, httpServer, io, logger };
 
 async function initializeParkingSpots() {
   try {
+    // Migrate any legacy SHORT_TERM / LONG_TERM spots to UNIVERSAL
+    const migrated = await prisma.parkingSpot.updateMany({
+      where: { type: { in: ['SHORT_TERM', 'LONG_TERM'] } },
+      data: { type: 'UNIVERSAL' },
+    });
+    if (migrated.count > 0) {
+      logger.info(`🔄 Migrated ${migrated.count} spots → UNIVERSAL type`);
+    }
 
     const count = await prisma.parkingSpot.count();
     if (count > 0) {
@@ -108,72 +126,23 @@ async function initializeParkingSpots() {
       return;
     }
 
-
     const spotsData = [];
-
-
-    for (let i = 1; i <= 15; i++) {
+    for (let i = 1; i <= 30; i++) {
       spotsData.push({
         spotNumber: `SP-${String(i).padStart(2, '0')}`,
-        type: 'SHORT_TERM' as const,
+        type: 'UNIVERSAL' as const,
         status: 'FREE' as const,
       });
     }
 
-
-    for (let i = 16; i <= 30; i++) {
-      spotsData.push({
-        spotNumber: `SP-${String(i).padStart(2, '0')}`,
-        type: 'LONG_TERM' as const,
-        status: 'FREE' as const,
-      });
-    }
-
-    await prisma.parkingSpot.createMany({
-      data: spotsData,
-    });
-
-    logger.info(`✅ Parking spots initialized: 30 spots created`);
+    await prisma.parkingSpot.createMany({ data: spotsData });
+    logger.info(`✅ Parking spots initialized: 30 universal spots created`);
   } catch (error) {
     logger.error('❌ Error initializing parking spots:', error);
   }
 }
 
 
-
-
-async function runNoShowJob() {
-  try {
-    const cutoff = new Date(Date.now() - 15 * 60 * 1000);
-
-    const expired = await prisma.booking.findMany({
-      where: {
-        status: { in: ['PENDING', 'CONFIRMED'] },
-        startTime: { lt: cutoff },
-        spot: { type: 'SHORT_TERM', status: 'BOOKED' },
-      },
-      include: { spot: true },
-    });
-
-    for (const booking of expired) {
-      await prisma.$transaction([
-        prisma.booking.update({
-          where: { id: booking.id },
-          data: { status: 'CANCELLED', actualEndTime: new Date() },
-        }),
-        prisma.parkingSpot.update({
-          where: { id: booking.spotId },
-          data: { status: 'FREE', currentUserPlate: null, currentUserId: null },
-        }),
-      ]);
-
-      io.emit('spot-status-changed', { spotNumber: booking.spot.spotNumber, status: 'FREE', carPlate: null });
-      logger.info(`⏰ No-show cancelled: booking ${booking.id}, spot ${booking.spot.spotNumber}`);
-    }
-  } catch (e) {
-    logger.error('❌ No-show job error:', e);
-  }
-}
 
 
 const PORT = process.env.PORT || 3001;
@@ -183,12 +152,10 @@ httpServer.listen(PORT, async () => {
   logger.info(`📍 Environment: ${process.env.NODE_ENV || 'development'}`);
   logger.info(`📡 Socket.io listening for connections`);
 
-
   await initializeParkingSpots();
 
-
-  setInterval(runNoShowJob, 60 * 1000);
-  logger.info('⏰ No-show auto-cancel job started (every 60s)');
+  startNoShowWorker(io);
+  startRentalExpiryWorker(io);
 });
 
 

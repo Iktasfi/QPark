@@ -40,8 +40,36 @@ router.post('/', requireCarPlate, validateBooking, async (req: Request, res: Res
 router.get('/active', async (req: Request, res: Response) => {
   try {
     const userId = req.userId!;
+    const now = new Date();
+
+    // Short-term active bookings
     const bookings = await bookingService.getUserActiveBookings(userId);
-    res.json(bookings);
+
+    // Long-term active rental (still within its paid period)
+    const rental = await prisma.longTermRental.findFirst({
+      where: { userId, status: 'ACTIVE', endDate: { gt: now } },
+      orderBy: { createdAt: 'desc' },
+      include: { spot: true },
+    });
+
+    const result: object[] = [...bookings];
+    if (rental) {
+      result.push({
+        id: rental.id,
+        spotId: rental.spot?.spotNumber ?? rental.spotId,
+        plateNumber: rental.plateNumber,
+        type: 'long-term',
+        status: 'ACTIVE',
+        startDate: rental.startDate,
+        endDate: rental.endDate,
+        remainingMs: rental.endDate.getTime() - now.getTime(),
+        rentalDays: rental.rentalDays,
+        totalCost: rental.totalCost,
+        isPaid: rental.isPaid,
+      });
+    }
+
+    res.json(result);
   } catch (error) {
     logger.error('❌ Error fetching active bookings:', error);
     res.status(500).json({ error: 'Failed to fetch bookings' });
@@ -55,15 +83,19 @@ router.get('/restore', async (req: Request, res: Response) => {
     const now = new Date();
     const expiredCutoff = new Date(now.getTime() - 30 * 60 * 1000);
 
+    // Cancel no-show short-term bookings: PENDING, older than 30 min,
+    // and user has NOT arrived yet (arrivedAt is null)
     await prisma.booking.updateMany({
       where: {
         userId,
         status: 'PENDING',
         startTime: { lt: expiredCutoff },
+        arrivedAt: null,
       },
       data: { status: 'CANCELLED' },
     });
 
+    // Short-term: active booking
     const booking = await prisma.booking.findFirst({
       where: { userId, status: { in: ['PENDING', 'CONFIRMED'] } },
       orderBy: { createdAt: 'desc' },
@@ -79,26 +111,25 @@ router.get('/restore', async (req: Request, res: Response) => {
         type: 'short-term',
         status: 'active',
         startTime: booking.startTime,
+        estimatedEndTime: booking.estimatedEndTime,
         isPaid: booking.isPaid,
         waitingFee: 0,
       });
     }
 
+    // Long-term: active rental — show until endDate passes or user explicitly cancels
     const rental = await prisma.longTermRental.findFirst({
-      where: { userId, status: 'ACTIVE' },
+      where: {
+        userId,
+        status: 'ACTIVE',
+        endDate: { gt: now }, // only if the period hasn't expired
+      },
       orderBy: { createdAt: 'desc' },
       include: { spot: true },
     });
 
     if (rental) {
-      // If the spot is now FREE, cancel the stale rental and don't restore it
-      if (rental.spot?.status === 'FREE') {
-        await prisma.longTermRental.update({
-          where: { id: rental.id },
-          data: { status: 'CANCELLED', endDate: new Date() },
-        });
-        return res.json(null);
-      }
+      const remainingMs = rental.endDate.getTime() - now.getTime();
       return res.json({
         id: rental.id,
         spotId: rental.spot?.spotNumber ?? rental.spotId,
@@ -107,6 +138,8 @@ router.get('/restore', async (req: Request, res: Response) => {
         type: 'long-term',
         status: 'active',
         startTime: rental.startDate,
+        endDate: rental.endDate,
+        remainingMs,
         isPaid: rental.isPaid,
         waitingFee: 0,
         rentalDays: rental.rentalDays,
@@ -345,7 +378,7 @@ router.get('/history', async (req: Request, res: Response) => {
       startTime: b.startTime,
       endTime: b.actualEndTime ?? b.estimatedEndTime,
       totalCost: b.totalCost,
-      type: b.spot?.type === 'LONG_TERM' ? 'long-term' : 'short-term',
+      type: 'short-term',
     })));
   } catch (error) {
     logger.error('❌ Error fetching booking history:', error);

@@ -3,6 +3,7 @@ import { verifyToken } from '../middleware/auth';
 import { logger } from '../server';
 import { prisma } from '../lib/prisma';
 import { uploadPhotoToCloudinary } from '../utils/cloudinary';
+import { findFreeSpotNearby } from '../utils/spots';
 
 const router = Router();
 
@@ -94,14 +95,8 @@ router.post('/', async (req: Request, res: Response) => {
     // Фон: поиск нового места + Cloudinary + OCR
     setImmediate(async () => {
       try {
-        // 1) Найти свободное место того же типа
-        const violatedSpot = await prisma.parkingSpot.findUnique({ where: { spotNumber: spotId } });
-        const spotType = violatedSpot?.type ?? 'SHORT_TERM';
-
-        const freeSpot = await prisma.parkingSpot.findFirst({
-          where: { status: 'FREE', type: spotType, spotNumber: { not: spotId } },
-          orderBy: { spotNumber: 'asc' },
-        });
+        // 1) Find free spot: same parking location first, then nearest other
+        const freeSpot = await findFreeSpotNearby(spotId);
 
         if (freeSpot) {
           await prisma.parkingSpot.update({
@@ -141,21 +136,11 @@ router.post('/', async (req: Request, res: Response) => {
           logger.info(`😔 No free spots for victim ${userId}, refunded ${refundAmount}₸`);
         }
 
-        // 2) Cloudinary + OCR + определение нарушителя
-        let storedUrl = photoUrl as string | null;
-        if (photoUrl && process.env.CLOUDINARY_CLOUD_NAME) {
-          try {
-            storedUrl = await uploadPhotoToCloudinary(photoUrl, 'qpark/complaints');
-          } catch {
-            logger.warn('⚠️ Cloudinary upload failed for complaint', complaint.id);
-          }
-        }
-
-        // OCR plate detection — if OCR finds something, it overrides manual input
+        // 2) OCR на оригинальном base64 (до Cloudinary — надёжнее)
         let detectedPlate: string | null = violatorPlateManual ?? null;
         let violatorUserId: string | null = initialViolatorUserId;
-        if (storedUrl) {
-          const ocrPlate = await detectPlateFromPhoto(storedUrl);
+        if (photoUrl) {
+          const ocrPlate = await detectPlateFromPhoto(photoUrl);
           if (ocrPlate) {
             detectedPlate = ocrPlate;
             const violatorCar = await prisma.car.findFirst({
@@ -167,8 +152,17 @@ router.post('/', async (req: Request, res: Response) => {
               logger.info(`🎯 Violator (OCR): ${violatorCar.user.firstName ?? violatorCar.user.phoneNumber} (${ocrPlate})`);
             }
           } else if (detectedPlate && !violatorUserId) {
-            // OCR failed but manual plate provided — already looked up above, log it
             logger.info(`🎯 Violator plate (manual): ${detectedPlate}${violatorUserId ? '' : ' — not in DB'}`);
+          }
+        }
+
+        // 3) Cloudinary — загружаем после OCR
+        let storedUrl: string | null = photoUrl ?? null;
+        if (photoUrl && process.env.CLOUDINARY_CLOUD_NAME) {
+          try {
+            storedUrl = await uploadPhotoToCloudinary(photoUrl, 'qpark/complaints');
+          } catch {
+            logger.warn('⚠️ Cloudinary upload failed for complaint', complaint.id);
           }
         }
 

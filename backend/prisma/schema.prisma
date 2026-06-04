@@ -30,6 +30,7 @@ model User {
   renewalNotifications RenewalNotification[]
   complaints           Complaint[]
   fines                Fine[]
+  supportMessages      SupportMessage[]
 
   @@map("users")
 }
@@ -323,6 +324,20 @@ enum PromoCodeType {
   PERCENTAGE
   FIXED
   FIRST_RIDE
+}
+
+// ─── SUPPORT CHAT ────────────────────────────────────────────
+model SupportMessage {
+  id        String   @id @default(cuid())
+  userId    String
+  text      String
+  fromAdmin Boolean  @default(false)
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("support_messages")
 }
 
 // ─── FINES (ШТРАФЫ) ──────────────────────────────────────

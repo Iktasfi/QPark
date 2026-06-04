@@ -12,6 +12,7 @@ import { WalletScreen } from "@/components/screens/wallet-screen"
 import { ProfileScreen } from "@/components/screens/profile-screen"
 import { AdminDashboard } from "@/components/admin/admin-dashboard"
 import { OnboardingScreen } from "@/components/screens/onboarding-screen"
+import { SupportChatScreen } from "@/components/screens/support-chat-screen"
 
 function AppContent() {
   const { currentScreen, isAuthenticated, isAdminMode, isRestoringSession } = useParking()
@@ -55,6 +56,8 @@ function AppContent() {
         return <WalletScreen />
       case "profile":
         return <ProfileScreen />
+      case "support":
+        return <SupportChatScreen />
       default:
         return <HomeScreen />
     }
