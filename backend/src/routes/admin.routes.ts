@@ -344,6 +344,82 @@ router.post('/complaints/:id/reassign', async (req: Request, res: Response) => {
   }
 });
 
+// On-demand OCR plate detection for a complaint photo
+router.post('/complaints/:id/detect-plate', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const complaint = await prisma.complaint.findUnique({ where: { id } });
+    if (!complaint) return res.status(404).json({ error: 'Complaint not found' });
+    if (!complaint.photoUrl) return res.status(400).json({ error: 'No photo attached to this complaint' });
+
+    const ocrUrl = process.env.OCR_SERVICE_URL;
+    if (!ocrUrl) return res.status(503).json({ error: 'OCR service not configured' });
+
+    // Download image if Cloudinary URL, else send as-is (base64)
+    let imagePayload = complaint.photoUrl;
+    if (complaint.photoUrl.startsWith('http')) {
+      const imgRes = await fetch(complaint.photoUrl, { signal: AbortSignal.timeout(10000) });
+      if (!imgRes.ok) return res.status(502).json({ error: 'Could not fetch photo' });
+      const buf = Buffer.from(await imgRes.arrayBuffer());
+      imagePayload = `data:image/jpeg;base64,${buf.toString('base64')}`;
+    }
+
+    const ocrRes = await fetch(`${ocrUrl}/ocr`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': '1' },
+      body: JSON.stringify({ image: imagePayload, spot: '' }),
+      signal: AbortSignal.timeout(25000),
+    });
+
+    if (!ocrRes.ok) return res.status(502).json({ error: 'OCR service error' });
+
+    const data = await ocrRes.json() as { texts?: { text: string; confidence: number }[] };
+    const texts = data.texts ?? [];
+
+    // Kazakh plate patterns
+    const PLATE_PATTERNS = [
+      /\b\d{3}\s*[A-Z]{2,3}\s*\d{2}\b/i,
+      /\b[A-Z]{1,2}\s*\d{3,4}\s*[A-Z]{2}\b/i,
+      /\b\d{2,3}[A-Z]{2,4}\d{2}\b/i,
+    ];
+    const allText = texts.map(t => t.text.toUpperCase()).join(' ');
+    let plate: string | null = null;
+    for (const pat of PLATE_PATTERNS) {
+      const m = allText.match(pat);
+      if (m) { plate = m[0].replace(/\s+/g, ' ').trim().toUpperCase(); break; }
+    }
+
+    if (!plate && texts.length > 0) {
+      // Fallback: look for token that looks like a plate (6-9 chars, mixed)
+      for (const t of texts) {
+        const clean = t.text.replace(/\s+/g, '').toUpperCase();
+        if (clean.length >= 6 && clean.length <= 10 && /[A-Z]/.test(clean) && /\d/.test(clean)) {
+          plate = clean; break;
+        }
+      }
+    }
+
+    if (!plate) return res.json({ plate: null, message: 'Plate not found in photo' });
+
+    // Save detected plate and try to find owner
+    const car = await prisma.car.findFirst({
+      where: { plateNumber: { contains: plate.replace(/\s+/g, ''), mode: 'insensitive' } },
+      include: { user: true },
+    });
+
+    await prisma.complaint.update({
+      where: { id },
+      data: { detectedPlate: plate, violatorUserId: car?.userId ?? undefined },
+    });
+
+    logger.info(`🔍 Admin OCR detect: complaint ${id} → plate "${plate}" → user ${car?.userId ?? 'not found'}`);
+    res.json({ plate, userId: car?.userId ?? null, userName: car ? (car.user.firstName ?? car.user.phoneNumber) : null });
+  } catch (error) {
+    logger.error('❌ Error detecting plate:', error);
+    res.status(500).json({ error: 'OCR detection failed' });
+  }
+});
+
 // Fine the violator — сразу списываем с кошелька, как в дипломе
 router.post('/complaints/:id/fine', async (req: Request, res: Response) => {
   try {

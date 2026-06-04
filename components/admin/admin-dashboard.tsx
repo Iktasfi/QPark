@@ -1157,6 +1157,38 @@ export function AdminDashboard() {
                                       placeholder="Введите номер авто..."
                                       className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white font-mono text-sm tracking-wider focus:outline-none focus:border-white/30 placeholder-white/20"
                                     />
+                                    {/* Auto-detect via EasyOCR */}
+                                    {c.photoUrl && (
+                                      <button
+                                        onClick={async () => {
+                                          setViolatorLookup(prev => ({ ...prev, [c.id]: "loading" }))
+                                          const token = localStorage.getItem("admin_token") || localStorage.getItem("qpark_token")
+                                          const res = await fetch(`${RAILWAY}/admin/complaints/${c.id}/detect-plate`, {
+                                            method: "POST",
+                                            headers: { Authorization: `Bearer ${token}` },
+                                          })
+                                          setViolatorLookup(prev => ({ ...prev, [c.id]: undefined as any }))
+                                          if (res.ok) {
+                                            const data = await res.json()
+                                            if (data.plate) {
+                                              setPlateInputs(prev => ({ ...prev, [c.id]: data.plate }))
+                                              setComplaints(prev => prev.map(x => x.id === c.id ? { ...x, detectedPlate: data.plate, violatorUserId: data.userId } : x))
+                                              if (data.plate) lookupPlate(data.plate)
+                                            } else {
+                                              alert("🤷 EasyOCR не нашёл номер на фото")
+                                            }
+                                          } else {
+                                            const err = await res.json()
+                                            alert(`OCR: ${err.error}`)
+                                          }
+                                        }}
+                                        className="px-2.5 py-1.5 rounded-lg text-xs font-semibold text-white transition-all hover:opacity-80 whitespace-nowrap"
+                                        style={{ background: "#7c3aed" }}
+                                        title="Распознать номер через EasyOCR"
+                                      >
+                                        📷 OCR
+                                      </button>
+                                    )}
                                     <button
                                       onClick={() => lookupPlate(inputVal)}
                                       disabled={isLoading}
@@ -1166,8 +1198,8 @@ export function AdminDashboard() {
                                       {isLoading ? "⏳" : "🔍 Найти"}
                                     </button>
                                   </div>
-                                  {c.detectedPlate && initPlate === inputVal && (
-                                    <p className="text-[10px] text-yellow-400/70 mt-1">📷 OCR распознал: {c.detectedPlate}</p>
+                                  {c.detectedPlate && (
+                                    <p className="text-[10px] text-yellow-400/70 mt-1">📷 EasyOCR: <span className="font-mono font-bold">{c.detectedPlate}</span></p>
                                   )}
                                 </div>
 
