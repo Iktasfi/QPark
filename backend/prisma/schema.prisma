@@ -9,14 +9,18 @@ datasource db {
 
 // ─── USERS ───────────────────────────────────────────────
 model User {
-  id            String    @id @default(cuid())
-  phoneNumber   String    @unique
-  firstName     String?
-  lastName      String?
-  walletBalance Float     @default(0)
-  bonusPoints   Int       @default(0)
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id             String    @id @default(cuid())
+  phoneNumber    String    @unique
+  firstName      String?
+  lastName       String?
+  walletBalance  Float     @default(0)
+  bonusPoints    Int       @default(0)
+  violationCount Int       @default(0)
+  noShowCount    Int       @default(0)
+  isBanned       Boolean   @default(false)
+  bannedUntil    DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   cars                 Car[]
   bookings             Booking[]
@@ -49,7 +53,7 @@ model Car {
 model ParkingSpot {
   id               String     @id @default(cuid())
   spotNumber       String     @unique
-  type             SpotType   @default(SHORT_TERM)
+  type             SpotType   @default(UNIVERSAL)
   status           SpotStatus @default(FREE)
   currentUserPlate String?
   currentUserId    String?
@@ -147,6 +151,8 @@ model Transaction {
   balanceBefore         Float
   balanceAfter          Float
   stripePaymentIntentId String?
+  bookingId             String?
+  rentalId              String?
   createdAt             DateTime        @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -185,6 +191,7 @@ model RenewalNotification {
 enum SpotType {
   SHORT_TERM
   LONG_TERM
+  UNIVERSAL
 }
 
 enum SpotStatus {
@@ -249,7 +256,7 @@ model Complaint {
   spotId          String
   reason          String
   photoUrl        String?
-  status          ComplaintStatus @default(PENDING)
+  status          ComplaintStatus @default(OPEN)
   newSpotId       String?
   detectedPlate   String?
   violatorUserId  String?
@@ -262,9 +269,11 @@ model Complaint {
 }
 
 enum ComplaintStatus {
-  PENDING
+  OPEN
   REASSIGNED
   REFUNDED
+  CLOSED
+  PENDING
   RESOLVED
 }
 
