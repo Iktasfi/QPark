@@ -115,9 +115,9 @@ export function WalletScreen() {
           <div className="relative z-10">
             <p className="text-white/80 text-sm font-medium">{t.currentBalance}</p>
             <p className="text-white text-4xl font-bold mt-1 tracking-tight">
-              {user?.balance ?? 1500}<span className="text-3xl">₸</span>
+              {user?.balance ?? 0}<span className="text-3xl">₸</span>
             </p>
-            <p className="text-white/70 text-sm mt-2">{user?.bonusPoints ?? 50} {t.bonusPoints.toLowerCase()}</p>
+            <p className="text-white/70 text-sm mt-2">{user?.bonusPoints ?? 0} {t.bonusPoints.toLowerCase()}</p>
           </div>
           <div className="absolute top-5 right-5">
             <div className="w-12 h-12 rounded-xl bg-white/20 flex items-center justify-center">

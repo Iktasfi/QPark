@@ -502,7 +502,7 @@ export function ProfileScreen() {
                 <rect x="2" y="4" width="20" height="16" rx="2" />
                 <path d="M2 10h20" />
               </svg>
-              <p className="text-white font-bold text-xl">{user?.balance || 1500}₸</p>
+              <p className="text-white font-bold text-xl">{user?.balance ?? 0}₸</p>
             </div>
             <p className="text-white/70 text-xs">{t.balance} →</p>
           </button>
@@ -511,7 +511,7 @@ export function ProfileScreen() {
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-white/70">
                 <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
               </svg>
-              <p className="text-white font-bold text-xl">{user?.bonusPoints || 50}</p>
+              <p className="text-white font-bold text-xl">{user?.bonusPoints ?? 0}</p>
             </div>
             <p className="text-white/70 text-xs">{t.bonus}</p>
           </div>
