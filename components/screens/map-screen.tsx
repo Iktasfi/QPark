@@ -20,10 +20,30 @@ const locations = [
 ]
 
 export function MapScreen() {
-  const { spots, setSelectedSpot, setCurrentScreen, t, fetchSpotsForLocation } = useParking()
+  const { spots, setSelectedSpot, setCurrentScreen, t, fetchSpotsForLocation, activeBooking } = useParking()
   const [searchQuery, setSearchQuery]         = useState("")
-  const [selectedLocation, setSelectedLocation] = useState(locations[0])
   const [showDropdown, setShowDropdown]       = useState(false)
+
+  // Default to the location of the active booking, fallback to location 1
+  const getBookingLocation = () => {
+    if (activeBooking?.spotId) {
+      const prefix = activeBooking.spotId.split("-")[0]
+      const match = locations.find(l => l.prefix === prefix)
+      if (match) return match
+    }
+    return locations[0]
+  }
+
+  const [selectedLocation, setSelectedLocation] = useState(getBookingLocation)
+
+  // Update selected location if active booking changes (e.g. after session restore)
+  useEffect(() => {
+    if (activeBooking?.spotId) {
+      const prefix = activeBooking.spotId.split("-")[0]
+      const match = locations.find(l => l.prefix === prefix)
+      if (match) setSelectedLocation(match)
+    }
+  }, [activeBooking?.spotId])
 
   useEffect(() => {
     fetchSpotsForLocation(selectedLocation.id)
