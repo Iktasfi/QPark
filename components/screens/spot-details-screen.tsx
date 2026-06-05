@@ -137,9 +137,12 @@ export function SpotDetailsScreen() {
         type: bookingType,
         status: "active" as const,
         startTime: new Date(),
-        isPaid: false,
+        isPaid: isLongTerm, // long-term is paid immediately from wallet
         waitingFee: 0,
         rentalDays: selectedRentalDays || undefined,
+        endDate: isLongTerm && selectedRentalDays
+          ? new Date(Date.now() + selectedRentalDays * 24 * 60 * 60 * 1000)
+          : undefined,
       }
 
       setActiveBooking(booking)
@@ -175,7 +178,8 @@ export function SpotDetailsScreen() {
         } catch {}
       }
 
-      setCurrentScreen("booking-confirm")
+      // Long-term → go directly to active booking screen (it's already paid)
+      setCurrentScreen(isLongTerm ? "booking" : "booking-confirm")
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to book spot"
       const match = msg.match(/need (\d+)₸.*have (\d+)₸/)

@@ -594,12 +594,12 @@ router.post('/set-status', async (req: Request, res: Response) => {
               data: { rentalId: rental.id },
             });
           }
-          // Schedule auto-expiry job exactly when the rental period ends
-          await rentalExpiryQueue.add(
+          // Schedule auto-expiry job — fire-and-forget so it doesn't block the response
+          rentalExpiryQueue.add(
             'rental-expiry',
             { rentalId: rental.id },
             { delay: endDate.getTime() - Date.now(), jobId: `expiry-${rental.id}` },
-          );
+          ).catch(err => logger.warn('⚠️ Could not schedule expiry job:', err));
           bookingRecord = { ...rental, _type: 'rental' };
         }
       } catch (e) {
