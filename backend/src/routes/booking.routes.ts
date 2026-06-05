@@ -507,10 +507,10 @@ router.post('/:id/photo', async (req: Request, res: Response) => {
     } else if (finalStatus === 'WRONG_SPOT') {
       io.emit('photo-wrong-spot',  { bookingId: id, spotId: booking.spotId, autoVerified: true });
 
-      // Штраф 200₸ за неправильное место
+      // Штраф 900₸ за неправильное место
       await prisma.user.update({
         where: { id: userId },
-        data: { balance: { decrement: 200 } },
+        data: { walletBalance: { decrement: 900 } },
       });
     } else {
       io.emit('photo-uploaded', { bookingId: id, spotId: booking.spotId });
@@ -575,21 +575,21 @@ router.post('/:id/photo/wrong-spot', async (req: Request, res: Response) => {
       userId = booking.userId;
     }
 
-    // Fine 200₸
+    // Fine 900₸
     const user = await prisma.user.findUnique({ where: { id: userId } });
     if (user) {
       await prisma.user.update({
         where: { id: userId },
-        data: { walletBalance: user.walletBalance - 200 },
+        data: { walletBalance: user.walletBalance - 900 },
       });
       await prisma.transaction.create({
         data: {
           userId,
-          amount: -200,
+          amount: -900,
           type: 'PAYMENT',
-          description: 'Штраф за неправильное место (200₸)',
+          description: 'Штраф за неправильное место (900₸)',
           balanceBefore: user.walletBalance,
-          balanceAfter: user.walletBalance - 200,
+          balanceAfter: user.walletBalance - 900,
         },
       });
     }
@@ -597,7 +597,7 @@ router.post('/:id/photo/wrong-spot', async (req: Request, res: Response) => {
     const { io } = await import('../server');
     io.emit('photo-wrong-spot', { bookingId: id, userId, type });
 
-    res.json({ success: true, fine: 200 });
+    res.json({ success: true, fine: 900 });
   } catch (error) {
     logger.error('❌ Error processing wrong spot:', error);
     res.status(500).json({ error: 'Failed to process wrong spot' });

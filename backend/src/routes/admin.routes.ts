@@ -110,14 +110,17 @@ router.get('/users/find-by-plate', async (req: Request, res: Response) => {
     const { plate } = req.query as { plate: string };
     if (!plate) return res.status(400).json({ error: 'plate is required' });
 
-    // Search with both original and no-spaces version to handle "444 YSH 01" vs "444YSH01"
-    const car = await prisma.car.findFirst({
-      where: {
-        OR: [
-          { plateNumber: { contains: plate.trim(), mode: 'insensitive' } },
-          { plateNumber: { contains: plate.replace(/\s/g, ''), mode: 'insensitive' } },
-        ],
-      },
+    // Normalize: strip spaces for comparison (444YSH01 == 444 YSH 01)
+    const normalizedInput = plate.replace(/\s/g, '').toUpperCase();
+    const rows = await prisma.$queryRaw<Array<{ id: string }>>`
+      SELECT id FROM "Car"
+      WHERE REPLACE("plateNumber", ' ', '') ILIKE ${normalizedInput}
+      LIMIT 1
+    `;
+    if (!rows.length) return res.json(null);
+
+    const car = await prisma.car.findUnique({
+      where: { id: rows[0].id },
       include: {
         user: {
           include: {

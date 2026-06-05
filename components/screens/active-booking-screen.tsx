@@ -11,10 +11,10 @@ import { MapPin, Car, Clock, AlertTriangle, CreditCard, Camera, Calendar, Check,
 import { cn } from "@/lib/utils"
 
 const extendOptions = [
-  { days: 1, price: 700, perDay: 700 },
-  { days: 3, price: 1800, perDay: 600 },
-  { days: 5, price: 2700, perDay: 540 },
-  { days: 7, price: 3500, perDay: 500 },
+  { days: 1,  price: 900,  perDay: 900 },
+  { days: 3,  price: 2400, perDay: 800 },
+  { days: 5,  price: 3000, perDay: 600 },
+  { days: 7,  price: 3500, perDay: 500 },
   { days: 14, price: 6000, perDay: 429 },
 ]
 
@@ -26,7 +26,7 @@ export function ActiveBookingScreen() {
     : _selectedSpot
 
   const [now, setNow] = useState(() => Date.now())
-  const [extraWaitSeconds, setExtraWaitSeconds] = useState(0)
+
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000)
     return () => clearInterval(id)
@@ -138,35 +138,6 @@ export function ActiveBookingScreen() {
     }
   }
 
-  const [isExtendingWaiting, setIsExtendingWaiting] = useState(false)
-
-  const handleExtendWaiting = async () => {
-    if (!user || !activeBooking) return
-    setIsExtendingWaiting(true)
-    try {
-      const token = localStorage.getItem("qpark_token")
-      const res = await fetch("/backend/bookings/extend-waiting", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ spotNumber: activeBooking.spotId }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || "Failed to extend waiting")
-
-      setUser({ ...user, balance: data.walletBalance })
-      setExtraWaitSeconds(prev => prev + 30 * 60)
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Failed to extend waiting"
-      const match = msg.match(/need (\d+)₸.*have (\d+)₸/)
-      if (match) {
-        setInsufficientBalance({ need: parseInt(match[1]), have: parseInt(match[2]) })
-      } else {
-        alert(msg)
-      }
-    } finally {
-      setIsExtendingWaiting(false)
-    }
-  }
 
   const handleExtendRental = () => {
     if (!selectedExtendDays || !activeBooking || !user) return
@@ -539,22 +510,36 @@ export function ActiveBookingScreen() {
 
           <Card className={selectedSpot?.status === "OCCUPIED"
             ? "border-green-300 bg-green-50"
-            : "border-purple-200 bg-purple-50"
+            : (reassignedAt !== null || complaintSent)
+              ? "border-orange-300 bg-orange-50"
+              : "border-purple-200 bg-purple-50"
           }>
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <div className={`h-3 w-3 rounded-full ${selectedSpot?.status === "OCCUPIED" ? "bg-green-500" : "bg-purple-400"}`} />
+                  <div className={`h-3 w-3 rounded-full ${selectedSpot?.status === "OCCUPIED" ? "bg-green-500" : (reassignedAt !== null || complaintSent) ? "bg-orange-400" : "bg-purple-400"}`} />
                   <div>
                     <p className="text-sm font-semibold text-foreground">
-                      {selectedSpot?.status === "OCCUPIED" ? t.carParked : t.spotReservedOutside}
+                      {selectedSpot?.status === "OCCUPIED"
+                        ? t.carParked
+                        : reassignedAt !== null
+                          ? "Переместитесь на новое место"
+                          : complaintSent
+                            ? "Вы внутри — ожидайте решения"
+                            : t.spotReservedOutside}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      {selectedSpot?.status === "OCCUPIED" ? t.driveToExitLpr : t.driveInLpr}
+                      {selectedSpot?.status === "OCCUPIED"
+                        ? t.driveToExitLpr
+                        : reassignedAt !== null
+                          ? "Заедьте на место — LPR зафиксирует"
+                          : complaintSent
+                            ? "Администратор ищет вам новое место"
+                            : t.driveInLpr}
                     </p>
                   </div>
                 </div>
-                <Car className={`h-6 w-6 ${selectedSpot?.status === "OCCUPIED" ? "text-green-600" : "text-purple-400"}`} />
+                <Car className={`h-6 w-6 ${selectedSpot?.status === "OCCUPIED" ? "text-green-600" : (reassignedAt !== null || complaintSent) ? "text-orange-500" : "text-purple-400"}`} />
               </div>
             </CardContent>
           </Card>
