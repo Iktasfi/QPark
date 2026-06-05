@@ -304,7 +304,97 @@ router.post('/complaints/:id/reassign', async (req: Request, res: Response) => {
     const { io } = await import('../server');
 
     if (!freeSpot) {
-      // No spots — refund the user
+      // ── AUTO-SWAP: if violator is identified and has their own booking ──
+      if (complaint.violatorUserId) {
+        const violatorBooking = await prisma.booking.findFirst({
+          where: {
+            userId: complaint.violatorUserId,
+            status: { in: ['PENDING', 'CONFIRMED'] },
+          },
+        });
+
+        const violatorSpotRecord = violatorBooking
+          ? await prisma.parkingSpot.findUnique({ where: { id: violatorBooking.spotId } })
+          : null;
+
+        if (violatorBooking && violatorSpotRecord) {
+          const violatorSpotNumber = violatorSpotRecord.spotNumber;
+          const violatorSpotId    = violatorBooking.spotId;
+
+          // 1. Move User 1's booking to violator's spot
+          if (complaint.bookingId) {
+            await prisma.booking.update({
+              where: { id: complaint.bookingId },
+              data: { spotId: violatorSpotId },
+            });
+          }
+
+          // 2. Move violator's booking to User 1's original spot (where they physically are)
+          const user1Spot = await prisma.parkingSpot.findFirst({
+            where: { spotNumber: complaint.spotId },
+          });
+          if (user1Spot) {
+            await prisma.booking.update({
+              where: { id: violatorBooking.id },
+              data: { spotId: user1Spot.id },
+            });
+          }
+
+          // 3. Auto-issue fine to violator
+          const violatorUser = await prisma.user.findUnique({ where: { id: complaint.violatorUserId } });
+          if (violatorUser) {
+            const fineAmount = 900;
+            const debt = fineAmount - violatorUser.walletBalance;
+            await Promise.all([
+              prisma.fine.create({
+                data: {
+                  userId: complaint.violatorUserId,
+                  amount: fineAmount,
+                  reason: `Автоштраф: занял чужое место (${complaint.spotId}), места поменяны`,
+                  isPaid: violatorUser.walletBalance >= fineAmount,
+                },
+              }),
+              prisma.user.update({
+                where: { id: complaint.violatorUserId },
+                data: { walletBalance: { decrement: Math.min(fineAmount, violatorUser.walletBalance) } },
+              }),
+              prisma.transaction.create({
+                data: {
+                  userId: complaint.violatorUserId,
+                  amount: -Math.min(fineAmount, violatorUser.walletBalance),
+                  type: 'PAYMENT',
+                  description: `Автоштраф 900₸: занял место ${complaint.spotId}`,
+                  balanceBefore: violatorUser.walletBalance,
+                  balanceAfter: Math.max(0, violatorUser.walletBalance - fineAmount),
+                },
+              }),
+              ...(debt > 0 ? [prisma.transaction.create({
+                data: {
+                  userId: complaint.violatorUserId,
+                  amount: 0,
+                  type: 'PAYMENT',
+                  description: `Долг по штрафу: ${debt}₸ (пополните кошелёк)`,
+                  balanceBefore: 0,
+                  balanceAfter: 0,
+                },
+              })] : []),
+            ]);
+            io.emit('fine-issued', { userId: complaint.violatorUserId, amount: fineAmount, complaintId: id, spotId: complaint.spotId });
+          }
+
+          // 4. Notify User 1 of their new spot
+          await prisma.complaint.update({
+            where: { id },
+            data: { status: 'REASSIGNED', newSpotId: violatorSpotNumber, resolvedAt: new Date() },
+          });
+          io.emit('spot-reassigned', { userId: complaint.userId, newSpotId: violatorSpotNumber });
+
+          logger.info(`✅ Auto-swap: ${complaint.userId} → ${violatorSpotNumber}, violator fined 900₸`);
+          return res.json({ success: true, action: 'swapped', newSpotId: violatorSpotNumber });
+        }
+      }
+
+      // ── No swap possible — refund User 1 ──
       const booking = complaint.bookingId
         ? await prisma.booking.findUnique({ where: { id: complaint.bookingId } })
         : null;

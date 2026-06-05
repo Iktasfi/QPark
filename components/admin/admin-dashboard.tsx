@@ -1305,9 +1305,12 @@ export function AdminDashboard() {
                                   if (data.action === "reassigned") {
                                     setComplaints(prev => prev.map(x => x.id === c.id ? { ...x, status: "REASSIGNED" } : x))
                                     alert(`✅ Пользователь перенесён на ${data.newSpotId}`)
+                                  } else if (data.action === "swapped") {
+                                    setComplaints(prev => prev.map(x => x.id === c.id ? { ...x, status: "REASSIGNED" } : x))
+                                    alert(`🔄 Места поменяны автоматически!\nМашина 1 → ${data.newSpotId}\nНарушитель оштрафован 900₸`)
                                   } else if (data.action === "refunded") {
                                     setComplaints(prev => prev.map(x => x.id === c.id ? { ...x, status: "REFUNDED" } : x))
-                                    alert(`💸 Нет свободных мест. Возврат ${data.refundAmount}₸`)
+                                    alert(`💸 Нет свободных мест и нарушитель не определён. Возврат ${data.refundAmount}₸`)
                                   }
                                 }}
                                 className="flex-1 py-2.5 rounded-xl text-xs font-semibold text-white transition-all hover:opacity-80"
