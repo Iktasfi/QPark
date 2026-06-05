@@ -118,7 +118,7 @@ export function MapScreen() {
   const takenCount = visibleSpots.filter(s => s.status === "OCCUPIED" || s.status === "RESERVED" || s.status === "BOOKED").length
 
   return (
-    <div className="relative mx-auto max-w-md h-screen bg-gray-50 dark:bg-gray-900 flex flex-col overflow-hidden">
+    <div className="relative w-full h-screen bg-gray-50 dark:bg-gray-900 flex flex-col overflow-hidden">
 
       {/* ── MAP ── takes upper 52% */}
       <div className="relative flex-shrink-0" style={{ height: "52%" }}>

@@ -73,9 +73,7 @@ function AppContent() {
 export default function SmartParkingApp() {
   return (
     <ParkingProvider>
-      <main className="flex min-h-screen items-center justify-center bg-foreground/5 p-4">
-        <AppContent />
-      </main>
+      <AppContent />
     </ParkingProvider>
   )
 }
