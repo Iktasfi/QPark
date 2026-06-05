@@ -76,7 +76,7 @@ export function WalletScreen() {
 
           {/* Custom amount input */}
           <div className={`rounded-2xl border-2 transition-all overflow-hidden ${
-            customAmount && Number(customAmount) >= 100
+            customAmount && Number(customAmount) >= 500
               ? "border-[#495E8E]"
               : darkMode ? "border-gray-700" : "border-gray-200"
           } ${darkMode ? "bg-gray-800" : "bg-white"}`}>
@@ -84,7 +84,7 @@ export function WalletScreen() {
               <span className={`text-lg font-bold ${darkMode ? "text-gray-400" : "text-gray-400"}`}>₸</span>
               <input
                 type="number"
-                min={100}
+                min={500}
                 value={customAmount}
                 onChange={e => {
                   setCustomAmount(e.target.value)
@@ -95,7 +95,7 @@ export function WalletScreen() {
                   darkMode ? "text-white placeholder:text-gray-600" : "text-[#1a1a2e] placeholder:text-gray-400"
                 }`}
               />
-              {customAmount && Number(customAmount) >= 100 && (
+              {customAmount && Number(customAmount) >= 500 && (
                 <button
                   onClick={() => setSelectedAmount(Number(customAmount))}
                   className="px-4 py-2 bg-[#495E8E] text-white rounded-xl text-sm font-semibold hover:bg-[#3d4c73] transition-colors"
@@ -104,8 +104,8 @@ export function WalletScreen() {
                 </button>
               )}
             </div>
-            {customAmount && Number(customAmount) < 100 && (
-              <p className="px-4 pb-2 text-xs text-red-400">Минимальная сумма — 100₸</p>
+            {customAmount && Number(customAmount) < 500 && (
+              <p className="px-4 pb-2 text-xs text-red-400">Минимальная сумма — 500₸</p>
             )}
           </div>
 

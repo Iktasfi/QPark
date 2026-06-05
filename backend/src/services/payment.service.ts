@@ -242,6 +242,7 @@ export class PaymentService {
   }
 
   async createStripeIntent(userId: string, amount: number) {
+    if (amount < 500) throw new Error('Минимальная сумма пополнения — 500₸');
     const user = await prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new Error('User not found');
 
