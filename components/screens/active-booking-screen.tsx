@@ -617,7 +617,7 @@ export function ActiveBookingScreen() {
           >
             {isPaying ? (
               t.processing
-            ) : activeBooking?.isPaid ? (
+            ) : (activeBooking?.isPaid || calculateCost() === 0) ? (
               <>
                 <Check className="h-5 w-5" />
                 Завершить парковку
