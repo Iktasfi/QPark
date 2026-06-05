@@ -484,7 +484,10 @@ export function AdminDashboard() {
             {/* User */}
             <div className="rounded-xl px-4 py-3" style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)" }}>
               <p className="text-white/40 text-[10px] uppercase tracking-wider mb-0.5">Пользователь</p>
-              <p className="text-white font-semibold text-sm">{booking?.userName ?? rental?.userName ?? "—"}</p>
+              <p className="text-white font-semibold text-sm">
+                {user ? `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim() || booking?.userName || rental?.userName || "—"
+                  : booking?.userName ?? rental?.userName ?? "—"}
+              </p>
               {user && <p className="text-white/50 text-xs">{user.phoneNumber}</p>}
             </div>
 
@@ -498,8 +501,19 @@ export function AdminDashboard() {
             ) : booking ? (
               <div className="rounded-xl px-4 py-3" style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)" }}>
                 <p className="text-white/40 text-[10px] uppercase tracking-wider mb-0.5">Бронирование</p>
-                <p className="text-white font-semibold text-sm">Стоимость: {booking.totalCost.toLocaleString()} ₸</p>
-                {startTime && <p className="text-white/50 text-xs mt-0.5">С {startTime.toLocaleString("ru-RU", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}</p>}
+                <div className="space-y-0.5">
+                  {startTime && (
+                    <p className="text-white text-sm font-semibold">
+                      С {startTime.toLocaleString("ru-RU", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
+                    </p>
+                  )}
+                  {startTime && (
+                    <p className="text-white/50 text-xs">
+                      {Math.round((Date.now() - startTime.getTime()) / 60000)} мин назад · {booking.status}
+                    </p>
+                  )}
+                  <p className="text-white/70 text-xs">Стоимость: <span className="text-white font-semibold">{booking.totalCost.toLocaleString()} ₸</span></p>
+                </div>
               </div>
             ) : null}
 

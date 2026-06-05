@@ -95,9 +95,9 @@ router.get('/restore', async (req: Request, res: Response) => {
       data: { status: 'CANCELLED' },
     });
 
-    // Short-term: active booking
+    // Short-term: active booking (including ACTIVE = already arrived)
     const booking = await prisma.booking.findFirst({
-      where: { userId, status: { in: ['PENDING', 'CONFIRMED'] } },
+      where: { userId, status: { in: ['PENDING', 'CONFIRMED', 'ACTIVE'] } },
       orderBy: { createdAt: 'desc' },
       include: { spot: true },
     });
@@ -112,6 +112,7 @@ router.get('/restore', async (req: Request, res: Response) => {
         status: 'active',
         startTime: booking.startTime,
         estimatedEndTime: booking.estimatedEndTime,
+        arrivedAt: booking.arrivedAt ?? null,
         isPaid: booking.isPaid,
         waitingFee: 0,
       });

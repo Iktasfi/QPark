@@ -38,22 +38,36 @@ export function MapScreen() {
   const [searchQuery, setSearchQuery] = useState("")
   const [showDropdown, setShowDropdown] = useState(false)
 
-  const getBookingLocation = () => {
+  const getInitialLocation = (): MapLocation => {
+    // Active booking takes priority
     if (activeBooking?.spotId) {
       const prefix = activeBooking.spotId.split("-")[0]
       const match = locations.find(l => l.prefix === prefix)
       if (match) return match
     }
+    // Then last saved location
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("qpark_map_location_id")
+      if (saved) {
+        const found = locations.find(l => l.id === Number(saved))
+        if (found) return found
+      }
+    }
     return locations[0]
   }
 
-  const [selectedLocation, setSelectedLocation] = useState<MapLocation>(getBookingLocation)
+  const [selectedLocation, setSelectedLocation] = useState<MapLocation>(getInitialLocation)
+
+  const handleSelectLocation = (loc: MapLocation) => {
+    setSelectedLocation(loc)
+    localStorage.setItem("qpark_map_location_id", String(loc.id))
+  }
 
   useEffect(() => {
     if (activeBooking?.spotId) {
       const prefix = activeBooking.spotId.split("-")[0]
       const match = locations.find(l => l.prefix === prefix)
-      if (match) setSelectedLocation(match)
+      if (match) handleSelectLocation(match)
     }
   }, [activeBooking?.spotId])
 
@@ -113,7 +127,7 @@ export function MapScreen() {
           selectedLocationId={selectedLocation.id}
           onSelectLocation={id => {
             const loc = locations.find(l => l.id === id)
-            if (loc) { setSelectedLocation(loc) }
+            if (loc) handleSelectLocation(loc)
           }}
           locationStats={locationStats}
         />
@@ -159,7 +173,7 @@ export function MapScreen() {
                     const dotColor = freeRatio > 0.5 ? "bg-green-500" : freeRatio > 0.2 ? "bg-amber-400" : "bg-red-400"
                     return (
                       <button key={loc.id}
-                        onClick={() => { setSelectedLocation(loc); setShowDropdown(false); setSearchQuery("") }}
+                        onClick={() => { handleSelectLocation(loc); setShowDropdown(false); setSearchQuery("") }}
                         className={cn(
                           "w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors border-b border-gray-100 dark:border-gray-700 last:border-0",
                           selectedLocation.id === loc.id && "bg-blue-50 dark:bg-blue-900/20"
