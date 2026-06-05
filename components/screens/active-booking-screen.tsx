@@ -406,7 +406,7 @@ export function ActiveBookingScreen() {
                 <Clock className="h-8 w-8 text-orange-600" />
               )}
               <div className="flex-1">
-                <p className="text-sm text-orange-700 font-medium">Переместитесь на новое место</p>
+                <p className="text-sm text-orange-700 font-medium">{t.moveToNewSpot}</p>
                 <p className="text-3xl font-bold text-foreground">{formatTime(reassignTimer ?? 0)}</p>
               </div>
               <div className="text-right">
@@ -456,12 +456,12 @@ export function ActiveBookingScreen() {
                 <div className="flex items-center gap-3">
                   <Clock className="h-8 w-8 text-green-600" />
                   <div>
-                    <p className="text-sm text-green-700 font-medium">Найдите и займите место</p>
+                    <p className="text-sm text-green-700 font-medium">{t.findAndParkSpot}</p>
                     <p className="text-3xl font-bold text-green-800">{formatTime(graceRemaining)}</p>
                   </div>
                 </div>
                 <div className="text-right">
-                  <p className="text-xs text-green-600">Счётчик начнётся после</p>
+                  <p className="text-xs text-green-600">{t.meterStartsAfter}</p>
                   <p className="text-sm font-semibold text-green-700">0 &#8376;</p>
                 </div>
               </div>
@@ -481,7 +481,7 @@ export function ActiveBookingScreen() {
                 {activeBooking?.isPaid && (
                   <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-green-100 dark:bg-green-900/30">
                     <Check className="h-4 w-4 text-green-600" />
-                    <span className="text-sm font-semibold text-green-700 dark:text-green-400">Оплачено</span>
+                    <span className="text-sm font-semibold text-green-700 dark:text-green-400">{t.paid}</span>
                   </div>
                 )}
               </div>
@@ -523,18 +523,18 @@ export function ActiveBookingScreen() {
                       {selectedSpot?.status === "OCCUPIED"
                         ? t.carParked
                         : reassignedAt !== null
-                          ? "Переместитесь на новое место"
+                          ? t.moveToNewSpot
                           : complaintSent
-                            ? "Вы внутри — ожидайте решения"
+                            ? t.insideWaiting
                             : t.spotReservedOutside}
                     </p>
                     <p className="text-xs text-muted-foreground">
                       {selectedSpot?.status === "OCCUPIED"
                         ? t.driveToExitLpr
                         : reassignedAt !== null
-                          ? "Заедьте на место — LPR зафиксирует"
+                          ? t.moveToNewSpotDesc
                           : complaintSent
-                            ? "Администратор ищет вам новое место"
+                            ? t.adminFindingSpot
                             : t.driveInLpr}
                     </p>
                   </div>
@@ -590,8 +590,8 @@ export function ActiveBookingScreen() {
             <h3 className="mb-3 font-medium text-foreground">{t.costBreakdown}</h3>
             <div className="space-y-2 text-sm">
               <div className="flex justify-between">
-                <span className="text-muted-foreground">Тариф</span>
-                <span className="text-foreground">150 ₸/час, далее 3 ₸/мин</span>
+                <span className="text-muted-foreground">{t.rateLabel}</span>
+                <span className="text-foreground">{t.rateValue}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Время</span>
@@ -620,7 +620,7 @@ export function ActiveBookingScreen() {
             ) : (activeBooking?.isPaid || calculateCost() === 0) ? (
               <>
                 <Check className="h-5 w-5" />
-                Завершить парковку
+                {t.finishParking}
               </>
             ) : (
               <>

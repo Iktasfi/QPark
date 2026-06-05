@@ -153,7 +153,7 @@ export function MapScreen() {
                 value={searchQuery}
                 onChange={e => { setSearchQuery(e.target.value); setShowDropdown(true) }}
                 onClick={e => { e.stopPropagation(); setShowDropdown(true) }}
-                placeholder="Поиск парковки..."
+                placeholder={t.searchParking}
                 className="flex-1 bg-transparent text-sm text-gray-700 dark:text-gray-200 placeholder-gray-400 focus:outline-none"
               />
               {!showDropdown && (
@@ -190,7 +190,7 @@ export function MapScreen() {
                         <div className="flex items-center gap-1.5 shrink-0">
                           <span className={cn("w-2 h-2 rounded-full", dotColor)} />
                           <span className="text-xs font-semibold text-gray-600 dark:text-gray-300">
-                            {st?.free ?? 0} св.
+                            {st?.free ?? 0} {t.freeShort}
                           </span>
                         </div>
                       </button>
@@ -210,11 +210,11 @@ export function MapScreen() {
             <div className="flex items-center gap-3 text-xs shrink-0">
               <span className="flex items-center gap-1">
                 <span className="w-2 h-2 rounded-full bg-green-500" />
-                <span className="text-gray-600 dark:text-gray-400 font-medium">{freeCount} св.</span>
+                <span className="text-gray-600 dark:text-gray-400 font-medium">{freeCount} {t.freeShort}</span>
               </span>
               <span className="flex items-center gap-1">
                 <span className="w-2 h-2 rounded-full bg-gray-400" />
-                <span className="text-gray-600 dark:text-gray-400">{takenCount} занято</span>
+                <span className="text-gray-600 dark:text-gray-400">{takenCount} {t.takenShort}</span>
               </span>
             </div>
           </div>
