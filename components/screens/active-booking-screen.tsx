@@ -332,24 +332,44 @@ export function ActiveBookingScreen() {
               <Button onClick={() => setCurrentScreen("map")} className="bg-[#354469] hover:bg-[#354469]/90">{t.findParkingBtn}</Button>
             </div>
           ) : (
-            history.map(b => (
-              <div key={b.id} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 space-y-1 shadow-sm">
-                <div className="flex items-center justify-between">
-                  <span className="font-semibold text-foreground">{b.spotId}</span>
-                  <span className={cn(
-                    "text-xs px-2 py-0.5 rounded-full font-medium",
-                    b.status === "COMPLETED" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
-                  )}>
-                    {b.status === "COMPLETED" ? t.completed : t.cancelled}
-                  </span>
+            history.map(b => {
+              const isActive = b.status === "ACTIVE"
+              const isLT = b.type === "long-term"
+              return (
+                <div key={b.id} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 space-y-1 shadow-sm">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-foreground">{b.spotId}</span>
+                      {isLT && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400">
+                          {t.longTerm}
+                        </span>
+                      )}
+                    </div>
+                    <span className={cn(
+                      "text-xs px-2 py-0.5 rounded-full font-medium",
+                      isActive       ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400" :
+                      b.status === "COMPLETED" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
+                    )}>
+                      {isActive ? t.active : b.status === "COMPLETED" ? t.completed : t.cancelled}
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {b.plateNumber} · {isLT ? t.longTerm : t.shortTerm}
+                    {isLT && (b as any).rentalDays ? ` · ${(b as any).rentalDays} ${t.days}` : ""}
+                  </p>
+                  <div className="flex justify-between text-xs text-muted-foreground">
+                    <span>{new Date(b.startTime).toLocaleString("ru-RU", { timeZone: "Asia/Almaty", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
+                    {b.totalCost > 0 && <span className="font-medium text-foreground">{b.totalCost.toLocaleString()} ₸</span>}
+                  </div>
+                  {isActive && isLT && (b as any).endDate && (
+                    <p className="text-xs text-purple-600 dark:text-purple-400 font-medium">
+                      До {new Date((b as any).endDate).toLocaleDateString("ru-RU", { day: "2-digit", month: "short", year: "numeric" })}
+                    </p>
+                  )}
                 </div>
-                <p className="text-xs text-muted-foreground">{b.plateNumber} · {b.type === "long-term" ? t.longTerm : t.shortTerm}</p>
-                <div className="flex justify-between text-xs text-muted-foreground">
-                  <span>{new Date(b.startTime).toLocaleString("ru-RU", { timeZone: "Asia/Almaty", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
-                  {b.totalCost > 0 && <span className="font-medium text-foreground">{b.totalCost.toLocaleString()} ₸</span>}
-                </div>
-              </div>
-            ))
+              )
+            })
           )}
         </div>
         <div className="px-4 pt-2">

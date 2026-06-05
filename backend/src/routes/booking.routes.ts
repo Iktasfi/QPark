@@ -95,24 +95,27 @@ router.get('/restore', async (req: Request, res: Response) => {
       data: { status: 'CANCELLED' },
     });
 
-    // Short-term: active booking (including ACTIVE = already arrived)
+    // Short-term: active booking (PENDING = waiting to arrive, CONFIRMED = arrived)
     const booking = await prisma.booking.findFirst({
-      where: { userId, status: { in: ['PENDING', 'CONFIRMED', 'ACTIVE'] } },
+      where: { userId, status: { in: ['PENDING', 'CONFIRMED'] } },
       orderBy: { createdAt: 'desc' },
-      include: { spot: true },
     });
+
+    const bookingSpot = booking
+      ? await prisma.parkingSpot.findUnique({ where: { id: booking.spotId } })
+      : null;
 
     if (booking) {
       return res.json({
         id: booking.id,
-        spotId: booking.spot?.spotNumber ?? booking.spotId,
+        spotId: bookingSpot?.spotNumber ?? booking.spotId,
         userId: booking.userId,
         plateNumber: booking.plateNumber,
         type: 'short-term',
         status: 'active',
         startTime: booking.startTime,
         estimatedEndTime: booking.estimatedEndTime,
-        arrivedAt: booking.arrivedAt ?? null,
+        arrivedAt: booking.arrivedAt,
         isPaid: booking.isPaid,
         waitingFee: 0,
       });
@@ -364,23 +367,55 @@ router.get('/history', async (req: Request, res: Response) => {
   try {
     const userId = req.userId!;
 
-    const bookings = await prisma.booking.findMany({
-      where: { userId, status: { in: ['COMPLETED', 'CANCELLED'] } },
-      orderBy: { createdAt: 'desc' },
-      take: 30,
-      include: { spot: true },
-    });
+    const [bookings, rentals] = await Promise.all([
+      prisma.booking.findMany({
+        where: { userId, status: { in: ['COMPLETED', 'CANCELLED'] } },
+        orderBy: { createdAt: 'desc' },
+        take: 20,
+      }),
+      prisma.longTermRental.findMany({
+        where: { userId },
+        orderBy: { createdAt: 'desc' },
+        take: 10,
+      }),
+    ]);
 
-    res.json(bookings.map(b => ({
+    const spotIds = [...new Set([
+      ...bookings.map(b => b.spotId),
+      ...rentals.map(r => r.spotId),
+    ])];
+    const spots = await prisma.parkingSpot.findMany({
+      where: { id: { in: spotIds } },
+      select: { id: true, spotNumber: true },
+    });
+    const spotMap = Object.fromEntries(spots.map(s => [s.id, s.spotNumber]));
+
+    const shortTermItems = bookings.map(b => ({
       id: b.id,
-      spotId: b.spot?.spotNumber ?? b.spotId,
+      spotId: spotMap[b.spotId] ?? b.spotId,
       plateNumber: b.plateNumber,
       status: b.status,
       startTime: b.startTime,
-      endTime: b.actualEndTime ?? b.estimatedEndTime,
       totalCost: b.totalCost,
       type: 'short-term',
-    })));
+    }));
+
+    const longTermItems = rentals.map(r => ({
+      id: r.id,
+      spotId: spotMap[r.spotId] ?? r.spotId,
+      plateNumber: r.plateNumber,
+      status: r.status === 'ACTIVE' ? 'ACTIVE' : r.status === 'COMPLETED' ? 'COMPLETED' : 'CANCELLED',
+      startTime: r.startDate,
+      totalCost: r.totalCost,
+      type: 'long-term',
+      rentalDays: r.rentalDays,
+      endDate: r.endDate,
+    }));
+
+    const all = [...shortTermItems, ...longTermItems]
+      .sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime());
+
+    res.json(all);
   } catch (error) {
     logger.error('❌ Error fetching booking history:', error);
     res.status(500).json({ error: 'Failed to fetch history' });
