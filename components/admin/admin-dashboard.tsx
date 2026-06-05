@@ -1273,7 +1273,7 @@ export function AdminDashboard() {
                                     )}
 
                                     {/* Fine button */}
-                                    {(c.status === "PENDING" || c.status === "OPEN" || c.status === "REASSIGNED") && (
+                                    {(c.status === "PENDING" || c.status === "OPEN" || c.status === "REASSIGNED" || c.status === "REFUNDED") && (
                                       <button
                                         onClick={() => issueFine(info.id, info.firstName ?? info.phoneNumber)}
                                         className="w-full py-3 rounded-xl font-bold text-white text-sm transition-all hover:opacity-90 active:scale-98"
@@ -1292,7 +1292,7 @@ export function AdminDashboard() {
                           })()}
 
                           {/* Action buttons */}
-                          {(c.status === "PENDING" || c.status === "OPEN" || c.status === "REASSIGNED") && (
+                          {(c.status === "PENDING" || c.status === "OPEN" || c.status === "REASSIGNED" || c.status === "REFUNDED") && (
                             <div className="flex gap-2 pt-1">
                               <button
                                 onClick={async () => {
