@@ -99,6 +99,18 @@ router.post('/', async (req: Request, res: Response) => {
         const freeSpot = await findFreeSpotNearby(spotId);
 
         if (freeSpot) {
+          // Move victim's booking OR long-term rental to the new spot
+          if (bookingId) {
+            await prisma.booking.update({ where: { id: bookingId }, data: { spotId: freeSpot.id } });
+          } else {
+            const oldSpot = await prisma.parkingSpot.findFirst({ where: { spotNumber: spotId } });
+            if (oldSpot) {
+              await prisma.longTermRental.updateMany({
+                where: { userId, spotId: oldSpot.id, status: 'ACTIVE' },
+                data: { spotId: freeSpot.id },
+              });
+            }
+          }
           await prisma.parkingSpot.update({
             where: { id: freeSpot.id },
             data: { status: 'BOOKED', currentUserId: userId },
