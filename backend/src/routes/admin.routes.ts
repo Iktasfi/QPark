@@ -113,7 +113,7 @@ router.get('/users/find-by-plate', async (req: Request, res: Response) => {
     // Normalize: strip spaces for comparison (444YSH01 == 444 YSH 01)
     const normalizedInput = plate.replace(/\s/g, '').toUpperCase();
     const rows = await prisma.$queryRaw<Array<{ id: string }>>`
-      SELECT id FROM "Car"
+      SELECT id FROM "cars"
       WHERE REPLACE("plateNumber", ' ', '') ILIKE ${normalizedInput}
       LIMIT 1
     `;
