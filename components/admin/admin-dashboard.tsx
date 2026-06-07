@@ -1101,7 +1101,11 @@ export function AdminDashboard() {
                       RESOLVED:   { label: "✅ Решено",     color: "#a3a3a3", bg: "rgba(163,163,163,0.1)" },
                       CLOSED:     { label: "✅ Решено",     color: "#a3a3a3", bg: "rgba(163,163,163,0.1)" },
                     }
-                    const meta = statusMeta[c.status] ?? statusMeta.CLOSED
+                    // PENDING with no detected plate = OCR failed, refund issued, needs manual review
+                    const needsManualReview = c.status === "PENDING" && !c.detectedPlate
+                    const meta = needsManualReview
+                      ? { label: "🔍 Ручная проверка", color: "#f87171", bg: "rgba(248,113,113,0.15)" }
+                      : (statusMeta[c.status] ?? statusMeta.CLOSED)
                     return (
                       <div key={c.id} className="rounded-2xl overflow-hidden border border-white/10" style={{ background: "rgba(255,255,255,0.04)" }}>
                         {/* Card header */}
@@ -1145,7 +1149,15 @@ export function AdminDashboard() {
                               const res = await fetch(`${RAILWAY}/admin/users/find-by-plate?plate=${encodeURIComponent(plate)}`, { headers: { Authorization: `Bearer ${token}` } })
                               const data = res.ok ? await res.json() : null
                               setViolatorLookup(prev => ({ ...prev, [c.id]: data }))
-                              if (data) setComplaints(prev => prev.map(x => x.id === c.id ? { ...x, detectedPlate: plate, violatorUserId: data.id } : x))
+                              if (data) {
+                                setComplaints(prev => prev.map(x => x.id === c.id ? { ...x, detectedPlate: plate, violatorUserId: data.id } : x))
+                                // Persist violatorUserId to DB so /reassign can use it
+                                await fetch(`${RAILWAY}/admin/complaints/${c.id}/set-violator`, {
+                                  method: "PATCH",
+                                  headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+                                  body: JSON.stringify({ plateNumber: plate }),
+                                }).catch(() => {})
+                              }
                             }
 
                             const issueFine = async (userId: string, name: string) => {

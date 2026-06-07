@@ -131,7 +131,8 @@ router.post('/', async (req: Request, res: Response) => {
         };
 
         // Helper: refund victim
-        const refundVictim = async () => {
+        // keepOpen=true → refund as compensation but leave complaint PENDING for admin manual review
+        const refundVictim = async (keepOpen = false) => {
           let refundAmount = 0;
           if (bookingId) {
             const booking = await prisma.booking.findUnique({ where: { id: bookingId } });
@@ -147,9 +148,14 @@ router.post('/', async (req: Request, res: Response) => {
               ]);
             }
           }
-          await prisma.complaint.update({ where: { id: complaint.id }, data: { status: 'REFUNDED', resolvedAt: new Date() } });
-          io.emit('no-spots-available', { userId, refundAmount });
-          logger.info(`😔 No free spots for victim ${userId}, refunded ${refundAmount}₸`);
+          await prisma.complaint.update({
+            where: { id: complaint.id },
+            data: keepOpen
+              ? { status: 'PENDING', resolvedAt: null }
+              : { status: 'REFUNDED', resolvedAt: new Date() },
+          });
+          io.emit('no-spots-available', { userId, refundAmount, needsManualReview: keepOpen });
+          logger.info(`😔 No free spots for victim ${userId}, refunded ${refundAmount}₸${keepOpen ? ' (kept PENDING for admin review)' : ''}`);
         };
 
         if (freeSpot) {
@@ -157,22 +163,31 @@ router.post('/', async (req: Request, res: Response) => {
           await moveVictim(freeSpot.id);
           await prisma.parkingSpot.update({ where: { id: freeSpot.id }, data: { status: 'BOOKED', currentUserId: userId } });
 
-          // If violator identified: move their booking to victim's old spot, free their original spot
+          // If violator identified: move their booking/rental to victim's old spot, free their original spot
           if (violatorUserId && victimOldSpot) {
             const violatorBooking = await prisma.booking.findFirst({
               where: { userId: violatorUserId, status: { in: ['PENDING', 'CONFIRMED'] } },
             });
-            if (violatorBooking) {
-              const violatorOriginalSpot = await prisma.parkingSpot.findUnique({ where: { id: violatorBooking.spotId } });
-              await prisma.booking.update({ where: { id: violatorBooking.id }, data: { spotId: victimOldSpot.id } });
+            const violatorRental = !violatorBooking
+              ? await prisma.longTermRental.findFirst({ where: { userId: violatorUserId, status: 'ACTIVE' } })
+              : null;
+            const violatorSpotId = violatorBooking?.spotId ?? violatorRental?.spotId ?? null;
+            const violatorOriginalSpot = violatorSpotId
+              ? await prisma.parkingSpot.findUnique({ where: { id: violatorSpotId } })
+              : null;
+
+            if (violatorOriginalSpot) {
+              if (violatorBooking) {
+                await prisma.booking.update({ where: { id: violatorBooking.id }, data: { spotId: victimOldSpot.id } });
+              } else if (violatorRental) {
+                await prisma.longTermRental.update({ where: { id: violatorRental.id }, data: { spotId: victimOldSpot.id } });
+              }
               await prisma.parkingSpot.update({ where: { id: victimOldSpot.id }, data: { currentUserId: violatorUserId } });
               io.emit('spot-status-changed', { spotNumber: victimOldSpot.spotNumber, status: 'OCCUPIED' });
-              if (violatorOriginalSpot) {
-                await prisma.parkingSpot.update({ where: { id: violatorOriginalSpot.id }, data: { status: 'FREE', currentUserId: null, currentUserPlate: null } });
-                io.emit('spot-status-changed', { spotNumber: violatorOriginalSpot.spotNumber, status: 'FREE' });
-              }
+              await prisma.parkingSpot.update({ where: { id: violatorOriginalSpot.id }, data: { status: 'FREE', currentUserId: null, currentUserPlate: null } });
+              io.emit('spot-status-changed', { spotNumber: violatorOriginalSpot.spotNumber, status: 'FREE' });
               // Notify violator silently (no timer reset — they're already inside)
-              io.emit('spot-moved', { userId: violatorUserId, newSpotId: victimOldSpot.spotNumber, oldSpotId: violatorOriginalSpot?.spotNumber });
+              io.emit('spot-moved', { userId: violatorUserId, newSpotId: victimOldSpot.spotNumber, oldSpotId: violatorOriginalSpot.spotNumber });
             }
           }
 
@@ -186,18 +201,26 @@ router.post('/', async (req: Request, res: Response) => {
           const violatorBooking = await prisma.booking.findFirst({
             where: { userId: violatorUserId, status: { in: ['PENDING', 'CONFIRMED'] } },
           });
-          const violatorOriginalSpot = violatorBooking
-            ? await prisma.parkingSpot.findUnique({ where: { id: violatorBooking.spotId } })
+          const violatorRental = !violatorBooking
+            ? await prisma.longTermRental.findFirst({ where: { userId: violatorUserId, status: 'ACTIVE' } })
+            : null;
+          const violatorSpotId = violatorBooking?.spotId ?? violatorRental?.spotId ?? null;
+          const violatorOriginalSpot = violatorSpotId
+            ? await prisma.parkingSpot.findUnique({ where: { id: violatorSpotId } })
             : null;
 
-          if (violatorBooking && violatorOriginalSpot) {
+          if (violatorOriginalSpot) {
             // Move victim → violator's original spot (physically empty)
             await moveVictim(violatorOriginalSpot.id);
             await prisma.parkingSpot.update({ where: { id: violatorOriginalSpot.id }, data: { status: 'BOOKED', currentUserId: userId } });
             io.emit('spot-status-changed', { spotNumber: violatorOriginalSpot.spotNumber, status: 'BOOKED' });
 
-            // Move violator's booking → victim's spot (where they physically are)
-            await prisma.booking.update({ where: { id: violatorBooking.id }, data: { spotId: victimOldSpot.id } });
+            // Move violator's booking OR rental → victim's spot (where they physically are)
+            if (violatorBooking) {
+              await prisma.booking.update({ where: { id: violatorBooking.id }, data: { spotId: victimOldSpot.id } });
+            } else if (violatorRental) {
+              await prisma.longTermRental.update({ where: { id: violatorRental.id }, data: { spotId: victimOldSpot.id } });
+            }
             await prisma.parkingSpot.update({ where: { id: victimOldSpot.id }, data: { currentUserId: violatorUserId } });
             io.emit('spot-status-changed', { spotNumber: victimOldSpot.spotNumber, status: 'OCCUPIED' });
 
@@ -208,19 +231,21 @@ router.post('/', async (req: Request, res: Response) => {
 
             // Victim: gets 7-min timer to go park at new spot
             io.emit('spot-reassigned', { userId, newSpotId: violatorOriginalSpot.spotNumber });
-            // Violator: silent update — just change spot label, timer keeps running
+            // Violator: silent update — just change spot label, no timer change
             io.emit('spot-moved', { userId: violatorUserId, newSpotId: victimOldSpot.spotNumber, oldSpotId: violatorOriginalSpot.spotNumber });
 
             logger.info(`🔀 Auto-swap: victim ${userId}→${violatorOriginalSpot.spotNumber}, violator ${violatorUserId}→${victimOldSpot.spotNumber}`);
           } else {
-            // Violator identified but has no active booking — refund victim
+            // Violator identified but has no active booking/rental — refund victim
             await prisma.complaint.update({ where: { id: complaint.id }, data: { detectedPlate, violatorUserId } });
             await refundVictim();
           }
         } else {
-          // ── Case 4: No free spot, no violator → refund victim ──
+          // ── Case 4: No free spot, violator not identified ──
+          // If OCR failed (no plate at all) → refund as compensation but keep PENDING for admin manual review
+          // If plate found but no booking/rental → close as REFUNDED (shouldn't happen in closed system)
           await prisma.complaint.update({ where: { id: complaint.id }, data: { detectedPlate, violatorUserId } });
-          await refundVictim();
+          await refundVictim(!detectedPlate);
         }
 
         // 3) Cloudinary upload (always, for admin to see the photo)

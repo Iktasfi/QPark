@@ -200,10 +200,19 @@ router.post('/lpr/entry', async (req: Request, res: Response) => {
         where: { spotId: spot.id, status: { in: ['PENDING', 'CONFIRMED'] } },
       });
       if (activeBooking) {
+        // Recalculate estimatedEndTime from actual arrival time:
+        // estimatedEndTime = arrivedAt + 7 min grace + originally booked duration
+        const bookedMs = activeBooking.estimatedEndTime.getTime() - activeBooking.startTime.getTime();
+        const newEstimatedEnd = new Date(now.getTime() + 7 * 60 * 1000 + bookedMs);
         await prisma.booking.update({
           where: { id: activeBooking.id },
-          data: { arrivedAt: now, photoTimerStart: now, photoStatus: 'PENDING' },
+          data: { arrivedAt: now, photoTimerStart: now, photoStatus: 'PENDING', estimatedEndTime: newEstimatedEnd },
         });
+        // Notify frontend of corrected endTime
+        io.emit('booking-updated', { bookingId: activeBooking.id, endTime: newEstimatedEnd });
+        // Reschedule overstay job based on real endTime
+        const overstayDelay = newEstimatedEnd.getTime() - Date.now() + 7 * 60 * 1000;
+        overstayQueue.add('check', { bookingId: activeBooking.id, userId: activeBooking.userId, spotId: spot.id, phase: 'warn' }, { delay: Math.max(overstayDelay, 0) }).catch(() => {});
       }
 
       io.emit('lpr-gate-open', { carPlate, spotNumber, type: 'entry' });
@@ -244,6 +253,33 @@ router.post('/lpr/exit-lpr', async (req: Request, res: Response) => {
         io.emit('lpr-gate-denied', { carPlate, spotNumber, reason: 'Номер не совпадает с арендой' });
         return res.json({ success: false, message: 'Plate does not match rental' });
       }
+
+      // Charge overstay: 3₸/min after 12 min past rental endDate
+      const actualEnd = new Date();
+      const overstayStart = new Date(activeRental.endDate.getTime() + 12 * 60 * 1000);
+      const overstayMs = Math.max(0, actualEnd.getTime() - overstayStart.getTime());
+      const overstayMinutes = Math.floor(overstayMs / 60000);
+      if (overstayMinutes > 0) {
+        const overstayCost = overstayMinutes * 3;
+        const owner = await prisma.user.findUnique({ where: { id: activeRental.userId } });
+        if (owner) {
+          const charged = Math.min(overstayCost, owner.walletBalance);
+          await Promise.all([
+            prisma.user.update({ where: { id: owner.id }, data: { walletBalance: { decrement: charged } } }),
+            prisma.transaction.create({
+              data: {
+                userId: owner.id, amount: -charged, type: 'PAYMENT',
+                description: `Овертайм: ${overstayMinutes} мин × 3₸`,
+                balanceBefore: owner.walletBalance,
+                balanceAfter: owner.walletBalance - charged,
+              },
+            }),
+          ]);
+          io.emit('overstay-charged', { userId: owner.id, minutes: overstayMinutes, cost: charged });
+          logger.info(`💸 Long-term overstay: ${owner.id}, ${overstayMinutes} min, -${charged}₸`);
+        }
+      }
+
       await prisma.parkingSpot.update({
         where: { spotNumber },
         data: { status: 'RESERVED', currentUserPlate: carPlate, currentUserId: spot.currentUserId },
@@ -286,8 +322,8 @@ router.post('/lpr/exit-lpr', async (req: Request, res: Response) => {
         });
       }
 
-      // Charge overstay: 3₸/min after 7-min grace past estimatedEndTime
-      const overstayStart = new Date(paidBooking.estimatedEndTime.getTime() + 7 * 60 * 1000);
+      // Charge overstay: 3₸/min after 12 min total (7 grace + 5 post-warning) past estimatedEndTime
+      const overstayStart = new Date(paidBooking.estimatedEndTime.getTime() + 12 * 60 * 1000);
       const overstayMs = Math.max(0, actualEnd.getTime() - overstayStart.getTime());
       const overstayMinutes = Math.floor(overstayMs / 60000);
       if (overstayMinutes > 0) {
@@ -565,9 +601,9 @@ router.post('/set-status', async (req: Request, res: Response) => {
           ]);
           bookingRecord = booking;
           newBalance = updatedUser.walletBalance;
-          // Schedule overstay warning 7 min after estimatedEndTime
+          // Schedule overstay warning 7 min after estimatedEndTime (phase: warn)
           const overstayDelay = estimated.getTime() - Date.now() + 7 * 60 * 1000;
-          overstayQueue.add('check', { bookingId: booking.id, userId, spotId: updatedSpot.id }, { delay: Math.max(overstayDelay, 0) }).catch(() => {});
+          overstayQueue.add('check', { bookingId: booking.id, userId, spotId: updatedSpot.id, phase: 'warn' }, { delay: Math.max(overstayDelay, 0) }).catch(() => {});
           logger.info(`✅ Short-term booking paid: ${userId}, ${spotNumber}, -${cost}₸ wallet + ${actualBonus} bonus pts`);
         } else {
           const booking = await prisma.booking.create({
@@ -580,7 +616,7 @@ router.post('/set-status', async (req: Request, res: Response) => {
           bookingRecord = booking;
           newBalance = userRecord.walletBalance;
           const overstayDelay2 = estimated.getTime() - Date.now() + 7 * 60 * 1000;
-          overstayQueue.add('check', { bookingId: booking.id, userId, spotId: updatedSpot.id }, { delay: Math.max(overstayDelay2, 0) }).catch(() => {});
+          overstayQueue.add('check', { bookingId: booking.id, userId, spotId: updatedSpot.id, phase: 'warn' }, { delay: Math.max(overstayDelay2, 0) }).catch(() => {});
           logger.info(`✅ Short-term booking (free/promo/bonus): ${userId}, ${spotNumber}`);
         }
       } catch (e) {
@@ -631,6 +667,9 @@ router.post('/set-status', async (req: Request, res: Response) => {
             { rentalId: rental.id },
             { delay: endDate.getTime() - Date.now(), jobId: `expiry-${rental.id}` },
           ).catch(err => logger.warn('⚠️ Could not schedule expiry job:', err));
+          // Schedule overstay warning 7 min after rental endDate
+          const rentalOverstayDelay = endDate.getTime() - Date.now() + 7 * 60 * 1000;
+          overstayQueue.add('check', { rentalId: rental.id, userId, spotId: spot.id, phase: 'warn' }, { delay: Math.max(rentalOverstayDelay, 0) }).catch(() => {});
           bookingRecord = { ...rental, _type: 'rental' };
         }
       } catch (e) {

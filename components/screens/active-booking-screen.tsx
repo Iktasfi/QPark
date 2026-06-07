@@ -7,7 +7,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
-import { MapPin, Car, Clock, AlertTriangle, CreditCard, Camera, Calendar, Check, X, Wallet } from "lucide-react"
+import { MapPin, Car, Clock, AlertTriangle, Camera, Calendar, Check, X, Wallet } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const extendOptions = [
@@ -37,14 +37,34 @@ export function ActiveBookingScreen() {
   const elapsedSec = activeBooking ? Math.floor((now - new Date(activeBooking.startTime).getTime()) / 1000) : 0
   const timer = Math.max(0, 30 * 60 - elapsedSec)
 
-  // Overstay: 7-min grace after endTime, then 3₸/min
-  const OVERSTAY_GRACE_MS = 7 * 60 * 1000
-  const endTimeMs = activeBooking?.endTime ? new Date(activeBooking.endTime).getTime() : null
-  const isGracePeriod = isArrived && endTimeMs !== null && now > endTimeMs && now <= endTimeMs + OVERSTAY_GRACE_MS
-  const isOverstay = isArrived && endTimeMs !== null && now > endTimeMs + OVERSTAY_GRACE_MS
-  const graceSecondsLeft = isGracePeriod && endTimeMs ? Math.floor((endTimeMs + OVERSTAY_GRACE_MS - now) / 1000) : 0
-  const overstayMinutes = isOverstay && endTimeMs ? Math.floor((now - (endTimeMs + OVERSTAY_GRACE_MS)) / 60000) : 0
-  const overtimeCost = overstayMinutes * 3
+  // Overstay stages (all times after estimatedEndTime / endDate):
+  //   0–7 min  → grace period (silent, just exit please)
+  //   7 min    → push notification sent
+  //   7–12 min → warned, last chance
+  //   12 min+  → charging 3₸/min
+  const GRACE_MS   = 7  * 60 * 1000
+  const WARN_MS    = 12 * 60 * 1000
+
+  // Short-term overstay (requires isArrived = spot OCCUPIED)
+  const endTimeMs  = activeBooking?.endTime ? new Date(activeBooking.endTime).getTime() : null
+  const isGracePeriod  = isArrived && endTimeMs !== null && now > endTimeMs && now <= endTimeMs + GRACE_MS
+  const isWarnPeriod   = isArrived && endTimeMs !== null && now > endTimeMs + GRACE_MS && now <= endTimeMs + WARN_MS
+  const isOverstay     = isArrived && endTimeMs !== null && now > endTimeMs + WARN_MS
+  const graceSecondsLeft = isGracePeriod && endTimeMs ? Math.floor((endTimeMs + GRACE_MS - now) / 1000) : 0
+  const warnSecondsLeft  = isWarnPeriod  && endTimeMs ? Math.floor((endTimeMs + WARN_MS  - now) / 1000) : 0
+  const overstayMinutes  = isOverstay    && endTimeMs ? Math.floor((now - (endTimeMs + WARN_MS)) / 60000) : 0
+  const overtimeCost     = overstayMinutes * 3
+
+  // Long-term overstay: rental expired but car is still inside (spot OCCUPIED)
+  const ltInsideSpot = isLongTerm && selectedSpot?.status === "OCCUPIED"
+  const endDateMs    = activeBooking?.endDate ? new Date(activeBooking.endDate).getTime() : null
+  const isLtGrace    = ltInsideSpot && endDateMs !== null && now > endDateMs && now <= endDateMs + GRACE_MS
+  const isLtWarn     = ltInsideSpot && endDateMs !== null && now > endDateMs + GRACE_MS && now <= endDateMs + WARN_MS
+  const isLtOverstay = ltInsideSpot && endDateMs !== null && now > endDateMs + WARN_MS
+  const ltGraceSecondsLeft = isLtGrace ? Math.floor((endDateMs! + GRACE_MS - now) / 1000) : 0
+  const ltWarnSecondsLeft  = isLtWarn  ? Math.floor((endDateMs! + WARN_MS  - now) / 1000) : 0
+  const ltOverstayMinutes  = isLtOverstay ? Math.floor((now - (endDateMs! + WARN_MS)) / 60000) : 0
+  const ltOvertimeCost     = ltOverstayMinutes * 3
 
   const GRACE_SECONDS = 7 * 60
 
@@ -62,6 +82,15 @@ export function ActiveBookingScreen() {
     : 0
   const graceRemaining = Math.max(0, GRACE_SECONDS - rawElapsed)
   const parkingDuration = Math.max(0, rawElapsed - GRACE_SECONDS)
+
+  // Booked duration = endTime - arrivedAt - 7 min grace (set by backend at LPR entry)
+  const bookedDurationSec = endTimeMs && arrivedAtLocalRef.current
+    ? Math.max(0, Math.floor((endTimeMs - arrivedAtLocalRef.current - GRACE_MS) / 1000))
+    : null
+  // Cap displayed timer at booked duration — overstay banners handle the rest
+  const displayDuration = bookedDurationSec !== null
+    ? Math.min(parkingDuration, bookedDurationSec)
+    : parkingDuration
   const [isPaying, setIsPaying] = useState(false)
   const [showGateOpened, setShowGateOpened] = useState(false)
   const [insufficientBalance, setInsufficientBalance] = useState<{ need: number; have: number } | null>(null)
@@ -307,17 +336,32 @@ export function ActiveBookingScreen() {
         setUser({ ...user, balance: user.balance - data.cost })
       }
     }
+    const handleBookingExtended = (data: { bookingId: string; endTime: string }) => {
+      if (activeBooking && data.bookingId === activeBooking.id) {
+        setActiveBooking({ ...activeBooking, endTime: new Date(data.endTime) })
+      }
+    }
+    // LPR entry: backend recalculates estimatedEndTime based on actual arrival
+    const handleBookingUpdated = (data: { bookingId: string; endTime: string }) => {
+      if (activeBooking && data.bookingId === activeBooking.id) {
+        setActiveBooking({ ...activeBooking, endTime: new Date(data.endTime) })
+      }
+    }
     socket.on("spot-reassigned", handleReassigned)
     socket.on("spot-moved", handleSpotMoved)
     socket.on("no-spots-available", handleNoSpots)
     socket.on("overstay-warning", handleOverstayWarning)
     socket.on("overstay-charged", handleOverstayCharged)
+    socket.on("booking-extended", handleBookingExtended)
+    socket.on("booking-updated", handleBookingUpdated)
     return () => {
       socket.off("spot-reassigned", handleReassigned)
       socket.off("spot-moved", handleSpotMoved)
       socket.off("no-spots-available", handleNoSpots)
       socket.off("overstay-warning", handleOverstayWarning)
       socket.off("overstay-charged", handleOverstayCharged)
+      socket.off("booking-extended", handleBookingExtended)
+      socket.off("booking-updated", handleBookingUpdated)
     }
   }, [user, activeBooking])
 
@@ -462,7 +506,7 @@ export function ActiveBookingScreen() {
         </div>
       </div>
       
-      {/* Grace period: 7 min to exit after booking ends */}
+      {/* Stage 1: 0–7 min grace period */}
       {isGracePeriod && (
         <div className="rounded-xl px-4 py-3 bg-amber-500/10 border border-amber-500/30 flex items-center gap-3">
           <Clock className="h-5 w-5 text-amber-500 shrink-0" />
@@ -473,7 +517,18 @@ export function ActiveBookingScreen() {
         </div>
       )}
 
-      {/* Overstay: charging 3₸/min */}
+      {/* Stage 2: 7–12 min warned, last chance before charging */}
+      {isWarnPeriod && (
+        <div className="rounded-xl px-4 py-3 bg-orange-500/10 border border-orange-500/40 flex items-center gap-3">
+          <AlertTriangle className="h-5 w-5 text-orange-500 shrink-0" />
+          <div className="flex-1">
+            <p className="text-sm font-semibold text-orange-600">Последнее предупреждение</p>
+            <p className="text-xs text-orange-500">Списание начнётся через <strong>{formatTime(warnSecondsLeft)}</strong> · выедьте сейчас</p>
+          </div>
+        </div>
+      )}
+
+      {/* Stage 3: 12+ min charging 3₸/min */}
       {isOverstay && (
         <div className="rounded-xl px-4 py-3 bg-red-500/10 border border-red-500/40 flex items-center gap-3">
           <AlertTriangle className="h-5 w-5 text-red-500 shrink-0" />
@@ -482,6 +537,36 @@ export function ActiveBookingScreen() {
             <p className="text-xs text-red-500">Идёт списание <strong>3₸/мин</strong> · уже {overstayMinutes} мин</p>
           </div>
           <p className="text-lg font-bold text-red-600 shrink-0">−{overtimeCost}₸</p>
+        </div>
+      )}
+
+      {/* Long-term overstay: rental expired but car still inside */}
+      {isLtGrace && (
+        <div className="rounded-xl px-4 py-3 bg-amber-500/10 border border-amber-500/30 flex items-center gap-3">
+          <Clock className="h-5 w-5 text-amber-500 shrink-0" />
+          <div className="flex-1">
+            <p className="text-sm font-semibold text-amber-600">Аренда истекла</p>
+            <p className="text-xs text-amber-500">Пожалуйста выедьте в течение <strong>{formatTime(ltGraceSecondsLeft)}</strong></p>
+          </div>
+        </div>
+      )}
+      {isLtWarn && (
+        <div className="rounded-xl px-4 py-3 bg-orange-500/10 border border-orange-500/40 flex items-center gap-3">
+          <AlertTriangle className="h-5 w-5 text-orange-500 shrink-0" />
+          <div className="flex-1">
+            <p className="text-sm font-semibold text-orange-600">Последнее предупреждение</p>
+            <p className="text-xs text-orange-500">Списание начнётся через <strong>{formatTime(ltWarnSecondsLeft)}</strong> · выедьте сейчас</p>
+          </div>
+        </div>
+      )}
+      {isLtOverstay && (
+        <div className="rounded-xl px-4 py-3 bg-red-500/10 border border-red-500/40 flex items-center gap-3">
+          <AlertTriangle className="h-5 w-5 text-red-500 shrink-0" />
+          <div className="flex-1">
+            <p className="text-sm font-semibold text-red-600">Превышение времени аренды</p>
+            <p className="text-xs text-red-500">Идёт списание <strong>3₸/мин</strong> · уже {ltOverstayMinutes} мин</p>
+          </div>
+          <p className="text-lg font-bold text-red-600 shrink-0">−{ltOvertimeCost}₸</p>
         </div>
       )}
 
@@ -564,7 +649,10 @@ export function ActiveBookingScreen() {
                   <Clock className="h-8 w-8 text-[#36549B]" />
                   <div>
                     <p className="text-sm text-muted-foreground">{t.parkingDuration}</p>
-                    <p className="text-3xl font-bold text-foreground">{formatTime(parkingDuration)}</p>
+                    <p className="text-3xl font-bold text-foreground">{formatTime(displayDuration)}</p>
+                    {bookedDurationSec !== null && (
+                      <p className="text-xs text-muted-foreground">из {formatTime(bookedDurationSec)}</p>
+                    )}
                   </div>
                 </div>
                 {activeBooking?.isPaid && (
@@ -673,7 +761,7 @@ export function ActiveBookingScreen() {
         </CardContent>
       </Card>
       
-      {!isLongTerm && isArrived && !activeBooking?.isPaid && (
+      {!isLongTerm && isArrived && graceRemaining === 0 && !activeBooking?.isPaid && (
         <Card>
           <CardContent className="p-4">
             <h3 className="mb-3 font-medium text-foreground">{t.costBreakdown}</h3>
@@ -697,24 +785,17 @@ export function ActiveBookingScreen() {
       )}
       
       <div className="space-y-2 mt-2">
-        {isArrived && !isLongTerm && (
+        {isArrived && !isLongTerm && graceRemaining === 0 && (
           <Button
             size="lg"
             className="w-full gap-2 bg-[#354469] hover:bg-[#354469]/90"
             onClick={handlePayAndExit}
             disabled={isPaying}
           >
-            {isPaying ? (
-              t.processing
-            ) : (activeBooking?.isPaid || calculateCost() === 0) ? (
+            {isPaying ? t.processing : (
               <>
                 <Check className="h-5 w-5" />
                 {t.finishParking}
-              </>
-            ) : (
-              <>
-                <CreditCard className="h-5 w-5" />
-                {`${calculateCost()} ₸ ${t.payAndExit}`}
               </>
             )}
           </Button>

@@ -114,7 +114,7 @@ router.get('/restore', async (req: Request, res: Response) => {
         type: 'short-term',
         status: 'active',
         startTime: booking.startTime,
-        estimatedEndTime: booking.estimatedEndTime,
+        endTime: booking.estimatedEndTime,
         arrivedAt: booking.arrivedAt,
         isPaid: booking.isPaid,
         waitingFee: 0,
@@ -310,10 +310,10 @@ router.post('/:id/extend', checkBalance(getExtendBookingCost()), async (req: Req
 
 
     const { io } = await import('../server');
-    io.emit('booking-extended', updatedBooking);
+    io.emit('booking-extended', { bookingId: updatedBooking.id, endTime: updatedBooking.estimatedEndTime });
 
     res.json({
-      booking: updatedBooking,
+      booking: { ...updatedBooking, endTime: updatedBooking.estimatedEndTime },
       walletBalance,
       extendCost,
       message: '✅ Booking extended by 30 minutes',

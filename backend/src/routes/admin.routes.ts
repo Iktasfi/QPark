@@ -291,6 +291,37 @@ router.get('/complaints', async (req: Request, res: Response) => {
   }
 });
 
+// Manually identify violator by plate (for cases where OCR failed)
+router.patch('/complaints/:id/set-violator', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { plateNumber } = req.body;
+    if (!plateNumber) return res.status(400).json({ error: 'plateNumber is required' });
+
+    const complaint = await prisma.complaint.findUnique({ where: { id } });
+    if (!complaint) return res.status(404).json({ error: 'Complaint not found' });
+
+    const noSpaces = plateNumber.replace(/\s+/g, '');
+    const violatorCar = await prisma.$queryRaw<Array<{ id: string; userId: string }>>`
+      SELECT id, "userId" FROM "cars"
+      WHERE REPLACE("plateNumber", ' ', '') ILIKE ${noSpaces}
+      LIMIT 1
+    `;
+    if (!violatorCar.length) return res.status(404).json({ error: 'Car not found in system' });
+
+    const violatorUserId = violatorCar[0].userId;
+    await prisma.complaint.update({
+      where: { id },
+      data: { detectedPlate: plateNumber.toUpperCase(), violatorUserId },
+    });
+
+    res.json({ success: true, violatorUserId, message: 'Violator identified — now call /reassign' });
+  } catch (error) {
+    logger.error('❌ Error setting violator:', error);
+    res.status(500).json({ error: 'Failed to set violator' });
+  }
+});
+
 // Reassign user to a new spot
 router.post('/complaints/:id/reassign', async (req: Request, res: Response) => {
   try {
@@ -366,15 +397,19 @@ router.post('/complaints/:id/reassign', async (req: Request, res: Response) => {
     // ── CASE 1: No free spot — try auto-swap with violator's original booking spot ──
     if (!freeSpot) {
       if (complaint.violatorUserId) {
-        // Violator's short-term booking (their ORIGINAL reserved spot, now physically empty)
+        // Violator's booking or long-term rental (their ORIGINAL reserved spot, now physically empty)
         const violatorBooking = await prisma.booking.findFirst({
           where: { userId: complaint.violatorUserId, status: { in: ['PENDING', 'CONFIRMED'] } },
         });
-        const violatorOriginalSpot = violatorBooking
-          ? await prisma.parkingSpot.findUnique({ where: { id: violatorBooking.spotId } })
+        const violatorRental = !violatorBooking
+          ? await prisma.longTermRental.findFirst({ where: { userId: complaint.violatorUserId, status: 'ACTIVE' } })
+          : null;
+        const violatorSpotId = violatorBooking?.spotId ?? violatorRental?.spotId ?? null;
+        const violatorOriginalSpot = violatorSpotId
+          ? await prisma.parkingSpot.findUnique({ where: { id: violatorSpotId } })
           : null;
 
-        if (violatorBooking && violatorOriginalSpot && victimOriginalSpot) {
+        if (violatorOriginalSpot && victimOriginalSpot) {
           //
           // SWAP: Victim → violator's spot (physically empty) | Violator stays on victim's spot (physically)
           //
@@ -386,11 +421,12 @@ router.post('/complaints/:id/reassign', async (req: Request, res: Response) => {
           });
           io.emit('spot-status-changed', { spotNumber: violatorOriginalSpot.spotNumber, status: 'BOOKED' });
 
-          // 2. Move violator's booking from their original spot → victim's spot (where they physically are)
-          await prisma.booking.update({
-            where: { id: violatorBooking.id },
-            data: { spotId: victimOriginalSpot.id },
-          });
+          // 2. Move violator's booking/rental → victim's spot (where they physically are)
+          if (violatorBooking) {
+            await prisma.booking.update({ where: { id: violatorBooking.id }, data: { spotId: victimOriginalSpot.id } });
+          } else if (violatorRental) {
+            await prisma.longTermRental.update({ where: { id: violatorRental.id }, data: { spotId: victimOriginalSpot.id } });
+          }
           await prisma.parkingSpot.update({
             where: { id: victimOriginalSpot.id },
             data: { currentUserId: complaint.violatorUserId },
@@ -454,26 +490,35 @@ router.post('/complaints/:id/reassign', async (req: Request, res: Response) => {
       const violatorBooking = await prisma.booking.findFirst({
         where: { userId: complaint.violatorUserId, status: { in: ['PENDING', 'CONFIRMED'] } },
       });
-      if (violatorBooking) {
-        const violatorOriginalSpot = await prisma.parkingSpot.findUnique({ where: { id: violatorBooking.spotId } });
-        // Move violator's booking to victim's original spot (where violator is physically)
-        await prisma.booking.update({ where: { id: violatorBooking.id }, data: { spotId: victimOriginalSpot.id } });
+      const violatorRental = !violatorBooking
+        ? await prisma.longTermRental.findFirst({ where: { userId: complaint.violatorUserId, status: 'ACTIVE' } })
+        : null;
+      const violatorSpotId = violatorBooking?.spotId ?? violatorRental?.spotId ?? null;
+      const violatorOriginalSpot = violatorSpotId
+        ? await prisma.parkingSpot.findUnique({ where: { id: violatorSpotId } })
+        : null;
+
+      if (violatorOriginalSpot) {
+        // Move violator's booking/rental to victim's original spot (where violator is physically)
+        if (violatorBooking) {
+          await prisma.booking.update({ where: { id: violatorBooking.id }, data: { spotId: victimOriginalSpot.id } });
+        } else if (violatorRental) {
+          await prisma.longTermRental.update({ where: { id: violatorRental.id }, data: { spotId: victimOriginalSpot.id } });
+        }
         await prisma.parkingSpot.update({
           where: { id: victimOriginalSpot.id },
           data: { currentUserId: complaint.violatorUserId },
         });
         io.emit('spot-status-changed', { spotNumber: victimOriginalSpot.spotNumber, status: 'OCCUPIED' });
         // Violator's original spot is now physically empty → FREE
-        if (violatorOriginalSpot) {
-          await prisma.parkingSpot.update({
-            where: { id: violatorOriginalSpot.id },
-            data: { status: 'FREE', currentUserId: null, currentUserPlate: null },
-          });
-          io.emit('spot-status-changed', { spotNumber: violatorOriginalSpot.spotNumber, status: 'FREE' });
-          logger.info(`✅ Freed violator's original spot ${violatorOriginalSpot.spotNumber}`);
-        }
+        await prisma.parkingSpot.update({
+          where: { id: violatorOriginalSpot.id },
+          data: { status: 'FREE', currentUserId: null, currentUserPlate: null },
+        });
+        io.emit('spot-status-changed', { spotNumber: violatorOriginalSpot.spotNumber, status: 'FREE' });
+        logger.info(`✅ Freed violator's original spot ${violatorOriginalSpot.spotNumber}`);
         // Violator: silent spot update (no timer reset — they're inside)
-        io.emit('spot-moved', { userId: complaint.violatorUserId, newSpotId: victimOriginalSpot.spotNumber, oldSpotId: violatorOriginalSpot?.spotNumber });
+        io.emit('spot-moved', { userId: complaint.violatorUserId, newSpotId: victimOriginalSpot.spotNumber, oldSpotId: violatorOriginalSpot.spotNumber });
         await issueFineToViolator(complaint.spotId);
       }
     }

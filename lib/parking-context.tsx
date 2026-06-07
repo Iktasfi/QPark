@@ -448,7 +448,8 @@ export interface Booking {
   type: "short-term" | "long-term"
   status: "active" | "completed" | "cancelled"
   startTime: Date
-  endTime?: Date
+  endTime?: Date   // short-term: estimatedEndTime
+  endDate?: Date   // long-term: rental endDate
   totalAmount?: number
   isPaid: boolean
   waitingFee: number
