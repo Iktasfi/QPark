@@ -405,7 +405,10 @@ router.post('/complaints/:id/reassign', async (req: Request, res: Response) => {
             where: { id },
             data: { status: 'REASSIGNED', newSpotId: violatorOriginalSpot.spotNumber, resolvedAt: new Date() },
           });
+          // Victim: 7-min timer to go park at new spot
           io.emit('spot-reassigned', { userId: complaint.userId, newSpotId: violatorOriginalSpot.spotNumber });
+          // Violator: silent update — spot label changes, timer keeps running
+          io.emit('spot-moved', { userId: complaint.violatorUserId, newSpotId: victimOriginalSpot.spotNumber, oldSpotId: violatorOriginalSpot.spotNumber });
           logger.info(`✅ Auto-swap: victim→${violatorOriginalSpot.spotNumber}, violator→${victimOriginalSpot.spotNumber}, fined 900₸`);
           return res.json({ success: true, action: 'swapped', newSpotId: violatorOriginalSpot.spotNumber });
         }
@@ -469,6 +472,8 @@ router.post('/complaints/:id/reassign', async (req: Request, res: Response) => {
           io.emit('spot-status-changed', { spotNumber: violatorOriginalSpot.spotNumber, status: 'FREE' });
           logger.info(`✅ Freed violator's original spot ${violatorOriginalSpot.spotNumber}`);
         }
+        // Violator: silent spot update (no timer reset — they're inside)
+        io.emit('spot-moved', { userId: complaint.violatorUserId, newSpotId: victimOriginalSpot.spotNumber, oldSpotId: violatorOriginalSpot?.spotNumber });
         await issueFineToViolator(complaint.spotId);
       }
     }

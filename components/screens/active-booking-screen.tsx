@@ -257,14 +257,28 @@ export function ActiveBookingScreen() {
     }
   }
 
+  const [spotMovedNotice, setSpotMovedNotice] = useState<string | null>(null)
+
   // Listen for spot reassignment from admin
   useEffect(() => {
     const socket = getSocket()
+
+    // Victim: gets new spot offer with 7-min timer
     const handleReassigned = (data: { userId: string; newSpotId: string }) => {
       if (data.userId === user?.id) {
         setNewSpotOffer({ spotId: data.newSpotId })
       }
     }
+
+    // Violator: booking silently moved to where they physically are — just update label, keep timer
+    const handleSpotMoved = (data: { userId: string; newSpotId: string; oldSpotId?: string }) => {
+      if (data.userId === user?.id && activeBooking) {
+        setActiveBooking({ ...activeBooking, spotId: data.newSpotId })
+        setSpotMovedNotice(data.newSpotId)
+        setTimeout(() => setSpotMovedNotice(null), 6000)
+      }
+    }
+
     const handleNoSpots = (data: { userId: string; refundAmount: number }) => {
       if (data.userId === user?.id) {
         setNoSpotsAvailable(true)
@@ -274,12 +288,14 @@ export function ActiveBookingScreen() {
       }
     }
     socket.on("spot-reassigned", handleReassigned)
+    socket.on("spot-moved", handleSpotMoved)
     socket.on("no-spots-available", handleNoSpots)
     return () => {
       socket.off("spot-reassigned", handleReassigned)
+      socket.off("spot-moved", handleSpotMoved)
       socket.off("no-spots-available", handleNoSpots)
     }
-  }, [user])
+  }, [user, activeBooking])
 
   const handleAcceptNewSpot = async () => {
     if (!newSpotOffer || !activeBooking || !user) return
@@ -398,6 +414,12 @@ export function ActiveBookingScreen() {
 
   return (
     <div className="flex flex-col gap-4 p-4 content-bottom-pad">
+      {spotMovedNotice && (
+        <div className="rounded-xl px-4 py-3 text-sm font-medium text-white bg-blue-600 flex items-center gap-2">
+          <span>📍</span>
+          <span>Ваше место изменено на <strong>{spotMovedNotice}</strong></span>
+        </div>
+      )}
       <div className="flex items-center justify-between">
         <div className="w-16" />
         <div className="flex-1 text-center">
