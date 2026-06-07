@@ -11,3 +11,6 @@ export const noShowQueue = new Queue('noshow', { connection: redisConnection });
 
 // Rental expiry queue: delayed job fires when the paid rental period ends
 export const rentalExpiryQueue = new Queue('rental-expiry', { connection: redisConnection });
+
+// Overstay queue: fires 7 min after booking estimatedEndTime to warn the user
+export const overstayQueue = new Queue('overstay', { connection: redisConnection });

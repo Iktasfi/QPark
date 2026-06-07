@@ -5,7 +5,7 @@ import { calculateShortTermCost, getLongTermPrice } from '../utils/pricing';
 import { logger } from '../server';
 import jwt from 'jsonwebtoken';
 import { prisma } from '../lib/prisma';
-import { rentalExpiryQueue } from '../jobs/queues';
+import { rentalExpiryQueue, overstayQueue } from '../jobs/queues';
 
 const router = Router();
 
@@ -278,11 +278,37 @@ router.post('/lpr/exit-lpr', async (req: Request, res: Response) => {
         return res.json({ success: false, message: 'Plate does not match booking' });
       }
 
+      const actualEnd = new Date();
       if (paidBooking.status !== 'COMPLETED') {
         await prisma.booking.update({
           where: { id: paidBooking.id },
-          data: { status: 'COMPLETED', actualEndTime: new Date() },
+          data: { status: 'COMPLETED', actualEndTime: actualEnd },
         });
+      }
+
+      // Charge overstay: 3₸/min after 7-min grace past estimatedEndTime
+      const overstayStart = new Date(paidBooking.estimatedEndTime.getTime() + 7 * 60 * 1000);
+      const overstayMs = Math.max(0, actualEnd.getTime() - overstayStart.getTime());
+      const overstayMinutes = Math.floor(overstayMs / 60000);
+      if (overstayMinutes > 0) {
+        const overstayCost = overstayMinutes * 3;
+        const owner = await prisma.user.findUnique({ where: { id: paidBooking.userId } });
+        if (owner) {
+          const charged = Math.min(overstayCost, owner.walletBalance);
+          await Promise.all([
+            prisma.user.update({ where: { id: owner.id }, data: { walletBalance: { decrement: charged } } }),
+            prisma.transaction.create({
+              data: {
+                userId: owner.id, amount: -charged, type: 'PAYMENT',
+                description: `Овертайм: ${overstayMinutes} мин × 3₸`,
+                balanceBefore: owner.walletBalance,
+                balanceAfter: owner.walletBalance - charged,
+              },
+            }),
+          ]);
+          io.emit('overstay-charged', { userId: owner.id, minutes: overstayMinutes, cost: charged });
+          logger.info(`💸 Overstay charge: ${owner.id}, ${overstayMinutes} min, -${charged}₸`);
+        }
       }
 
       await prisma.parkingSpot.update({
@@ -539,6 +565,9 @@ router.post('/set-status', async (req: Request, res: Response) => {
           ]);
           bookingRecord = booking;
           newBalance = updatedUser.walletBalance;
+          // Schedule overstay warning 7 min after estimatedEndTime
+          const overstayDelay = estimated.getTime() - Date.now() + 7 * 60 * 1000;
+          overstayQueue.add('check', { bookingId: booking.id, userId, spotId: updatedSpot.id }, { delay: Math.max(overstayDelay, 0) }).catch(() => {});
           logger.info(`✅ Short-term booking paid: ${userId}, ${spotNumber}, -${cost}₸ wallet + ${actualBonus} bonus pts`);
         } else {
           const booking = await prisma.booking.create({
@@ -550,6 +579,8 @@ router.post('/set-status', async (req: Request, res: Response) => {
           });
           bookingRecord = booking;
           newBalance = userRecord.walletBalance;
+          const overstayDelay2 = estimated.getTime() - Date.now() + 7 * 60 * 1000;
+          overstayQueue.add('check', { bookingId: booking.id, userId, spotId: updatedSpot.id }, { delay: Math.max(overstayDelay2, 0) }).catch(() => {});
           logger.info(`✅ Short-term booking (free/promo/bonus): ${userId}, ${spotNumber}`);
         }
       } catch (e) {

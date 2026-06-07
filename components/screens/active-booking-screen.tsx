@@ -37,6 +37,15 @@ export function ActiveBookingScreen() {
   const elapsedSec = activeBooking ? Math.floor((now - new Date(activeBooking.startTime).getTime()) / 1000) : 0
   const timer = Math.max(0, 30 * 60 - elapsedSec)
 
+  // Overstay: 7-min grace after endTime, then 3₸/min
+  const OVERSTAY_GRACE_MS = 7 * 60 * 1000
+  const endTimeMs = activeBooking?.endTime ? new Date(activeBooking.endTime).getTime() : null
+  const isGracePeriod = isArrived && endTimeMs !== null && now > endTimeMs && now <= endTimeMs + OVERSTAY_GRACE_MS
+  const isOverstay = isArrived && endTimeMs !== null && now > endTimeMs + OVERSTAY_GRACE_MS
+  const graceSecondsLeft = isGracePeriod && endTimeMs ? Math.floor((endTimeMs + OVERSTAY_GRACE_MS - now) / 1000) : 0
+  const overstayMinutes = isOverstay && endTimeMs ? Math.floor((now - (endTimeMs + OVERSTAY_GRACE_MS)) / 60000) : 0
+  const overtimeCost = overstayMinutes * 3
+
   const GRACE_SECONDS = 7 * 60
 
   const arrivedAtLocalRef = useRef<number | null>(null)
@@ -287,13 +296,28 @@ export function ActiveBookingScreen() {
         }
       }
     }
+    const handleOverstayWarning = (data: { userId: string }) => {
+      if (data.userId === user?.id) {
+        // Firebase push will be added later — for now socket is enough
+        // The UI banner already shows via isGracePeriod/isOverstay computed from endTime
+      }
+    }
+    const handleOverstayCharged = (data: { userId: string; minutes: number; cost: number }) => {
+      if (data.userId === user?.id && user) {
+        setUser({ ...user, balance: user.balance - data.cost })
+      }
+    }
     socket.on("spot-reassigned", handleReassigned)
     socket.on("spot-moved", handleSpotMoved)
     socket.on("no-spots-available", handleNoSpots)
+    socket.on("overstay-warning", handleOverstayWarning)
+    socket.on("overstay-charged", handleOverstayCharged)
     return () => {
       socket.off("spot-reassigned", handleReassigned)
       socket.off("spot-moved", handleSpotMoved)
       socket.off("no-spots-available", handleNoSpots)
+      socket.off("overstay-warning", handleOverstayWarning)
+      socket.off("overstay-charged", handleOverstayCharged)
     }
   }, [user, activeBooking])
 
@@ -438,6 +462,29 @@ export function ActiveBookingScreen() {
         </div>
       </div>
       
+      {/* Grace period: 7 min to exit after booking ends */}
+      {isGracePeriod && (
+        <div className="rounded-xl px-4 py-3 bg-amber-500/10 border border-amber-500/30 flex items-center gap-3">
+          <Clock className="h-5 w-5 text-amber-500 shrink-0" />
+          <div className="flex-1">
+            <p className="text-sm font-semibold text-amber-600">Время бронирования истекло</p>
+            <p className="text-xs text-amber-500">Пожалуйста выедьте в течение <strong>{formatTime(graceSecondsLeft)}</strong></p>
+          </div>
+        </div>
+      )}
+
+      {/* Overstay: charging 3₸/min */}
+      {isOverstay && (
+        <div className="rounded-xl px-4 py-3 bg-red-500/10 border border-red-500/40 flex items-center gap-3">
+          <AlertTriangle className="h-5 w-5 text-red-500 shrink-0" />
+          <div className="flex-1">
+            <p className="text-sm font-semibold text-red-600">Превышение времени стоянки</p>
+            <p className="text-xs text-red-500">Идёт списание <strong>3₸/мин</strong> · уже {overstayMinutes} мин</p>
+          </div>
+          <p className="text-lg font-bold text-red-600 shrink-0">−{overtimeCost}₸</p>
+        </div>
+      )}
+
       {!isLongTerm && !isArrived && reassignedAt !== null && (
         <Card className={reassignTimer === 0 ? "border-destructive bg-destructive/5" : "border-orange-400 bg-orange-50"}>
           <CardContent className="p-4">
