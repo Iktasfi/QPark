@@ -91,6 +91,11 @@ export function ActiveBookingScreen() {
   const displayDuration = bookedDurationSec !== null
     ? Math.min(parkingDuration, bookedDurationSec)
     : parkingDuration
+
+  // User pressed "Я встал на место" during grace → skip remaining grace, show parking timer
+  const [confirmedParked, setConfirmedParked] = useState(false)
+  const isParking = graceRemaining === 0 || confirmedParked
+
   const [isPaying, setIsPaying] = useState(false)
   const [showGateOpened, setShowGateOpened] = useState(false)
   const [insufficientBalance, setInsufficientBalance] = useState<{ need: number; have: number } | null>(null)
@@ -623,7 +628,7 @@ export function ActiveBookingScreen() {
       )}
       
       {!isLongTerm && isArrived && (
-        graceRemaining > 0 ? (
+        !isParking ? (
           <Card className="border-green-400 bg-green-50">
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
@@ -761,7 +766,7 @@ export function ActiveBookingScreen() {
         </CardContent>
       </Card>
       
-      {!isLongTerm && isArrived && graceRemaining === 0 && !activeBooking?.isPaid && (
+      {!isLongTerm && isArrived && isParking && !activeBooking?.isPaid && (
         <Card>
           <CardContent className="p-4">
             <h3 className="mb-3 font-medium text-foreground">{t.costBreakdown}</h3>
@@ -785,7 +790,18 @@ export function ActiveBookingScreen() {
       )}
       
       <div className="space-y-2 mt-2">
-        {isArrived && !isLongTerm && graceRemaining === 0 && (
+        {isArrived && !isLongTerm && !isParking && (
+          <Button
+            size="lg"
+            className="w-full gap-2 bg-green-600 hover:bg-green-700"
+            onClick={() => setConfirmedParked(true)}
+          >
+            <Check className="h-5 w-5" />
+            Я встал на место
+          </Button>
+        )}
+
+        {isArrived && !isLongTerm && isParking && (
           <Button
             size="lg"
             className="w-full gap-2 bg-[#354469] hover:bg-[#354469]/90"
