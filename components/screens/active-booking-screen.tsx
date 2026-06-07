@@ -793,27 +793,11 @@ export function ActiveBookingScreen() {
         {isArrived && !isLongTerm && !isParking && (
           <Button
             size="lg"
-            className="w-full gap-2 bg-green-600 hover:bg-green-700"
+            className="w-full gap-2 bg-[#354469] hover:bg-[#354469]/90"
             onClick={() => setConfirmedParked(true)}
           >
             <Check className="h-5 w-5" />
-            Я встал на место
-          </Button>
-        )}
-
-        {isArrived && !isLongTerm && isParking && (
-          <Button
-            size="lg"
-            className="w-full gap-2 bg-[#354469] hover:bg-[#354469]/90"
-            onClick={handlePayAndExit}
-            disabled={isPaying}
-          >
-            {isPaying ? t.processing : (
-              <>
-                <Check className="h-5 w-5" />
-                {t.finishParking}
-              </>
-            )}
+            {t.finishParking}
           </Button>
         )}
         
