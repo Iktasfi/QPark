@@ -77,27 +77,46 @@ export function ActiveBookingScreen() {
     }
   }, [isArrived])
 
+  // User pressed "Finish Parking" during grace → skip remaining grace, start timer from that moment
+  const [confirmedParked, setConfirmedParked] = useState(false)
+  const [confirmedParkedAt, setConfirmedParkedAt] = useState<number | null>(null)
+
   const rawElapsed = isArrived && arrivedAtLocalRef.current
     ? Math.floor((now - arrivedAtLocalRef.current) / 1000)
     : 0
   const graceRemaining = Math.max(0, GRACE_SECONDS - rawElapsed)
-  const parkingDuration = Math.max(0, rawElapsed - GRACE_SECONDS)
+  const isParking = graceRemaining === 0 || confirmedParked
 
-  // Booked duration = endTime - arrivedAt - 7 min grace (set by backend at LPR entry)
-  const bookedDurationSec = endTimeMs && arrivedAtLocalRef.current
-    ? Math.max(0, Math.floor((endTimeMs - arrivedAtLocalRef.current - GRACE_MS) / 1000))
+  // When user confirms parked early, count from that moment; otherwise count after natural grace
+  const parkingStart = confirmedParkedAt ?? (arrivedAtLocalRef.current ? arrivedAtLocalRef.current + GRACE_MS : null)
+  const parkingDuration = parkingStart
+    ? Math.max(0, Math.floor((now - parkingStart) / 1000))
+    : 0
+
+  // Booked duration = endTime - parking start (set by backend at LPR entry)
+  const bookedDurationSec = endTimeMs && parkingStart
+    ? Math.max(0, Math.floor((endTimeMs - parkingStart) / 1000))
     : null
   // Cap displayed timer at booked duration — overstay banners handle the rest
   const displayDuration = bookedDurationSec !== null
     ? Math.min(parkingDuration, bookedDurationSec)
     : parkingDuration
 
-  // User pressed "Я встал на место" during grace → skip remaining grace, show parking timer
-  const [confirmedParked, setConfirmedParked] = useState(false)
-  const isParking = graceRemaining === 0 || confirmedParked
+  // "5 min left" warning: show when ≤5 min remain in booked time
+  const timeLeftSec = bookedDurationSec !== null ? Math.max(0, bookedDurationSec - parkingDuration) : null
+  const isTimeEndingSoon = isParking && !isGracePeriod && !isWarnPeriod && !isOverstay && timeLeftSec !== null && timeLeftSec > 0 && timeLeftSec <= 5 * 60
+  // Time is up: timer hit booked duration (or no endTime info → never)
+  const isTimeUp = isParking && bookedDurationSec !== null && parkingDuration >= bookedDurationSec
 
-  const [isPaying, setIsPaying] = useState(false)
-  const [showGateOpened, setShowGateOpened] = useState(false)
+  // Exit grace: user pressed "Finish" → 7-min window to drive to barrier
+  const [exitGraceStarted, setExitGraceStarted] = useState(false)
+  const [exitGraceStartedAt, setExitGraceStartedAt] = useState<number | null>(null)
+  const [isFinishing, setIsFinishing] = useState(false)
+  const [finishOvCharge, setFinishOvCharge] = useState(0)
+  const exitGraceElapsed = exitGraceStartedAt ? Math.floor((now - exitGraceStartedAt) / 1000) : 0
+  const exitGraceRemaining = Math.max(0, 7 * 60 - exitGraceElapsed)
+
+  const [showGateOpened] = useState(false)
   const [insufficientBalance, setInsufficientBalance] = useState<{ need: number; have: number } | null>(null)
   const [showExtend, setShowExtend] = useState(false)
   const [selectedExtendDays, setSelectedExtendDays] = useState<number | null>(null)
@@ -133,54 +152,39 @@ export function ActiveBookingScreen() {
     return 150 + (minutes - 60) * 3
   }
   
-  const handlePayAndExit = async () => {
-    if (!user || !activeBooking) return
 
-    setIsPaying(true)
+
+  const handleFinishParking = async () => {
+    if (!user || !activeBooking || isFinishing) return
+    setIsFinishing(true)
     try {
       const token = localStorage.getItem("qpark_token")
-      const res = await fetch("/backend/bookings/checkout", {
+      const res = await fetch("/backend/bookings/finish-parking", {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ spotNumber: activeBooking.spotId }),
+        headers: { Authorization: `Bearer ${token}` },
       })
       const data = await res.json()
-      if (!res.ok) throw new Error(data.error || "Checkout failed")
+      if (!res.ok) throw new Error(data.error || "Failed to finish parking")
 
-      setUser({
-        ...user,
-        balance: data.walletBalance,
-        bonusPoints: data.bonusPoints,
-        transactions: [
-          {
-            id: `t-${Date.now()}`,
-            type: "parking_charge",
-            amount: -data.netCharge,
-            description: `Parking ${activeBooking.spotId}`,
-            date: new Date(),
-          },
-          ...user.transactions,
-        ],
-      })
-      setActiveBooking(null)
-      setShowGateOpened(true)
-      setTimeout(() => {
-        setShowGateOpened(false)
-        setCurrentScreen("home")
-      }, 2500)
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Payment failed"
-      const match = msg.match(/need (\d+)₸.*have (\d+)₸/)
-      if (match) {
-        setInsufficientBalance({ need: parseInt(match[1]), have: parseInt(match[2]) })
-      } else {
-        alert(msg)
+      if (data.overstayCharge > 0 && data.newBalance !== null) {
+        setFinishOvCharge(data.overstayCharge)
+        setUser({ ...user, balance: data.newBalance })
       }
+
+      setExitGraceStarted(true)
+      setExitGraceStartedAt(Date.now())
+
+      // After 7 min exit grace, clear booking and go home
+      setTimeout(() => {
+        setActiveBooking(null)
+        setCurrentScreen("home")
+      }, 7 * 60 * 1000)
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to finish parking")
     } finally {
-      setIsPaying(false)
+      setIsFinishing(false)
     }
   }
-
 
   const handleExtendRental = () => {
     if (!selectedExtendDays || !activeBooking || !user) return
@@ -646,15 +650,37 @@ export function ActiveBookingScreen() {
               </div>
             </CardContent>
           </Card>
-        ) : (
-          <Card className="border-[#36549B] bg-[#36549B]/5">
+        ) : exitGraceStarted ? (
+          <Card className="border-green-500 bg-green-50">
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <Clock className="h-8 w-8 text-[#36549B]" />
+                  <Clock className="h-8 w-8 text-green-600" />
+                  <div>
+                    <p className="text-sm font-semibold text-green-700">{t.exitGraceTitle}</p>
+                    <p className="text-3xl font-bold text-green-800">{formatTime(exitGraceRemaining)}</p>
+                    <p className="text-xs text-green-600">{t.exitGraceDesc}</p>
+                    {finishOvCharge > 0 && (
+                      <p className="text-xs font-medium text-red-600 mt-0.5">{t.overstayCharged}: −{finishOvCharge} ₸</p>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-green-100">
+                  <Check className="h-4 w-4 text-green-600" />
+                  <span className="text-sm font-semibold text-green-700">Exit</span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        ) : (
+          <Card className={isTimeUp ? "border-orange-400 bg-orange-50" : "border-[#36549B] bg-[#36549B]/5"}>
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <Clock className={`h-8 w-8 ${isTimeUp ? "text-orange-500" : "text-[#36549B]"}`} />
                   <div>
                     <p className="text-sm text-muted-foreground">{t.parkingDuration}</p>
-                    <p className="text-3xl font-bold text-foreground">{formatTime(displayDuration)}</p>
+                    <p className={`text-3xl font-bold ${isTimeUp ? "text-orange-600" : "text-foreground"}`}>{formatTime(displayDuration)}</p>
                     {bookedDurationSec !== null && (
                       <p className="text-xs text-muted-foreground">из {formatTime(bookedDurationSec)}</p>
                     )}
@@ -790,17 +816,39 @@ export function ActiveBookingScreen() {
       )}
       
       <div className="space-y-2 mt-2">
+        {/* "5 min left" warning banner */}
+        {isTimeEndingSoon && !exitGraceStarted && (
+          <div className="rounded-xl border border-orange-300 bg-orange-50 px-4 py-3 flex items-start gap-2">
+            <AlertTriangle className="h-5 w-5 text-orange-500 shrink-0 mt-0.5" />
+            <p className="text-sm text-orange-700 font-medium">{t.timeEndingSoon}</p>
+          </div>
+        )}
+
+        {/* "Finish Parking" during arrival grace */}
         {isArrived && !isLongTerm && !isParking && (
           <Button
             size="lg"
             className="w-full gap-2 bg-[#354469] hover:bg-[#354469]/90"
-            onClick={() => setConfirmedParked(true)}
+            onClick={() => { setConfirmedParked(true); setConfirmedParkedAt(Date.now()) }}
           >
             <Check className="h-5 w-5" />
             {t.finishParking}
           </Button>
         )}
-        
+
+        {/* "Finish & Exit" when booked time is up (or overstay) */}
+        {isArrived && !isLongTerm && isParking && (isTimeUp || isGracePeriod || isWarnPeriod || isOverstay) && !exitGraceStarted && (
+          <Button
+            size="lg"
+            className="w-full gap-2 bg-green-600 hover:bg-green-700 text-white"
+            onClick={handleFinishParking}
+            disabled={isFinishing}
+          >
+            <Check className="h-5 w-5" />
+            {isFinishing ? t.processing : t.finishAndExit}
+          </Button>
+        )}
+
         {!isArrived && !isLongTerm && (
           <Button
             variant="outline"

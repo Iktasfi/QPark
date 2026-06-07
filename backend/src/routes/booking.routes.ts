@@ -363,6 +363,64 @@ router.post('/cancel-by-spot', async (req: Request, res: Response) => {
 });
 
 
+// User-initiated "Finish Parking" — charges overstay if any, completes booking, frees spot
+router.post('/finish-parking', async (req: Request, res: Response) => {
+  try {
+    const userId = req.userId!;
+    const now = new Date();
+    const OVERSTAY_CHARGE_THRESHOLD_MS = 12 * 60 * 1000; // matches LPR exit logic
+
+    const booking = await prisma.booking.findFirst({
+      where: { userId, status: { in: ['PENDING', 'CONFIRMED'] } },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (!booking) {
+      return res.status(404).json({ error: 'No active booking found' });
+    }
+
+    let overstayCharge = 0;
+    const overstayStart = new Date(booking.estimatedEndTime.getTime() + OVERSTAY_CHARGE_THRESHOLD_MS);
+    if (now > overstayStart) {
+      const overstayMs = now.getTime() - overstayStart.getTime();
+      const overstayMinutes = Math.floor(overstayMs / 60000);
+      overstayCharge = overstayMinutes * 3;
+    }
+
+    let newBalance: number | null = null;
+    if (overstayCharge > 0) {
+      const wallet = await prisma.wallet.findFirst({ where: { userId } });
+      if (wallet) {
+        const charged = Math.min(overstayCharge, wallet.balance);
+        const updated = await prisma.wallet.update({
+          where: { id: wallet.id },
+          data: { balance: { decrement: charged } },
+        });
+        newBalance = updated.balance;
+        overstayCharge = charged;
+      }
+    }
+
+    await prisma.$transaction([
+      prisma.booking.update({ where: { id: booking.id }, data: { status: 'COMPLETED' } }),
+      prisma.parkingSpot.update({
+        where: { id: booking.spotId },
+        data: { status: 'FREE', currentUserId: null, currentUserPlate: null },
+      }),
+    ]);
+
+    const { io } = await import('../server');
+    io.emit('booking-completed', { bookingId: booking.id, spotId: booking.spotId });
+    io.to(userId).emit('spot-status-changed', { spotId: booking.spotId, status: 'FREE' });
+
+    res.json({ overstayCharge, newBalance, message: '✅ Parking finished' });
+  } catch (error) {
+    logger.error('❌ Error finishing parking:', error);
+    res.status(500).json({ error: 'Failed to finish parking' });
+  }
+});
+
+
 router.get('/history', async (req: Request, res: Response) => {
   try {
     const userId = req.userId!;

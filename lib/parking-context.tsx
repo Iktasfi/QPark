@@ -134,6 +134,11 @@ const translations = {
     timeLabel: "Time",
     searchParking: "Search parking...",
     freeShort: "free", takenShort: "taken",
+    timeEndingSoon: "5 minutes remaining — return to your car and press Finish Parking",
+    exitGraceTitle: "Drive to exit now",
+    exitGraceDesc: "Exit through the barrier within",
+    finishAndExit: "Finish & Exit",
+    overstayCharged: "Overstay charged",
   },
   kk: {
     home: "Басты", map: "Карта", booking: "Брондау", wallet: "Әмиян", profile: "Жеке бет",
@@ -266,6 +271,11 @@ const translations = {
     timeLabel: "Уақыт",
     searchParking: "Тұрақ іздеу...",
     freeShort: "бос", takenShort: "бос емес",
+    timeEndingSoon: "5 минут қалды — машинаңызға барып Тұрақты аяқтауды басыңыз",
+    exitGraceTitle: "Шығуға жүріңіз",
+    exitGraceDesc: "Шлагбаумнан шығыңыз, уақыт:",
+    finishAndExit: "Аяқтау және шығу",
+    overstayCharged: "Уақытты асыру үшін алынды",
   },
   ru: {
     home: "Главная", map: "Карта", booking: "Бронь", wallet: "Кошелёк", profile: "Профиль",
@@ -398,6 +408,11 @@ const translations = {
     timeLabel: "Время",
     searchParking: "Поиск парковки...",
     freeShort: "св.", takenShort: "занято",
+    timeEndingSoon: "Осталось 5 минут — вернитесь к машине и нажмите Завершить парковку",
+    exitGraceTitle: "Езжайте на выезд",
+    exitGraceDesc: "Выезжайте через шлагбаум, осталось:",
+    finishAndExit: "Завершить и выехать",
+    overstayCharged: "Оплата за превышение времени",
   },
 }
 
