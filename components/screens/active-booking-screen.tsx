@@ -579,7 +579,7 @@ export function ActiveBookingScreen() {
         </div>
       )}
 
-      {!isLongTerm && !isArrived && reassignedAt !== null && (
+      {!isLongTerm && !isArrived && !exitGraceStarted && reassignedAt !== null && (
         <Card className={reassignTimer === 0 ? "border-destructive bg-destructive/5" : "border-orange-400 bg-orange-50"}>
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
@@ -605,7 +605,7 @@ export function ActiveBookingScreen() {
         </Card>
       )}
 
-      {!isLongTerm && !isArrived && reassignedAt === null && (
+      {!isLongTerm && !isArrived && !exitGraceStarted && reassignedAt === null && (
         <Card className={timer < 300 ? "border-destructive bg-destructive/5" : "border-red-200 bg-red-50"}>
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
@@ -796,7 +796,7 @@ export function ActiveBookingScreen() {
         </CardContent>
       </Card>
       
-      {!isLongTerm && isArrived && isParking && !activeBooking?.isPaid && (
+      {!isLongTerm && isArrived && isParking && !activeBooking?.isPaid && !exitGraceStarted && (
         <Card>
           <CardContent className="p-4">
             <h3 className="mb-3 font-medium text-foreground">{t.costBreakdown}</h3>
@@ -853,7 +853,7 @@ export function ActiveBookingScreen() {
           </Button>
         )}
 
-        {!isArrived && !isLongTerm && (
+        {!isArrived && !isLongTerm && !exitGraceStarted && (
           <Button
             variant="outline"
             size="lg"
