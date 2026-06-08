@@ -86,6 +86,7 @@ model Booking {
   photoUploadedAt  DateTime?
   photoStatus      PhotoStatus?
   photoTimerStart  DateTime?
+  exitRequestedAt  DateTime?
   createdAt        DateTime      @default(now())
   updatedAt        DateTime      @updatedAt
 

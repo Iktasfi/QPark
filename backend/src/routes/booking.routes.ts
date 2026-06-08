@@ -363,12 +363,13 @@ router.post('/cancel-by-spot', async (req: Request, res: Response) => {
 });
 
 
-// User-initiated "Finish Parking" — charges overstay if any, completes booking, frees spot
+// User presses "Finish Parking" — charges overstay, marks exit intent, SPOT STAYS OCCUPIED
+// (Car is physically still in spot until LPR detects exit)
 router.post('/finish-parking', async (req: Request, res: Response) => {
   try {
     const userId = req.userId!;
     const now = new Date();
-    const OVERSTAY_CHARGE_THRESHOLD_MS = 12 * 60 * 1000; // matches LPR exit logic
+    const OVERSTAY_CHARGE_MS = 5 * 60 * 1000; // charges start 5 min after estimatedEndTime
 
     const booking = await prisma.booking.findFirst({
       where: { userId, status: { in: ['PENDING', 'CONFIRMED'] } },
@@ -379,8 +380,13 @@ router.post('/finish-parking', async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'No active booking found' });
     }
 
+    // If already pressed Finish Parking once, don't charge again
+    if (booking.exitRequestedAt) {
+      return res.json({ overstayCharge: 0, newBalance: null, message: 'Already processing exit' });
+    }
+
     let overstayCharge = 0;
-    const overstayStart = new Date(booking.estimatedEndTime.getTime() + OVERSTAY_CHARGE_THRESHOLD_MS);
+    const overstayStart = new Date(booking.estimatedEndTime.getTime() + OVERSTAY_CHARGE_MS);
     if (now > overstayStart) {
       const overstayMs = now.getTime() - overstayStart.getTime();
       const overstayMinutes = Math.floor(overstayMs / 60000);
@@ -402,8 +408,32 @@ router.post('/finish-parking', async (req: Request, res: Response) => {
       }
     }
 
+    // Mark exit intent — spot stays OCCUPIED until car physically leaves via LPR
+    await prisma.booking.update({ where: { id: booking.id }, data: { exitRequestedAt: now } });
+
+    res.json({ overstayCharge, newBalance, message: '✅ Exit grace started' });
+  } catch (error) {
+    logger.error('❌ Error in finish-parking:', error);
+    res.status(500).json({ error: 'Failed to finish parking' });
+  }
+});
+
+// Called after 7-min exit grace (or by LPR on physical exit) — frees the spot
+router.post('/complete-exit', async (req: Request, res: Response) => {
+  try {
+    const userId = req.userId!;
+
+    const booking = await prisma.booking.findFirst({
+      where: { userId, status: { in: ['PENDING', 'CONFIRMED'] } },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (!booking) {
+      return res.status(404).json({ error: 'No active booking found' });
+    }
+
     await prisma.$transaction([
-      prisma.booking.update({ where: { id: booking.id }, data: { status: 'COMPLETED' } }),
+      prisma.booking.update({ where: { id: booking.id }, data: { status: 'COMPLETED', actualEndTime: new Date() } }),
       prisma.parkingSpot.update({
         where: { id: booking.spotId },
         data: { status: 'FREE', currentUserId: null, currentUserPlate: null },
@@ -411,13 +441,13 @@ router.post('/finish-parking', async (req: Request, res: Response) => {
     ]);
 
     const { io } = await import('../server');
+    io.emit('spot-status-changed', { spotId: booking.spotId, status: 'FREE', carPlate: null });
     io.emit('booking-completed', { bookingId: booking.id, spotId: booking.spotId });
-    io.to(userId).emit('spot-status-changed', { spotId: booking.spotId, status: 'FREE' });
 
-    res.json({ overstayCharge, newBalance, message: '✅ Parking finished' });
+    res.json({ message: '✅ Exit complete' });
   } catch (error) {
-    logger.error('❌ Error finishing parking:', error);
-    res.status(500).json({ error: 'Failed to finish parking' });
+    logger.error('❌ Error in complete-exit:', error);
+    res.status(500).json({ error: 'Failed to complete exit' });
   }
 });
 

@@ -37,33 +37,30 @@ export function ActiveBookingScreen() {
   const elapsedSec = activeBooking ? Math.floor((now - new Date(activeBooking.startTime).getTime()) / 1000) : 0
   const timer = Math.max(0, 30 * 60 - elapsedSec)
 
-  // Overstay stages (all times after estimatedEndTime / endDate):
-  //   0–7 min  → grace period (silent, just exit please)
-  //   7 min    → push notification sent
-  //   7–12 min → warned, last chance
-  //   12 min+  → charging 3₸/min
-  const GRACE_MS   = 7  * 60 * 1000
-  const WARN_MS    = 12 * 60 * 1000
+  // Overstay timeline (after estimatedEndTime):
+  //   0 min      → push "time's up, press Finish Parking"
+  //   0–5 min    → warning period (no charge yet)
+  //   5 min+     → charging 3₸/min, shown in Cost Breakdown
+  const GRACE_MS            = 7  * 60 * 1000  // arrival grace (reach spot after LPR entry)
+  const OVERSTAY_CHARGE_MS  = 5  * 60 * 1000  // charges start 5 min after time expires
 
-  // Short-term overstay (requires isArrived = spot OCCUPIED)
-  const endTimeMs  = activeBooking?.endTime ? new Date(activeBooking.endTime).getTime() : null
-  const isGracePeriod  = isArrived && endTimeMs !== null && now > endTimeMs && now <= endTimeMs + GRACE_MS
-  const isWarnPeriod   = isArrived && endTimeMs !== null && now > endTimeMs + GRACE_MS && now <= endTimeMs + WARN_MS
-  const isOverstay     = isArrived && endTimeMs !== null && now > endTimeMs + WARN_MS
-  const graceSecondsLeft = isGracePeriod && endTimeMs ? Math.floor((endTimeMs + GRACE_MS - now) / 1000) : 0
-  const warnSecondsLeft  = isWarnPeriod  && endTimeMs ? Math.floor((endTimeMs + WARN_MS  - now) / 1000) : 0
-  const overstayMinutes  = isOverstay    && endTimeMs ? Math.floor((now - (endTimeMs + WARN_MS)) / 60000) : 0
+  // Short-term overstay (requires spot OCCUPIED)
+  const endTimeMs   = activeBooking?.endTime ? new Date(activeBooking.endTime).getTime() : null
+  const isWarnPeriod   = isArrived && endTimeMs !== null && now > endTimeMs && now <= endTimeMs + OVERSTAY_CHARGE_MS
+  const isOverstay     = isArrived && endTimeMs !== null && now > endTimeMs + OVERSTAY_CHARGE_MS
+  const warnSecondsLeft  = isWarnPeriod && endTimeMs ? Math.floor((endTimeMs + OVERSTAY_CHARGE_MS - now) / 1000) : 0
+  const overstayMinutes  = isOverstay   && endTimeMs ? Math.floor((now - (endTimeMs + OVERSTAY_CHARGE_MS)) / 60000) : 0
   const overtimeCost     = overstayMinutes * 3
 
-  // Long-term overstay: rental expired but car is still inside (spot OCCUPIED)
+  // Long-term overstay
   const ltInsideSpot = isLongTerm && selectedSpot?.status === "OCCUPIED"
   const endDateMs    = activeBooking?.endDate ? new Date(activeBooking.endDate).getTime() : null
   const isLtGrace    = ltInsideSpot && endDateMs !== null && now > endDateMs && now <= endDateMs + GRACE_MS
-  const isLtWarn     = ltInsideSpot && endDateMs !== null && now > endDateMs + GRACE_MS && now <= endDateMs + WARN_MS
-  const isLtOverstay = ltInsideSpot && endDateMs !== null && now > endDateMs + WARN_MS
+  const isLtWarn     = ltInsideSpot && endDateMs !== null && now > endDateMs + GRACE_MS && now <= endDateMs + OVERSTAY_CHARGE_MS + GRACE_MS
+  const isLtOverstay = ltInsideSpot && endDateMs !== null && now > endDateMs + GRACE_MS + OVERSTAY_CHARGE_MS
   const ltGraceSecondsLeft = isLtGrace ? Math.floor((endDateMs! + GRACE_MS - now) / 1000) : 0
-  const ltWarnSecondsLeft  = isLtWarn  ? Math.floor((endDateMs! + WARN_MS  - now) / 1000) : 0
-  const ltOverstayMinutes  = isLtOverstay ? Math.floor((now - (endDateMs! + WARN_MS)) / 60000) : 0
+  const ltWarnSecondsLeft  = isLtWarn  ? Math.floor((endDateMs! + GRACE_MS + OVERSTAY_CHARGE_MS - now) / 1000) : 0
+  const ltOverstayMinutes  = isLtOverstay ? Math.floor((now - (endDateMs! + GRACE_MS + OVERSTAY_CHARGE_MS)) / 60000) : 0
   const ltOvertimeCost     = ltOverstayMinutes * 3
 
   const GRACE_SECONDS = 7 * 60
@@ -104,7 +101,7 @@ export function ActiveBookingScreen() {
 
   // "5 min left" warning: show when ≤5 min remain in booked time
   const timeLeftSec = bookedDurationSec !== null ? Math.max(0, bookedDurationSec - parkingDuration) : null
-  const isTimeEndingSoon = isParking && !isGracePeriod && !isWarnPeriod && !isOverstay && timeLeftSec !== null && timeLeftSec > 0 && timeLeftSec <= 5 * 60
+  const isTimeEndingSoon = isParking && !isWarnPeriod && !isOverstay && timeLeftSec !== null && timeLeftSec > 0 && timeLeftSec <= 5 * 60
   // Time is up: timer hit booked duration (or no endTime info → never)
   const isTimeUp = isParking && bookedDurationSec !== null && parkingDuration >= bookedDurationSec
 
@@ -145,13 +142,6 @@ export function ActiveBookingScreen() {
     return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`
   }
   
-  const calculateCost = () => {
-    if (isLongTerm) return 0
-    const minutes = Math.ceil(parkingDuration / 60)
-    if (minutes < 60) return minutes * 3
-    return 150 + (minutes - 60) * 3
-  }
-  
 
 
   const handleFinishParking = async () => {
@@ -174,8 +164,15 @@ export function ActiveBookingScreen() {
       setExitGraceStarted(true)
       setExitGraceStartedAt(Date.now())
 
-      // After 7 min exit grace, clear booking and go home
-      setTimeout(() => {
+      // After 7 min exit grace, call complete-exit (spot freed) and go home
+      setTimeout(async () => {
+        try {
+          const t2 = localStorage.getItem("qpark_token")
+          await fetch("/backend/bookings/complete-exit", {
+            method: "POST",
+            headers: { Authorization: `Bearer ${t2}` },
+          })
+        } catch {}
         setActiveBooking(null)
         setCurrentScreen("home")
       }, 7 * 60 * 1000)
@@ -515,18 +512,7 @@ export function ActiveBookingScreen() {
         </div>
       </div>
       
-      {/* Stage 1: 0–7 min grace period */}
-      {isGracePeriod && (
-        <div className="rounded-xl px-4 py-3 bg-amber-500/10 border border-amber-500/30 flex items-center gap-3">
-          <Clock className="h-5 w-5 text-amber-500 shrink-0" />
-          <div className="flex-1">
-            <p className="text-sm font-semibold text-amber-600">Время бронирования истекло</p>
-            <p className="text-xs text-amber-500">Пожалуйста выедьте в течение <strong>{formatTime(graceSecondsLeft)}</strong></p>
-          </div>
-        </div>
-      )}
-
-      {/* Stage 2: 7–12 min warned, last chance before charging */}
+      {/* Stage 1: 0–5 min warning — press Finish Parking to avoid charges */}
       {isWarnPeriod && (
         <div className="rounded-xl px-4 py-3 bg-orange-500/10 border border-orange-500/40 flex items-center gap-3">
           <AlertTriangle className="h-5 w-5 text-orange-500 shrink-0" />
@@ -796,24 +782,26 @@ export function ActiveBookingScreen() {
         </CardContent>
       </Card>
       
-      {!isLongTerm && isArrived && isParking && !activeBooking?.isPaid && !exitGraceStarted && (
-        <Card>
+      {/* Overstay cost breakdown — live running charge shown when charges active */}
+      {!isLongTerm && isArrived && isOverstay && !exitGraceStarted && (
+        <Card className="border-red-300 bg-red-50">
           <CardContent className="p-4">
-            <h3 className="mb-3 font-medium text-foreground">{t.costBreakdown}</h3>
+            <h3 className="mb-3 font-medium text-red-700">Превышение времени</h3>
             <div className="space-y-2 text-sm">
               <div className="flex justify-between">
-                <span className="text-muted-foreground">{t.rateLabel}</span>
-                <span className="text-foreground">{t.rateValue}</span>
+                <span className="text-muted-foreground">Тариф</span>
+                <span className="text-foreground">3 ₸/мин</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-muted-foreground">Время</span>
-                <span className="text-foreground">{Math.ceil(parkingDuration / 60)} мин</span>
+                <span className="text-muted-foreground">Превышение</span>
+                <span className="text-red-600 font-medium">{overstayMinutes} мин</span>
               </div>
               <Separator />
-              <div className="flex justify-between font-medium">
-                <span className="text-foreground">{t.total}</span>
-                <span className="text-[#36549B]">{calculateCost()} &#8376;</span>
+              <div className="flex justify-between font-semibold">
+                <span className="text-red-700">Накоплено</span>
+                <span className="text-red-600 text-base">{overtimeCost} ₸</span>
               </div>
+              <p className="text-xs text-red-500 mt-1">Спишется при нажатии «Завершить парковку»</p>
             </div>
           </CardContent>
         </Card>

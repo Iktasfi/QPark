@@ -211,14 +211,14 @@ router.post('/lpr/entry', async (req: Request, res: Response) => {
         });
         // Notify frontend of corrected endTime
         io.emit('booking-updated', { bookingId: activeBooking.id, endTime: newEstimatedEnd });
-        // Schedule "5 min left" push at endTime - 5 min
+        // "5 min left" push at endTime - 5 min
         const fiveMinWarningDelay = newEstimatedEnd.getTime() - Date.now() - 5 * 60 * 1000;
         if (fiveMinWarningDelay > 0) {
           overstayQueue.add('check', { bookingId: activeBooking.id, userId: activeBooking.userId, spotId: spot.id, phase: 'time-ending' }, { delay: fiveMinWarningDelay }).catch(() => {});
         }
-        // Reschedule overstay job based on real endTime
-        const overstayDelay = newEstimatedEnd.getTime() - Date.now() + 7 * 60 * 1000;
-        overstayQueue.add('check', { bookingId: activeBooking.id, userId: activeBooking.userId, spotId: spot.id, phase: 'warn' }, { delay: Math.max(overstayDelay, 0) }).catch(() => {});
+        // Overstay warn push immediately when time expires (not +7 min anymore)
+        const warnDelay = Math.max(0, newEstimatedEnd.getTime() - Date.now());
+        overstayQueue.add('check', { bookingId: activeBooking.id, userId: activeBooking.userId, spotId: spot.id, phase: 'warn' }, { delay: warnDelay }).catch(() => {});
       }
 
       io.emit('lpr-gate-open', { carPlate, spotNumber, type: 'entry' });
@@ -328,8 +328,20 @@ router.post('/lpr/exit-lpr', async (req: Request, res: Response) => {
         });
       }
 
-      // Charge overstay: 3₸/min after 12 min total (7 grace + 5 post-warning) past estimatedEndTime
-      const overstayStart = new Date(paidBooking.estimatedEndTime.getTime() + 12 * 60 * 1000);
+      // If user already paid overstay via "Finish Parking" button, skip charging again
+      if (paidBooking.exitRequestedAt) {
+        await prisma.parkingSpot.update({
+          where: { spotNumber },
+          data: { status: 'FREE', currentUserPlate: null, currentUserId: null },
+        });
+        io.emit('lpr-gate-open', { carPlate, spotNumber, type: 'exit' });
+        io.emit('spot-status-changed', { spotNumber, status: 'FREE', carPlate: null });
+        logger.info(`✅ LPR exit (overstay pre-paid): ${carPlate} from ${spotNumber}`);
+        return res.json({ success: true, message: 'Gate opened, exit complete' });
+      }
+
+      // Charge overstay: 3₸/min after 5 min past estimatedEndTime
+      const overstayStart = new Date(paidBooking.estimatedEndTime.getTime() + 5 * 60 * 1000);
       const overstayMs = Math.max(0, actualEnd.getTime() - overstayStart.getTime());
       const overstayMinutes = Math.floor(overstayMs / 60000);
       if (overstayMinutes > 0) {
