@@ -483,6 +483,9 @@ router.post('/simulate-entry', async (req: Request, res: Response) => {
       });
     }
 
+    const spot = await prisma.parkingSpot.findUnique({ where: { spotNumber } });
+    if (!spot) return res.status(404).json({ error: 'Spot not found' });
+
     await prisma.parkingSpot.update({
       where: { spotNumber },
       data: { status: 'OCCUPIED', currentUserPlate: carPlate },
@@ -490,6 +493,29 @@ router.post('/simulate-entry', async (req: Request, res: Response) => {
 
     const { io } = await import('../server');
     io.emit('spot-status-changed', { spotNumber, status: 'OCCUPIED', carPlate });
+
+    // Mirror real LPR entry: update booking arrivedAt, recalculate endTime, schedule notifications
+    const activeBooking = await prisma.booking.findFirst({
+      where: { spotId: spot.id, status: { in: ['PENDING', 'CONFIRMED'] } },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (activeBooking) {
+      const now = new Date();
+      const bookedMs = activeBooking.estimatedEndTime.getTime() - activeBooking.startTime.getTime();
+      const newEstimatedEnd = new Date(now.getTime() + 7 * 60 * 1000 + bookedMs);
+      await prisma.booking.update({
+        where: { id: activeBooking.id },
+        data: { arrivedAt: now, photoTimerStart: now, photoStatus: 'PENDING', estimatedEndTime: newEstimatedEnd },
+      });
+      io.emit('booking-updated', { bookingId: activeBooking.id, endTime: newEstimatedEnd });
+      const fiveMinDelay = newEstimatedEnd.getTime() - Date.now() - 5 * 60 * 1000;
+      if (fiveMinDelay > 0) {
+        overstayQueue.add('check', { bookingId: activeBooking.id, userId: activeBooking.userId, spotId: spot.id, phase: 'time-ending' }, { delay: fiveMinDelay }).catch(() => {});
+      }
+      const warnDelay = Math.max(0, newEstimatedEnd.getTime() - Date.now());
+      overstayQueue.add('check', { bookingId: activeBooking.id, userId: activeBooking.userId, spotId: spot.id, phase: 'warn' }, { delay: warnDelay }).catch(() => {});
+      logger.info(`✅ Simulate entry: updated booking ${activeBooking.id}, newEndTime=${newEstimatedEnd.toISOString()}`);
+    }
 
     res.json({ success: true, message: `Car ${carPlate} entered spot ${spotNumber}` });
   } catch (error) {
@@ -619,9 +645,9 @@ router.post('/set-status', async (req: Request, res: Response) => {
           ]);
           bookingRecord = booking;
           newBalance = updatedUser.walletBalance;
-          // Schedule overstay warning 7 min after estimatedEndTime (phase: warn)
-          const overstayDelay = estimated.getTime() - Date.now() + 7 * 60 * 1000;
-          overstayQueue.add('check', { bookingId: booking.id, userId, spotId: updatedSpot.id, phase: 'warn' }, { delay: Math.max(overstayDelay, 0) }).catch(() => {});
+          const tEndDelay = estimated.getTime() - Date.now() - 5 * 60 * 1000;
+          if (tEndDelay > 0) overstayQueue.add('check', { bookingId: booking.id, userId, spotId: updatedSpot.id, phase: 'time-ending' }, { delay: tEndDelay }).catch(() => {});
+          overstayQueue.add('check', { bookingId: booking.id, userId, spotId: updatedSpot.id, phase: 'warn' }, { delay: Math.max(0, estimated.getTime() - Date.now()) }).catch(() => {});
           logger.info(`✅ Short-term booking paid: ${userId}, ${spotNumber}, -${cost}₸ wallet + ${actualBonus} bonus pts`);
         } else {
           const booking = await prisma.booking.create({
@@ -633,8 +659,9 @@ router.post('/set-status', async (req: Request, res: Response) => {
           });
           bookingRecord = booking;
           newBalance = userRecord.walletBalance;
-          const overstayDelay2 = estimated.getTime() - Date.now() + 7 * 60 * 1000;
-          overstayQueue.add('check', { bookingId: booking.id, userId, spotId: updatedSpot.id, phase: 'warn' }, { delay: Math.max(overstayDelay2, 0) }).catch(() => {});
+          const tEndDelay2 = estimated.getTime() - Date.now() - 5 * 60 * 1000;
+          if (tEndDelay2 > 0) overstayQueue.add('check', { bookingId: booking.id, userId, spotId: updatedSpot.id, phase: 'time-ending' }, { delay: tEndDelay2 }).catch(() => {});
+          overstayQueue.add('check', { bookingId: booking.id, userId, spotId: updatedSpot.id, phase: 'warn' }, { delay: Math.max(0, estimated.getTime() - Date.now()) }).catch(() => {});
           logger.info(`✅ Short-term booking (free/promo/bonus): ${userId}, ${spotNumber}`);
         }
       } catch (e) {
