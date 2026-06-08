@@ -426,15 +426,24 @@ export function ActiveBookingScreen() {
 
   useEffect(() => {
     if (!activeBooking) {
-      setHistoryLoading(true)
       const token = localStorage.getItem("qpark_token")
-      fetch("/backend/bookings/history", {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      })
-        .then(r => r.ok ? r.json() : [])
-        .then(data => setHistory(Array.isArray(data) ? data : []))
+      if (!token) return
+      // First try to restore active booking — context may have lost it (e.g. socket event or re-mount)
+      fetch("/backend/bookings/restore", { headers: { Authorization: `Bearer ${token}` } })
+        .then(r => r.ok ? r.json() : null)
+        .then(restored => {
+          if (restored) {
+            setActiveBooking(restored)
+          } else {
+            setHistoryLoading(true)
+            fetch("/backend/bookings/history", { headers: { Authorization: `Bearer ${token}` } })
+              .then(r => r.ok ? r.json() : [])
+              .then(data => setHistory(Array.isArray(data) ? data : []))
+              .catch(() => {})
+              .finally(() => setHistoryLoading(false))
+          }
+        })
         .catch(() => {})
-        .finally(() => setHistoryLoading(false))
     }
   }, [activeBooking])
 
