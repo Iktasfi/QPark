@@ -1,0 +1,290 @@
+🚀 Starting EasyOCR server on port 5001...
+⏳ Waiting for EasyOCR to load models (~30 sec first time)...
+Traceback (most recent call last):
+  File "/Users/inkar/QPark/lpr/ocr_service.py", line 12, in <module>
+    from flask import Flask, request, jsonify
+ModuleNotFoundError: No module named 'flask'
+⏳ Still loading EasyOCR...
+❌ EasyOCR failed to start. Check logs above.
+🚀 Starting EasyOCR server on port 5001...
+⏳ Waiting for EasyOCR to load models (~30 sec first time)...
+Traceback (most recent call last):
+  File "/Users/inkar/QPark/lpr/ocr_service.py", line 12, in <module>
+    from flask import Flask, request, jsonify
+ModuleNotFoundError: No module named 'flask'
+⏳ Still loading EasyOCR...
+❌ EasyOCR failed to start. Check logs above.
+🚀 Starting EasyOCR server on port 5001...
+⏳ Waiting for EasyOCR to load models (~30 sec first time)...
+Traceback (most recent call last):
+  File "/Users/inkar/QPark/lpr/ocr_service.py", line 12, in <module>
+    from flask import Flask, request, jsonify
+ModuleNotFoundError: No module named 'flask'
+⏳ Still loading EasyOCR...
+❌ EasyOCR failed to start. Check logs above.
+🚀 Starting EasyOCR server on port 5001...
+⏳ Waiting for EasyOCR to load models (~30 sec first time)...
+Traceback (most recent call last):
+  File "/Users/inkar/QPark/lpr/ocr_service.py", line 12, in <module>
+    from flask import Flask, request, jsonify
+ModuleNotFoundError: No module named 'flask'
+⏳ Still loading EasyOCR...
+❌ EasyOCR failed to start. Check logs above.
+🚀 Starting EasyOCR server on port 5001...
+⏳ Waiting for EasyOCR to load models (~30 sec first time)...
+Traceback (most recent call last):
+  File "/Users/inkar/QPark/lpr/ocr_service.py", line 12, in <module>
+    from flask import Flask, request, jsonify
+ModuleNotFoundError: No module named 'flask'
+⏳ Still loading EasyOCR...
+❌ EasyOCR failed to start. Check logs above.
+🚀 Starting EasyOCR server on port 5001...
+⏳ Waiting for EasyOCR to load models (~30 sec first time)...
+Traceback (most recent call last):
+  File "/Users/inkar/QPark/lpr/ocr_service.py", line 12, in <module>
+    from flask import Flask, request, jsonify
+ModuleNotFoundError: No module named 'flask'
+⏳ Still loading EasyOCR...
+❌ EasyOCR failed to start. Check logs above.
+🚀 Starting EasyOCR server on port 5001...
+⏳ Waiting for EasyOCR to load models (~30 sec first time)...
+Traceback (most recent call last):
+  File "/Users/inkar/QPark/lpr/ocr_service.py", line 12, in <module>
+    from flask import Flask, request, jsonify
+ModuleNotFoundError: No module named 'flask'
+⏳ Still loading EasyOCR...
+❌ EasyOCR failed to start. Check logs above.
+/Users/inkar/QPark/lpr/start_ocr.sh: line 5: venv/bin/activate: No such file or directory
+🚀 Starting EasyOCR server on port 5001...
+⏳ Waiting for EasyOCR to load models (~30 sec first time)...
+/Users/inkar/QPark/lpr/start_ocr.sh: line 9: python: command not found
+⏳ Still loading EasyOCR...
+❌ EasyOCR failed to start. Check logs above.
+🚀 Starting EasyOCR server on port 5001...
+⏳ Waiting for EasyOCR to load models (~30 sec first time)...
+Traceback (most recent call last):
+  File "/Users/inkar/QPark/lpr/ocr_service.py", line 12, in <module>
+    from flask import Flask, request, jsonify
+ModuleNotFoundError: No module named 'flask'
+⏳ Still loading EasyOCR...
+❌ EasyOCR failed to start. Check logs above.
+🚀 Starting EasyOCR server on port 5001...
+⏳ Waiting for EasyOCR to load models (~30 sec first time)...
+Traceback (most recent call last):
+  File "/Users/inkar/QPark/lpr/ocr_service.py", line 12, in <module>
+    from flask import Flask, request, jsonify
+ModuleNotFoundError: No module named 'flask'
+⏳ Still loading EasyOCR...
+❌ EasyOCR failed to start. Check logs above.
+🚀 Starting EasyOCR server on port 5001...
+⏳ Waiting for EasyOCR to load models (~30 sec first time)...
+Traceback (most recent call last):
+  File "/Users/inkar/QPark/lpr/ocr_service.py", line 12, in <module>
+    from flask import Flask, request, jsonify
+ModuleNotFoundError: No module named 'flask'
+⏳ Still loading EasyOCR...
+❌ EasyOCR failed to start. Check logs above.
+🚀 Starting EasyOCR server on port 5001...
+⏳ Waiting for EasyOCR to load models (~30 sec first time)...
+⏳ Still loading EasyOCR...
+❌ EasyOCR failed to start. Check logs above.
+🚀 Starting EasyOCR server on port 5001...
+⏳ Waiting for EasyOCR to load models (~30 sec first time)...
+⏳ Still loading EasyOCR...
+🚀 Starting EasyOCR server on port 5001...
+⏳ Waiting for EasyOCR to load models (~30 sec first time)...
+⏳ Still loading EasyOCR...
+❌ EasyOCR failed to start. Check logs above.
+🚀 Starting EasyOCR server on port 5001...
+⏳ Waiting for EasyOCR to load models (~30 sec first time)...
+⏳ Still loading EasyOCR...
+⏳ Загрузка EasyOCR (первый раз ~30 сек)...
+✅ EasyOCR готов
+🚀 OCR сервис запущен на http://0.0.0.0:5001
+   Для публичного доступа: ngrok http 5001
+ * Serving Flask app 'ocr_service'
+ * Debug mode: off
+[31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5001
+ * Running on http://192.168.1.70:5001
+[33mPress CTRL+C to quit[0m
+127.0.0.1 - - [04/Jun/2026 23:36:21] "GET /health HTTP/1.1" 200 -
+127.0.0.1 - - [04/Jun/2026 23:36:21] "GET /health HTTP/1.1" 200 -
+127.0.0.1 - - [04/Jun/2026 23:36:22] "GET /health HTTP/1.1" 200 -
+✅ EasyOCR ready!
+🌐 Starting ngrok tunnel → caring-moonlit-raven.ngrok-free.dev
+/Users/inkar/QPark/lpr/start_ocr.sh: line 31: ngrok: command not found
+🛑 Stopping OCR server...
+🚀 Starting EasyOCR server on port 5001...
+⏳ Waiting for EasyOCR to load models (~30 sec first time)...
+⏳ Загрузка EasyOCR (первый раз ~30 сек)...
+✅ EasyOCR готов
+🚀 OCR сервис запущен на http://0.0.0.0:5001
+   Для публичного доступа: ngrok http 5001
+ * Serving Flask app 'ocr_service'
+ * Debug mode: off
+[31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5001
+ * Running on http://192.168.1.70:5001
+[33mPress CTRL+C to quit[0m
+127.0.0.1 - - [04/Jun/2026 23:36:27] "GET /health HTTP/1.1" 200 -
+127.0.0.1 - - [04/Jun/2026 23:36:27] "GET /health HTTP/1.1" 200 -
+✅ EasyOCR ready!
+🌐 Starting ngrok tunnel → caring-moonlit-raven.ngrok-free.dev
+/Users/inkar/QPark/lpr/start_ocr.sh: line 31: ngrok: command not found
+🛑 Stopping OCR server...
+🚀 Starting EasyOCR server on port 5001...
+⏳ Waiting for EasyOCR to load models (~30 sec first time)...
+⏳ Загрузка EasyOCR (первый раз ~30 сек)...
+✅ EasyOCR готов
+🚀 OCR сервис запущен на http://0.0.0.0:5001
+   Для публичного доступа: ngrok http 5001
+ * Serving Flask app 'ocr_service'
+ * Debug mode: off
+[31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5001
+ * Running on http://192.168.1.70:5001
+[33mPress CTRL+C to quit[0m
+127.0.0.1 - - [04/Jun/2026 23:36:37] "GET /health HTTP/1.1" 200 -
+127.0.0.1 - - [04/Jun/2026 23:36:37] "GET /health HTTP/1.1" 200 -
+✅ EasyOCR ready!
+🌐 Starting ngrok tunnel → caring-moonlit-raven.ngrok-free.dev
+/Users/inkar/QPark/lpr/start_ocr.sh: line 31: ngrok: command not found
+🛑 Stopping OCR server...
+🚀 Starting EasyOCR server on port 5001...
+⏳ Waiting for EasyOCR to load models (~30 sec first time)...
+⏳ Загрузка EasyOCR (первый раз ~30 сек)...
+✅ EasyOCR готов
+🚀 OCR сервис запущен на http://0.0.0.0:5001
+   Для публичного доступа: ngrok http 5001
+ * Serving Flask app 'ocr_service'
+ * Debug mode: off
+[31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5001
+ * Running on http://192.168.1.70:5001
+[33mPress CTRL+C to quit[0m
+127.0.0.1 - - [04/Jun/2026 23:36:48] "GET /health HTTP/1.1" 200 -
+127.0.0.1 - - [04/Jun/2026 23:36:48] "GET /health HTTP/1.1" 200 -
+✅ EasyOCR ready!
+🌐 Starting ngrok tunnel → caring-moonlit-raven.ngrok-free.dev
+/Users/inkar/QPark/lpr/start_ocr.sh: line 31: ngrok: command not found
+🛑 Stopping OCR server...
+🚀 Starting EasyOCR server on port 5001...
+⏳ Waiting for EasyOCR to load models (~30 sec first time)...
+⏳ Загрузка EasyOCR (первый раз ~30 сек)...
+✅ EasyOCR готов
+🚀 OCR сервис запущен на http://0.0.0.0:5001
+   Для публичного доступа: ngrok http 5001
+ * Serving Flask app 'ocr_service'
+ * Debug mode: off
+[31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5001
+ * Running on http://192.168.1.70:5001
+[33mPress CTRL+C to quit[0m
+127.0.0.1 - - [04/Jun/2026 23:36:58] "GET /health HTTP/1.1" 200 -
+127.0.0.1 - - [04/Jun/2026 23:36:58] "GET /health HTTP/1.1" 200 -
+✅ EasyOCR ready!
+🌐 Starting ngrok tunnel → caring-moonlit-raven.ngrok-free.dev
+/Users/inkar/QPark/lpr/start_ocr.sh: line 31: ngrok: command not found
+🛑 Stopping OCR server...
+🚀 Starting EasyOCR server on port 5001...
+⏳ Waiting for EasyOCR to load models (~30 sec first time)...
+🚀 Starting EasyOCR server on port 5001...
+⏳ Waiting for EasyOCR to load models (~30 sec first time)...
+⏳ Загрузка EasyOCR (первый раз ~30 сек)...
+✅ EasyOCR готов
+🚀 OCR сервис запущен на http://0.0.0.0:5001
+   Для публичного доступа: ngrok http 5001
+ * Serving Flask app 'ocr_service'
+ * Debug mode: off
+[31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5001
+ * Running on http://192.168.1.70:5001
+[33mPress CTRL+C to quit[0m
+127.0.0.1 - - [04/Jun/2026 23:37:11] "GET /health HTTP/1.1" 200 -
+127.0.0.1 - - [04/Jun/2026 23:37:11] "GET /health HTTP/1.1" 200 -
+✅ EasyOCR ready!
+🌐 Starting ngrok tunnel → caring-moonlit-raven.ngrok-free.dev
+Flag --domain has been deprecated, use --url instead
+127.0.0.1 - - [04/Jun/2026 23:37:25] "GET /health HTTP/1.1" 200 -
+127.0.0.1 - - [04/Jun/2026 23:37:25] "GET /health HTTP/1.1" 200 -
+127.0.0.1 - - [04/Jun/2026 23:38:12] "GET /health HTTP/1.1" 200 -
+/Users/inkar/QPark/lpr/venv/lib/python3.13/site-packages/torch/utils/data/dataloader.py:752: UserWarning: 'pin_memory' argument is set as true but not supported on MPS now, device pinned memory won't be used.
+  super().__init__(loader)
+127.0.0.1 - - [04/Jun/2026 23:47:20] "POST /ocr HTTP/1.1" 200 -
+127.0.0.1 - - [04/Jun/2026 23:48:05] "POST /ocr HTTP/1.1" 200 -
+127.0.0.1 - - [04/Jun/2026 23:48:08] "POST /ocr HTTP/1.1" 200 -
+127.0.0.1 - - [04/Jun/2026 23:48:08] "POST /ocr HTTP/1.1" 200 -
+127.0.0.1 - - [04/Jun/2026 23:48:18] "POST /ocr HTTP/1.1" 200 -
+127.0.0.1 - - [04/Jun/2026 23:48:32] "POST /ocr HTTP/1.1" 200 -
+127.0.0.1 - - [04/Jun/2026 23:48:40] "POST /ocr HTTP/1.1" 200 -
+127.0.0.1 - - [04/Jun/2026 23:48:42] "POST /ocr HTTP/1.1" 200 -
+127.0.0.1 - - [04/Jun/2026 23:48:49] "POST /ocr HTTP/1.1" 200 -
+127.0.0.1 - - [05/Jun/2026 00:35:17] "POST /ocr HTTP/1.1" 200 -
+127.0.0.1 - - [05/Jun/2026 00:35:38] "POST /ocr HTTP/1.1" 200 -
+127.0.0.1 - - [05/Jun/2026 00:35:49] "POST /ocr HTTP/1.1" 200 -
+127.0.0.1 - - [05/Jun/2026 00:36:43] "POST /ocr HTTP/1.1" 200 -
+127.0.0.1 - - [05/Jun/2026 00:36:45] "POST /ocr HTTP/1.1" 200 -
+127.0.0.1 - - [06/Jun/2026 01:33:32] "POST /ocr HTTP/1.1" 200 -
+127.0.0.1 - - [06/Jun/2026 01:34:31] "POST /ocr HTTP/1.1" 200 -
+127.0.0.1 - - [06/Jun/2026 01:35:29] "POST /ocr HTTP/1.1" 200 -
+🚀 Starting EasyOCR server on port 5001...
+⏳ Waiting for EasyOCR to load models (~30 sec first time)...
+⏳ Still loading EasyOCR...
+❌ EasyOCR failed to start. Check logs above.
+🚀 Starting EasyOCR server on port 5001...
+⏳ Waiting for EasyOCR to load models (~30 sec first time)...
+⏳ Загрузка EasyOCR (первый раз ~30 сек)...
+✅ EasyOCR готов
+🚀 OCR сервис запущен на http://0.0.0.0:5001
+   Для публичного доступа: ngrok http 5001
+ * Serving Flask app 'ocr_service'
+ * Debug mode: off
+[31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5001
+ * Running on http://192.168.1.68:5001
+[33mPress CTRL+C to quit[0m
+127.0.0.1 - - [06/Jun/2026 13:14:42] "GET /health HTTP/1.1" 200 -
+127.0.0.1 - - [06/Jun/2026 13:14:42] "GET /health HTTP/1.1" 200 -
+✅ EasyOCR ready!
+🌐 Starting ngrok tunnel → caring-moonlit-raven.ngrok-free.dev
+Flag --domain has been deprecated, use --url instead
+/Users/inkar/QPark/lpr/venv/lib/python3.13/site-packages/torch/utils/data/dataloader.py:752: UserWarning: 'pin_memory' argument is set as true but not supported on MPS now, device pinned memory won't be used.
+  super().__init__(loader)
+127.0.0.1 - - [06/Jun/2026 17:49:13] "POST /ocr HTTP/1.1" 200 -
+127.0.0.1 - - [06/Jun/2026 17:50:02] "POST /ocr HTTP/1.1" 200 -
+127.0.0.1 - - [06/Jun/2026 17:53:08] "POST /ocr HTTP/1.1" 200 -
+127.0.0.1 - - [06/Jun/2026 18:32:22] "POST /ocr HTTP/1.1" 200 -
+🚀 Starting EasyOCR server on port 5001...
+⏳ Waiting for EasyOCR to load models (~30 sec first time)...
+⏳ Still loading EasyOCR...
+❌ EasyOCR failed to start. Check logs above.
+🚀 Starting EasyOCR server on port 5001...
+⏳ Waiting for EasyOCR to load models (~30 sec first time)...
+⏳ Still loading EasyOCR...
+⏳ Загрузка EasyOCR (первый раз ~30 сек)...
+✅ EasyOCR готов
+🚀 OCR сервис запущен на http://0.0.0.0:5001
+   Для публичного доступа: ngrok http 5001
+ * Serving Flask app 'ocr_service'
+ * Debug mode: off
+[31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5001
+ * Running on http://192.168.1.68:5001
+[33mPress CTRL+C to quit[0m
+127.0.0.1 - - [06/Jun/2026 22:00:07] "GET /health HTTP/1.1" 200 -
+✅ EasyOCR ready!
+🌐 Starting ngrok tunnel → caring-moonlit-raven.ngrok-free.dev
+Flag --domain has been deprecated, use --url instead
+/Users/inkar/QPark/lpr/venv/lib/python3.13/site-packages/torch/utils/data/dataloader.py:752: UserWarning: 'pin_memory' argument is set as true but not supported on MPS now, device pinned memory won't be used.
+  super().__init__(loader)
+127.0.0.1 - - [08/Jun/2026 10:24:26] "POST /ocr HTTP/1.1" 200 -
+127.0.0.1 - - [08/Jun/2026 10:24:41] "POST /ocr HTTP/1.1" 200 -

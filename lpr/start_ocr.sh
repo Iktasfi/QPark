@@ -28,7 +28,7 @@ fi
 
 # Start ngrok tunnel (fixed domain)
 echo "🌐 Starting ngrok tunnel → caring-moonlit-raven.ngrok-free.dev"
-ngrok http --domain=caring-moonlit-raven.ngrok-free.dev 5001
+/opt/homebrew/bin/ngrok http --domain=caring-moonlit-raven.ngrok-free.dev 5001
 
 # Cleanup when ngrok stops (Ctrl+C)
 echo "🛑 Stopping OCR server..."

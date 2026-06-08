@@ -631,7 +631,33 @@ export function ActiveBookingScreen() {
         </Card>
       )}
       
-      {!isLongTerm && isArrived && (
+      {/* Exit grace card — shown independently of isArrived (spot already freed) */}
+      {!isLongTerm && exitGraceStarted && (
+        <Card className="border-green-500 bg-green-50">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Clock className="h-8 w-8 text-green-600" />
+                <div>
+                  <p className="text-sm font-semibold text-green-700">{t.exitGraceTitle}</p>
+                  <p className="text-3xl font-bold text-green-800">{formatTime(exitGraceRemaining)}</p>
+                  <p className="text-xs text-green-600">{t.exitGraceDesc}</p>
+                  {finishOvCharge > 0 && (
+                    <p className="text-xs font-medium text-red-600 mt-0.5">{t.overstayCharged}: −{finishOvCharge} ₸</p>
+                  )}
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-green-100">
+                <Check className="h-4 w-4 text-green-600" />
+                <span className="text-sm font-semibold text-green-700">Exit</span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Arrival grace card or parking timer card */}
+      {!isLongTerm && isArrived && !exitGraceStarted && (
         !isParking ? (
           <Card className="border-green-400 bg-green-50">
             <CardContent className="p-4">
@@ -646,28 +672,6 @@ export function ActiveBookingScreen() {
                 <div className="text-right">
                   <p className="text-xs text-green-600">{t.meterStartsAfter}</p>
                   <p className="text-sm font-semibold text-green-700">0 &#8376;</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        ) : exitGraceStarted ? (
-          <Card className="border-green-500 bg-green-50">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <Clock className="h-8 w-8 text-green-600" />
-                  <div>
-                    <p className="text-sm font-semibold text-green-700">{t.exitGraceTitle}</p>
-                    <p className="text-3xl font-bold text-green-800">{formatTime(exitGraceRemaining)}</p>
-                    <p className="text-xs text-green-600">{t.exitGraceDesc}</p>
-                    {finishOvCharge > 0 && (
-                      <p className="text-xs font-medium text-red-600 mt-0.5">{t.overstayCharged}: −{finishOvCharge} ₸</p>
-                    )}
-                  </div>
-                </div>
-                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-green-100">
-                  <Check className="h-4 w-4 text-green-600" />
-                  <span className="text-sm font-semibold text-green-700">Exit</span>
                 </div>
               </div>
             </CardContent>
@@ -824,20 +828,20 @@ export function ActiveBookingScreen() {
           </div>
         )}
 
-        {/* "Finish Parking" during arrival grace */}
-        {isArrived && !isLongTerm && !isParking && (
+        {/* "Start Parking" — during arrival grace, user confirms they've parked */}
+        {isArrived && !isLongTerm && !isParking && !exitGraceStarted && (
           <Button
             size="lg"
             className="w-full gap-2 bg-[#354469] hover:bg-[#354469]/90"
             onClick={() => { setConfirmedParked(true); setConfirmedParkedAt(Date.now()) }}
           >
             <Check className="h-5 w-5" />
-            {t.finishParking}
+            {t.startParking}
           </Button>
         )}
 
-        {/* "Finish & Exit" when booked time is up (or overstay) */}
-        {isArrived && !isLongTerm && isParking && (isTimeUp || isGracePeriod || isWarnPeriod || isOverstay) && !exitGraceStarted && (
+        {/* "Finish Parking" — always shown during active parking, starts exit grace */}
+        {isArrived && !isLongTerm && isParking && !exitGraceStarted && (
           <Button
             size="lg"
             className="w-full gap-2 bg-green-600 hover:bg-green-700 text-white"
@@ -845,7 +849,7 @@ export function ActiveBookingScreen() {
             disabled={isFinishing}
           >
             <Check className="h-5 w-5" />
-            {isFinishing ? t.processing : t.finishAndExit}
+            {isFinishing ? t.processing : t.finishParking}
           </Button>
         )}
 
@@ -860,7 +864,7 @@ export function ActiveBookingScreen() {
           </Button>
         )}
 
-        {(isArrived || isLongTerm) && !complaintSent && (
+        {(isArrived || isLongTerm) && !complaintSent && !exitGraceStarted && (
           <Button
             variant="outline"
             size="lg"
