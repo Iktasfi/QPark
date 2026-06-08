@@ -201,9 +201,10 @@ router.post('/lpr/entry', async (req: Request, res: Response) => {
         where: { spotId: spot.id, status: { in: ['PENDING', 'CONFIRMED'] } },
       });
       if (activeBooking) {
-        // Recalculate estimatedEndTime from actual arrival: arrivedAt + originally booked duration
+        // estimatedEndTime = arrivedAt + 7min arrival grace + booked duration
+        // Frontend computes bookedDurationSec = endTime - (arrivedAt + 7min), so grace must be included
         const bookedMs = activeBooking.estimatedEndTime.getTime() - activeBooking.startTime.getTime();
-        const newEstimatedEnd = new Date(now.getTime() + bookedMs);
+        const newEstimatedEnd = new Date(now.getTime() + 7 * 60 * 1000 + bookedMs);
         await prisma.booking.update({
           where: { id: activeBooking.id },
           data: { arrivedAt: now, photoTimerStart: now, photoStatus: 'PENDING', estimatedEndTime: newEstimatedEnd },
@@ -502,7 +503,7 @@ router.post('/simulate-entry', async (req: Request, res: Response) => {
     if (activeBooking) {
       const now = new Date();
       const bookedMs = activeBooking.estimatedEndTime.getTime() - activeBooking.startTime.getTime();
-      const newEstimatedEnd = new Date(now.getTime() + bookedMs);
+      const newEstimatedEnd = new Date(now.getTime() + 7 * 60 * 1000 + bookedMs);
       await prisma.booking.update({
         where: { id: activeBooking.id },
         data: { arrivedAt: now, photoTimerStart: now, photoStatus: 'PENDING', estimatedEndTime: newEstimatedEnd },
