@@ -13,6 +13,7 @@ import { ProfileScreen } from "@/components/screens/profile-screen"
 import { AdminDashboard } from "@/components/admin/admin-dashboard"
 import { OnboardingScreen } from "@/components/screens/onboarding-screen"
 import { SupportChatScreen } from "@/components/screens/support-chat-screen"
+import { PushNotificationToast } from "@/components/push-notification-toast"
 
 function AppContent() {
   const { currentScreen, isAuthenticated, isAdminMode, isRestoringSession } = useParking()
@@ -74,6 +75,7 @@ export default function SmartParkingApp() {
   return (
     <ParkingProvider>
       <AppContent />
+      <PushNotificationToast />
     </ParkingProvider>
   )
 }

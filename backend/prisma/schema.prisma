@@ -19,6 +19,7 @@ model User {
   noShowCount    Int       @default(0)
   isBanned       Boolean   @default(false)
   bannedUntil    DateTime?
+  fcmToken       String?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 

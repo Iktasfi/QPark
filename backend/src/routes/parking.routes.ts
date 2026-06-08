@@ -6,6 +6,7 @@ import { logger } from '../server';
 import jwt from 'jsonwebtoken';
 import { prisma } from '../lib/prisma';
 import { rentalExpiryQueue, overstayQueue } from '../jobs/queues';
+import { sendPushToUser } from '../utils/notifications';
 
 const router = Router();
 
@@ -210,6 +211,11 @@ router.post('/lpr/entry', async (req: Request, res: Response) => {
         });
         // Notify frontend of corrected endTime
         io.emit('booking-updated', { bookingId: activeBooking.id, endTime: newEstimatedEnd });
+        // Schedule "5 min left" push at endTime - 5 min
+        const fiveMinWarningDelay = newEstimatedEnd.getTime() - Date.now() - 5 * 60 * 1000;
+        if (fiveMinWarningDelay > 0) {
+          overstayQueue.add('check', { bookingId: activeBooking.id, userId: activeBooking.userId, spotId: spot.id, phase: 'time-ending' }, { delay: fiveMinWarningDelay }).catch(() => {});
+        }
         // Reschedule overstay job based on real endTime
         const overstayDelay = newEstimatedEnd.getTime() - Date.now() + 7 * 60 * 1000;
         overstayQueue.add('check', { bookingId: activeBooking.id, userId: activeBooking.userId, spotId: spot.id, phase: 'warn' }, { delay: Math.max(overstayDelay, 0) }).catch(() => {});

@@ -234,6 +234,18 @@ router.post(
 );
 
 
+router.post('/fcm-token', verifyToken, async (req: Request, res: Response) => {
+  try {
+    const { token } = req.body;
+    if (!token || typeof token !== 'string') return res.status(400).json({ error: 'token required' });
+    await prisma.user.update({ where: { id: req.userId! }, data: { fcmToken: token } });
+    res.json({ ok: true });
+  } catch (error) {
+    logger.error('❌ FCM token save error:', error);
+    res.status(500).json({ error: 'Failed to save token' });
+  }
+});
+
 router.delete('/cars/:id', verifyToken, async (req: Request, res: Response) => {
   try {
     if (!req.userId) return res.status(401).json({ error: 'Unauthorized' });

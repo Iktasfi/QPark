@@ -606,6 +606,8 @@ export function ParkingProvider({ children }: { children: ReactNode }) {
           setUser(mapDbUser(dbUser))
           ;(window as typeof window & { __qparkUserId?: string }).__qparkUserId = dbUser.id
           setIsAuthenticated(true)
+          // Register FCM token in background — non-blocking
+          import("@/lib/firebase").then(({ registerFCMToken }) => registerFCMToken(token)).catch(() => {})
           try {
             const br = await fetch("/backend/bookings/restore", {
               headers: { Authorization: `Bearer ${token}` },

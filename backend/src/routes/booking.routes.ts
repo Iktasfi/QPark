@@ -389,14 +389,15 @@ router.post('/finish-parking', async (req: Request, res: Response) => {
 
     let newBalance: number | null = null;
     if (overstayCharge > 0) {
-      const wallet = await prisma.wallet.findFirst({ where: { userId } });
-      if (wallet) {
-        const charged = Math.min(overstayCharge, wallet.balance);
-        const updated = await prisma.wallet.update({
-          where: { id: wallet.id },
-          data: { balance: { decrement: charged } },
+      const owner = await prisma.user.findUnique({ where: { id: userId }, select: { walletBalance: true } });
+      if (owner) {
+        const charged = Math.min(overstayCharge, owner.walletBalance);
+        const updated = await prisma.user.update({
+          where: { id: userId },
+          data: { walletBalance: { decrement: charged } },
+          select: { walletBalance: true },
         });
-        newBalance = updated.balance;
+        newBalance = updated.walletBalance;
         overstayCharge = charged;
       }
     }
