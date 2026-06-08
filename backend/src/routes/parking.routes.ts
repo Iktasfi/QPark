@@ -210,7 +210,7 @@ router.post('/lpr/entry', async (req: Request, res: Response) => {
           data: { arrivedAt: now, photoTimerStart: now, photoStatus: 'PENDING', estimatedEndTime: newEstimatedEnd },
         });
         // Notify frontend of corrected endTime
-        io.emit('booking-updated', { bookingId: activeBooking.id, endTime: newEstimatedEnd });
+        io.emit('booking-updated', { bookingId: activeBooking.id, endTime: newEstimatedEnd, arrivedAt: now });
         // "5 min left" push at endTime - 5 min
         const fiveMinWarningDelay = newEstimatedEnd.getTime() - Date.now() - 5 * 60 * 1000;
         if (fiveMinWarningDelay > 0) {
@@ -508,7 +508,7 @@ router.post('/simulate-entry', async (req: Request, res: Response) => {
         where: { id: activeBooking.id },
         data: { arrivedAt: now, photoTimerStart: now, photoStatus: 'PENDING', estimatedEndTime: newEstimatedEnd },
       });
-      io.emit('booking-updated', { bookingId: activeBooking.id, endTime: newEstimatedEnd });
+      io.emit('booking-updated', { bookingId: activeBooking.id, endTime: newEstimatedEnd, arrivedAt: now });
       const fiveMinDelay = newEstimatedEnd.getTime() - Date.now() - 5 * 60 * 1000;
       if (fiveMinDelay > 0) {
         overstayQueue.add('check', { bookingId: activeBooking.id, userId: activeBooking.userId, spotId: spot.id, phase: 'time-ending' }, { delay: fiveMinDelay }).catch(() => {});

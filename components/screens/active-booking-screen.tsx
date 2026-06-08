@@ -65,27 +65,20 @@ export function ActiveBookingScreen() {
 
   const GRACE_SECONDS = 7 * 60
 
-  const arrivedAtLocalRef = useRef<number | null>(null)
-  useEffect(() => {
-    if (isArrived && !arrivedAtLocalRef.current) {
-      arrivedAtLocalRef.current = activeBooking?.arrivedAt
-        ? new Date(activeBooking.arrivedAt).getTime()
-        : Date.now()
-    }
-  }, [isArrived])
+  // Use server-provided arrivedAt directly — avoids clock skew and ref reset on remount
+  const arrivedAtMs = isArrived && activeBooking?.arrivedAt
+    ? new Date(activeBooking.arrivedAt).getTime()
+    : null
 
   // User pressed "Finish Parking" during grace → skip remaining grace, start timer from that moment
   const [confirmedParked, setConfirmedParked] = useState(false)
   const [confirmedParkedAt, setConfirmedParkedAt] = useState<number | null>(null)
 
-  const rawElapsed = isArrived && arrivedAtLocalRef.current
-    ? Math.floor((now - arrivedAtLocalRef.current) / 1000)
-    : 0
+  const rawElapsed = arrivedAtMs ? Math.floor((now - arrivedAtMs) / 1000) : 0
   const graceRemaining = Math.max(0, GRACE_SECONDS - rawElapsed)
   const isParking = graceRemaining === 0 || confirmedParked
 
-  // When user confirms parked early, count from that moment; otherwise count after natural grace
-  const parkingStart = confirmedParkedAt ?? (arrivedAtLocalRef.current ? arrivedAtLocalRef.current + GRACE_MS : null)
+  const parkingStart = confirmedParkedAt ?? (arrivedAtMs ? arrivedAtMs + GRACE_MS : null)
   const parkingDuration = parkingStart
     ? Math.max(0, Math.floor((now - parkingStart) / 1000))
     : 0
@@ -372,9 +365,13 @@ export function ActiveBookingScreen() {
       }
     }
     // LPR entry: backend recalculates estimatedEndTime based on actual arrival
-    const handleBookingUpdated = (data: { bookingId: string; endTime: string }) => {
+    const handleBookingUpdated = (data: { bookingId: string; endTime: string; arrivedAt?: string }) => {
       if (activeBooking && data.bookingId === activeBooking.id) {
-        setActiveBooking({ ...activeBooking, endTime: new Date(data.endTime) })
+        setActiveBooking({
+          ...activeBooking,
+          endTime: new Date(data.endTime),
+          ...(data.arrivedAt ? { arrivedAt: new Date(data.arrivedAt) } : {}),
+        })
       }
     }
     // LPR (or simulate-exit) confirmed the car physically left → cancel fallback timer and go home
