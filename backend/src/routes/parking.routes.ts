@@ -665,9 +665,7 @@ router.post('/set-status', async (req: Request, res: Response) => {
           ]);
           bookingRecord = booking;
           newBalance = updatedUser.walletBalance;
-          const tEndDelay = estimated.getTime() - Date.now() - 5 * 60 * 1000;
-          if (tEndDelay > 0) overstayQueue.add('check', { bookingId: booking.id, userId, spotId: updatedSpot.id, phase: 'time-ending' }, { delay: tEndDelay }).catch(() => {});
-          overstayQueue.add('check', { bookingId: booking.id, userId, spotId: updatedSpot.id, phase: 'warn' }, { delay: Math.max(0, estimated.getTime() - Date.now()) }).catch(() => {});
+          // Notification jobs scheduled at arrival time (simulate-entry / lpr/entry), not here
           logger.info(`✅ Short-term booking paid: ${userId}, ${spotNumber}, -${cost}₸ wallet + ${actualBonus} bonus pts`);
         } else {
           const booking = await prisma.booking.create({
@@ -679,9 +677,7 @@ router.post('/set-status', async (req: Request, res: Response) => {
           });
           bookingRecord = booking;
           newBalance = userRecord.walletBalance;
-          const tEndDelay2 = estimated.getTime() - Date.now() - 5 * 60 * 1000;
-          if (tEndDelay2 > 0) overstayQueue.add('check', { bookingId: booking.id, userId, spotId: updatedSpot.id, phase: 'time-ending' }, { delay: tEndDelay2 }).catch(() => {});
-          overstayQueue.add('check', { bookingId: booking.id, userId, spotId: updatedSpot.id, phase: 'warn' }, { delay: Math.max(0, estimated.getTime() - Date.now()) }).catch(() => {});
+          // Notification jobs scheduled at arrival time (simulate-entry / lpr/entry), not here
           logger.info(`✅ Short-term booking (free/promo/bonus): ${userId}, ${spotNumber}`);
         }
       } catch (e) {
