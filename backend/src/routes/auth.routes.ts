@@ -246,6 +246,23 @@ router.post('/fcm-token', verifyToken, async (req: Request, res: Response) => {
   }
 });
 
+// Test endpoint: immediately sends a push to the logged-in user
+router.post('/test-push', verifyToken, async (req: Request, res: Response) => {
+  try {
+    const userId = req.userId!;
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { fcmToken: true } });
+    if (!user?.fcmToken) {
+      return res.status(400).json({ error: 'No FCM token saved for this user. Allow notifications in browser first.' });
+    }
+    const { sendPushToUser } = await import('../utils/notifications');
+    await sendPushToUser(userId, '🔔 Test notification', 'QPark push notifications are working!', { type: 'test' });
+    res.json({ ok: true, fcmToken: user.fcmToken.slice(0, 20) + '...' });
+  } catch (error) {
+    logger.error('❌ Test push error:', error);
+    res.status(500).json({ error: String(error) });
+  }
+});
+
 router.delete('/cars/:id', verifyToken, async (req: Request, res: Response) => {
   try {
     if (!req.userId) return res.status(401).json({ error: 'Unauthorized' });
