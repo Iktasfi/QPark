@@ -110,6 +110,7 @@ export function ActiveBookingScreen() {
   const [exitGraceStartedAt, setExitGraceStartedAt] = useState<number | null>(null)
   const [isFinishing, setIsFinishing] = useState(false)
   const [finishOvCharge, setFinishOvCharge] = useState(0)
+  const exitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const exitGraceElapsed = exitGraceStartedAt ? Math.floor((now - exitGraceStartedAt) / 1000) : 0
   const exitGraceRemaining = Math.max(0, 7 * 60 - exitGraceElapsed)
 
@@ -164,8 +165,10 @@ export function ActiveBookingScreen() {
       setExitGraceStarted(true)
       setExitGraceStartedAt(Date.now())
 
-      // After 7 min exit grace, call complete-exit (spot freed) and go home
-      setTimeout(async () => {
+      // After 7 min exit grace fallback: call complete-exit and go home
+      // (In production, LPR exit fires parking-exit-confirmed which cancels this timer)
+      exitTimerRef.current = setTimeout(async () => {
+        exitTimerRef.current = null
         try {
           const t2 = localStorage.getItem("qpark_token")
           await fetch("/backend/bookings/complete-exit", {
@@ -353,6 +356,17 @@ export function ActiveBookingScreen() {
         setActiveBooking({ ...activeBooking, endTime: new Date(data.endTime) })
       }
     }
+    // LPR (or simulate-exit) confirmed the car physically left → cancel fallback timer and go home
+    const handleParkingExitConfirmed = (data: { userId: string; bookingId: string }) => {
+      if (data.userId === user?.id) {
+        if (exitTimerRef.current) {
+          clearTimeout(exitTimerRef.current)
+          exitTimerRef.current = null
+        }
+        setActiveBooking(null)
+        setCurrentScreen("home")
+      }
+    }
     socket.on("spot-reassigned", handleReassigned)
     socket.on("spot-moved", handleSpotMoved)
     socket.on("no-spots-available", handleNoSpots)
@@ -360,6 +374,7 @@ export function ActiveBookingScreen() {
     socket.on("overstay-charged", handleOverstayCharged)
     socket.on("booking-extended", handleBookingExtended)
     socket.on("booking-updated", handleBookingUpdated)
+    socket.on("parking-exit-confirmed", handleParkingExitConfirmed)
     return () => {
       socket.off("spot-reassigned", handleReassigned)
       socket.off("spot-moved", handleSpotMoved)
@@ -368,6 +383,7 @@ export function ActiveBookingScreen() {
       socket.off("overstay-charged", handleOverstayCharged)
       socket.off("booking-extended", handleBookingExtended)
       socket.off("booking-updated", handleBookingUpdated)
+      socket.off("parking-exit-confirmed", handleParkingExitConfirmed)
     }
   }, [user, activeBooking])
 

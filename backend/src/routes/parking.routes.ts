@@ -330,12 +330,13 @@ router.post('/lpr/exit-lpr', async (req: Request, res: Response) => {
 
       // If user already paid overstay via "Finish Parking" button, skip charging again
       if (paidBooking.exitRequestedAt) {
-        await prisma.parkingSpot.update({
-          where: { spotNumber },
-          data: { status: 'FREE', currentUserPlate: null, currentUserId: null },
-        });
+        await prisma.$transaction([
+          prisma.booking.update({ where: { id: paidBooking.id }, data: { status: 'COMPLETED', actualEndTime: new Date() } }),
+          prisma.parkingSpot.update({ where: { spotNumber }, data: { status: 'FREE', currentUserPlate: null, currentUserId: null } }),
+        ]);
         io.emit('lpr-gate-open', { carPlate, spotNumber, type: 'exit' });
         io.emit('spot-status-changed', { spotNumber, status: 'FREE', carPlate: null });
+        io.emit('parking-exit-confirmed', { userId: paidBooking.userId, bookingId: paidBooking.id });
         logger.info(`✅ LPR exit (overstay pre-paid): ${carPlate} from ${spotNumber}`);
         return res.json({ success: true, message: 'Gate opened, exit complete' });
       }
@@ -536,13 +537,32 @@ router.post('/simulate-exit', async (req: Request, res: Response) => {
       });
     }
 
+    const spot = await prisma.parkingSpot.findUnique({ where: { spotNumber } });
+    if (!spot) return res.status(404).json({ error: 'Spot not found' });
+
+    // Complete booking and free spot (mirrors LPR exit logic)
+    const activeBooking = await prisma.booking.findFirst({
+      where: { spotId: spot.id, status: { in: ['PENDING', 'CONFIRMED'] } },
+      orderBy: { createdAt: 'desc' },
+    });
+
     await prisma.parkingSpot.update({
       where: { spotNumber },
       data: { status: 'FREE', currentUserPlate: null, currentUserId: null },
     });
 
+    if (activeBooking) {
+      await prisma.booking.update({
+        where: { id: activeBooking.id },
+        data: { status: 'COMPLETED', actualEndTime: new Date() },
+      });
+    }
+
     const { io } = await import('../server');
     io.emit('spot-status-changed', { spotNumber, status: 'FREE', carPlate: null });
+    if (activeBooking) {
+      io.emit('parking-exit-confirmed', { userId: activeBooking.userId, bookingId: activeBooking.id });
+    }
 
     res.json({ success: true, message: `Car ${carPlate} exited spot ${spotNumber}` });
   } catch (error) {
