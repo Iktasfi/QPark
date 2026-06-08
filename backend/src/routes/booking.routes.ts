@@ -83,17 +83,26 @@ router.get('/restore', async (req: Request, res: Response) => {
     const now = new Date();
     const expiredCutoff = new Date(now.getTime() - 30 * 60 * 1000);
 
-    // Cancel no-show short-term bookings: PENDING, older than 30 min,
-    // and user has NOT arrived yet (arrivedAt is null)
+    // Cancel no-show short-term bookings: PENDING, older than 30 min, not yet arrived
     await prisma.booking.updateMany({
-      where: {
-        userId,
-        status: 'PENDING',
-        startTime: { lt: expiredCutoff },
-        arrivedAt: null,
-      },
+      where: { userId, status: 'PENDING', startTime: { lt: expiredCutoff }, arrivedAt: null },
       data: { status: 'CANCELLED' },
     });
+
+    // Auto-complete exit requests where grace period (7 min) has expired — free the spot
+    const staleExits = await prisma.booking.findMany({
+      where: {
+        userId,
+        status: { in: ['PENDING', 'CONFIRMED'] },
+        exitRequestedAt: { not: null, lt: new Date(now.getTime() - 8 * 60 * 1000) },
+      },
+    });
+    for (const b of staleExits) {
+      await prisma.$transaction([
+        prisma.booking.update({ where: { id: b.id }, data: { status: 'COMPLETED' } }),
+        prisma.parkingSpot.update({ where: { id: b.spotId }, data: { status: 'FREE', currentUserId: null, currentUserPlate: null } }),
+      ]);
+    }
 
     // Short-term: active booking (PENDING = waiting to arrive, CONFIRMED = arrived)
     const booking = await prisma.booking.findFirst({
@@ -116,6 +125,7 @@ router.get('/restore', async (req: Request, res: Response) => {
         startTime: booking.startTime,
         endTime: booking.estimatedEndTime,
         arrivedAt: booking.arrivedAt,
+        exitRequestedAt: booking.exitRequestedAt,
         isPaid: booking.isPaid,
         waitingFee: 0,
       });

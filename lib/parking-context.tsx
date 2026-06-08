@@ -473,6 +473,7 @@ export interface Booking {
   waitingFee: number
   rentalDays?: number
   arrivedAt?: Date
+  exitRequestedAt?: Date | null
 }
 
 interface ParkingContextType {

@@ -136,7 +136,36 @@ export function ActiveBookingScreen() {
   const reassignTimer = reassignedAt ? Math.max(0, REASSIGN_GRACE - reassignElapsed) : null
 
   const selectedCar = user?.cars.find(c => c.plateNumber === activeBooking?.plateNumber)
-  
+
+  // Restore exit grace state on mount/refresh if exitRequestedAt was set
+  useEffect(() => {
+    if (!activeBooking?.exitRequestedAt || exitGraceStarted) return
+    const requestedAt = new Date(activeBooking.exitRequestedAt).getTime()
+    const elapsed = Date.now() - requestedAt
+    if (elapsed >= 7 * 60 * 1000) {
+      // Grace already expired — go home (restore endpoint already cleaned up booking)
+      setActiveBooking(null)
+      setCurrentScreen("home")
+      return
+    }
+    // Grace still active — resume countdown from where it left off
+    setExitGraceStarted(true)
+    setExitGraceStartedAt(requestedAt)
+    const remaining = 7 * 60 * 1000 - elapsed
+    exitTimerRef.current = setTimeout(() => {
+      exitTimerRef.current = null
+      setActiveBooking(null)
+      setCurrentScreen("home")
+    }, remaining)
+    return () => {
+      if (exitTimerRef.current) {
+        clearTimeout(exitTimerRef.current)
+        exitTimerRef.current = null
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeBooking?.exitRequestedAt])
+
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60)
     const secs = seconds % 60
@@ -165,17 +194,9 @@ export function ActiveBookingScreen() {
       setExitGraceStarted(true)
       setExitGraceStartedAt(Date.now())
 
-      // After 7 min exit grace fallback: call complete-exit and go home
-      // (In production, LPR exit fires parking-exit-confirmed which cancels this timer)
-      exitTimerRef.current = setTimeout(async () => {
+      // After 7 min: just navigate home — spot freed only when car exits via LPR/simulate-exit
+      exitTimerRef.current = setTimeout(() => {
         exitTimerRef.current = null
-        try {
-          const t2 = localStorage.getItem("qpark_token")
-          await fetch("/backend/bookings/complete-exit", {
-            method: "POST",
-            headers: { Authorization: `Bearer ${t2}` },
-          })
-        } catch {}
         setActiveBooking(null)
         setCurrentScreen("home")
       }, 7 * 60 * 1000)
