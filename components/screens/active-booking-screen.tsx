@@ -65,7 +65,8 @@ export function ActiveBookingScreen() {
     ? Math.max(0, Math.floor((ltArrivalDeadlineMs - now) / 1000)) : 0
   const ltArrivalExpired  = ltArrivalDeadlineMs !== null && now >= ltArrivalDeadlineMs
   const ltArrivalWarning  = !ltArrivalExpired && ltArrivalSecsLeft <= 5 * 60
-  const showLtArrivalTimer = isLongTerm && !ltInsideSpot && ltArrivalDeadlineMs !== null
+  // Hide timer permanently once arrivedAt is set — user can freely enter/exit after first arrival
+  const showLtArrivalTimer = isLongTerm && !activeBooking?.arrivedAt && ltArrivalDeadlineMs !== null
   const isLtOverstay    = ltInsideSpot && isLtExpired
   const ltOverstayMinutes = isLtOverstay && endDateMs ? Math.floor((now - endDateMs) / 60000) : 0
   // Live debt for expired rental (even if car is outside)
@@ -550,6 +551,12 @@ export function ActiveBookingScreen() {
         setGateBlockedReason(data.reason || 'Шлагбаум не открылся')
       }
     }
+    // Long-term first arrival — set arrivedAt so the 30-min timer hides permanently
+    const handleRentalArrived = (data: { rentalId: string; userId: string; arrivedAt: string }) => {
+      if (activeBooking && data.rentalId === activeBooking.id) {
+        setActiveBooking({ ...activeBooking, arrivedAt: new Date(data.arrivedAt) })
+      }
+    }
 
     socket.on("spot-reassigned", handleReassigned)
     socket.on("spot-moved", handleSpotMoved)
@@ -560,6 +567,7 @@ export function ActiveBookingScreen() {
     socket.on("booking-updated", handleBookingUpdated)
     socket.on("parking-exit-confirmed", handleParkingExitConfirmed)
     socket.on("lpr-gate-denied", handleGateDenied)
+    socket.on("rental-arrived", handleRentalArrived)
     return () => {
       socket.off("spot-reassigned", handleReassigned)
       socket.off("spot-moved", handleSpotMoved)
@@ -570,6 +578,7 @@ export function ActiveBookingScreen() {
       socket.off("booking-updated", handleBookingUpdated)
       socket.off("parking-exit-confirmed", handleParkingExitConfirmed)
       socket.off("lpr-gate-denied", handleGateDenied)
+      socket.off("rental-arrived", handleRentalArrived)
     }
   }, [user, activeBooking])
 

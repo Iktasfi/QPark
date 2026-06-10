@@ -903,10 +903,13 @@ router.post('/open-gate', async (req: Request, res: Response) => {
         data: { status: newStatus, ...(carPlate ? { currentUserPlate: carPlate } : {}) },
       });
       if (isEntry && !rental.arrivedAt) {
-        await prisma.longTermRental.update({ where: { id: rental.id }, data: { arrivedAt: new Date() } });
-        // User arrived — cancel the 30-min no-show job (Rule 3)
+        const arrivedAt = new Date();
+        await prisma.longTermRental.update({ where: { id: rental.id }, data: { arrivedAt } });
+        // Cancel the 30-min no-show job (Rule 3)
         const ltNoShowJob = await longTermNoShowQueue.getJob(`ltnoshow-${rental.id}`);
         if (ltNoShowJob) await ltNoShowJob.remove().catch(() => {});
+        // Notify frontend so it can hide the arrival timer permanently
+        io.emit('rental-arrived', { rentalId: rental.id, userId: rental.userId, arrivedAt: arrivedAt.toISOString() });
       }
       io.emit('lpr-gate-open', { carPlate: carPlate ?? spot.currentUserPlate, spotNumber, type: isEntry ? 'entry' : 'exit' });
       io.emit('spot-status-changed', { spotNumber, status: newStatus, carPlate: carPlate ?? spot.currentUserPlate });

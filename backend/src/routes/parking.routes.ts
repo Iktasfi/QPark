@@ -201,13 +201,16 @@ router.post('/lpr/entry', async (req: Request, res: Response) => {
       });
 
       if (!rental.arrivedAt) {
+        const arrivedAt = new Date();
         await prisma.longTermRental.update({
           where: { id: rental.id },
-          data: { arrivedAt: new Date() },
+          data: { arrivedAt },
         });
-        // User arrived within 30 min — cancel the no-show job (Rule 3)
+        // Cancel the 30-min no-show job (Rule 3)
         const ltNoShowJob = await longTermNoShowQueue.getJob(`ltnoshow-${rental.id}`);
         if (ltNoShowJob) await ltNoShowJob.remove().catch(() => {});
+        // Notify frontend so it can hide the arrival timer permanently
+        io.emit('rental-arrived', { rentalId: rental.id, userId: rental.userId, arrivedAt: arrivedAt.toISOString() });
       }
 
       io.emit('lpr-gate-open', { carPlate, spotNumber, type: eventType });
