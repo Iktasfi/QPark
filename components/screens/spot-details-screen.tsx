@@ -130,8 +130,14 @@ export function SpotDetailsScreen() {
 
       const data = await res.json()
 
+      // Only proceed if server returned a real booking ID — prevents fake booking state on error
+      const confirmedBookingId = data.booking?.id ?? data.id
+      if (!confirmedBookingId) {
+        throw new Error('Место только что заняли — попробуйте выбрать другое')
+      }
+
       const booking = {
-        id: data.booking?.id ?? data.id ?? `booking-${Date.now()}`,
+        id: confirmedBookingId,
         spotId: selectedSpot.id,
         userId: user.id,
         plateNumber: selectedCarData.plateNumber,
