@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import paymentService from '../services/payment.service';
 import promoCodeService from '../services/promocode.service';
 import { verifyToken, verifyToken as authenticate } from '../middleware/auth';
-import { validateWalletTopup, validatePromoCode } from '../middleware/validation.middleware';
+import { validateWalletTopup, validateDirectTopup, validatePromoCode } from '../middleware/validation.middleware';
 import { logger } from '../server';
 import { prisma } from '../lib/prisma';
 
@@ -12,7 +12,7 @@ const router = Router();
 router.use(verifyToken);
 
 
-router.post('/topup', validateWalletTopup, async (req: Request, res: Response) => {
+router.post('/topup', validateDirectTopup, async (req: Request, res: Response) => {
   try {
     const { amount } = req.body;
     const userId = req.userId!;

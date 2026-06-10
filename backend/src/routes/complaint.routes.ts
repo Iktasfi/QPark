@@ -4,6 +4,7 @@ import { logger } from '../server';
 import { prisma } from '../lib/prisma';
 import { uploadPhotoToCloudinary } from '../utils/cloudinary';
 import { findFreeSpotNearby } from '../utils/spots';
+import { sendPushToUser } from '../utils/notifications';
 
 const router = Router();
 
@@ -92,14 +93,18 @@ router.post('/', async (req: Request, res: Response) => {
     // Отвечаем клиенту СРАЗУ
     res.status(201).json({ success: true, complaint });
 
-    // Background: OCR + free spot search run IN PARALLEL so we can auto-swap when all full
+    // Background: OCR to identify violator, then swap or find free spot
     setImmediate(async () => {
       try {
-        // 1) Run free spot search AND OCR at the same time
-        const [freeSpot, ocrPlate] = await Promise.all([
-          findFreeSpotNearby(spotId),
-          photoUrl ? detectPlateFromPhoto(photoUrl) : Promise.resolve(null),
-        ]);
+        // Check if admin already processed this complaint manually (race condition guard)
+        const freshComplaint = await prisma.complaint.findUnique({ where: { id: complaint.id } });
+        if (freshComplaint?.status === 'REASSIGNED' || freshComplaint?.status === 'REFUNDED' || freshComplaint?.status === 'CLOSED') {
+          logger.info(`⏭️ Complaint ${complaint.id} already processed (status=${freshComplaint.status}), skipping background swap`);
+          return;
+        }
+
+        // 1) Run OCR to identify violator from photo
+        const ocrPlate = photoUrl ? await detectPlateFromPhoto(photoUrl) : null;
 
         // 2) Identify violator from OCR result (or manual input)
         let detectedPlate: string | null = ocrPlate ?? violatorPlateManual ?? null;
@@ -119,10 +124,22 @@ router.post('/', async (req: Request, res: Response) => {
         const victimOldSpot = await prisma.parkingSpot.findFirst({ where: { spotNumber: spotId } });
 
         // Helper: move victim's booking or LongTermRental to a new spot db id
+        // bookingId from frontend may be a Booking id OR a LongTermRental id
         const moveVictim = async (newSpotDbId: string) => {
           if (bookingId) {
-            await prisma.booking.update({ where: { id: bookingId }, data: { spotId: newSpotDbId } });
-          } else if (victimOldSpot) {
+            const asBooking = await prisma.booking.findUnique({ where: { id: bookingId } });
+            if (asBooking) {
+              await prisma.booking.update({ where: { id: bookingId }, data: { spotId: newSpotDbId } });
+              return;
+            }
+            const asRental = await prisma.longTermRental.findUnique({ where: { id: bookingId } });
+            if (asRental) {
+              await prisma.longTermRental.update({ where: { id: bookingId }, data: { spotId: newSpotDbId } });
+              return;
+            }
+          }
+          // Fallback: find rental by userId + original spot
+          if (victimOldSpot) {
             await prisma.longTermRental.updateMany({
               where: { userId, spotId: victimOldSpot.id, status: 'ACTIVE' },
               data: { spotId: newSpotDbId },
@@ -158,46 +175,16 @@ router.post('/', async (req: Request, res: Response) => {
           logger.info(`😔 No free spots for victim ${userId}, refunded ${refundAmount}₸${keepOpen ? ' (kept PENDING for admin review)' : ''}`);
         };
 
-        if (freeSpot) {
-          // ── Case 2: Free spot found → move victim there ──
-          await moveVictim(freeSpot.id);
-          await prisma.parkingSpot.update({ where: { id: freeSpot.id }, data: { status: 'BOOKED', currentUserId: userId } });
+        // Helper: get user's registered car plate
+        const getCarPlate = async (uid: string): Promise<string | null> => {
+          const car = await prisma.car.findFirst({ where: { userId: uid } });
+          return car?.plateNumber ?? null;
+        };
 
-          // If violator identified: move their booking/rental to victim's old spot, free their original spot
-          if (violatorUserId && victimOldSpot) {
-            const violatorBooking = await prisma.booking.findFirst({
-              where: { userId: violatorUserId, status: { in: ['PENDING', 'CONFIRMED'] } },
-            });
-            const violatorRental = !violatorBooking
-              ? await prisma.longTermRental.findFirst({ where: { userId: violatorUserId, status: 'ACTIVE' } })
-              : null;
-            const violatorSpotId = violatorBooking?.spotId ?? violatorRental?.spotId ?? null;
-            const violatorOriginalSpot = violatorSpotId
-              ? await prisma.parkingSpot.findUnique({ where: { id: violatorSpotId } })
-              : null;
+        let swapDone = false;
 
-            if (violatorOriginalSpot) {
-              if (violatorBooking) {
-                await prisma.booking.update({ where: { id: violatorBooking.id }, data: { spotId: victimOldSpot.id } });
-              } else if (violatorRental) {
-                await prisma.longTermRental.update({ where: { id: violatorRental.id }, data: { spotId: victimOldSpot.id } });
-              }
-              await prisma.parkingSpot.update({ where: { id: victimOldSpot.id }, data: { currentUserId: violatorUserId } });
-              io.emit('spot-status-changed', { spotNumber: victimOldSpot.spotNumber, status: 'OCCUPIED' });
-              await prisma.parkingSpot.update({ where: { id: violatorOriginalSpot.id }, data: { status: 'FREE', currentUserId: null, currentUserPlate: null } });
-              io.emit('spot-status-changed', { spotNumber: violatorOriginalSpot.spotNumber, status: 'FREE' });
-              // Notify violator silently (no timer reset — they're already inside)
-              io.emit('spot-moved', { userId: violatorUserId, newSpotId: victimOldSpot.spotNumber, oldSpotId: violatorOriginalSpot.spotNumber });
-            }
-          }
-
-          await prisma.complaint.update({ where: { id: complaint.id }, data: { status: 'REASSIGNED', newSpotId: freeSpot.spotNumber, resolvedAt: new Date(), detectedPlate, violatorUserId } });
-          io.emit('spot-reassigned', { userId, newSpotId: freeSpot.spotNumber });
-          io.emit('spot-status-changed', { spotNumber: freeSpot.spotNumber, status: 'BOOKED' });
-          logger.info(`🔄 Victim ${userId} → ${freeSpot.spotNumber}`);
-
-        } else if (violatorUserId && victimOldSpot) {
-          // ── Case 3: All spots full + violator identified → AUTO-SWAP ──
+        // ── PRIORITY: Violator known → swap bookings (give victim violator's spot) ──
+        if (violatorUserId && victimOldSpot) {
           const violatorBooking = await prisma.booking.findFirst({
             where: { userId: violatorUserId, status: { in: ['PENDING', 'CONFIRMED'] } },
           });
@@ -210,42 +197,141 @@ router.post('/', async (req: Request, res: Response) => {
             : null;
 
           if (violatorOriginalSpot) {
-            // Move victim → violator's original spot (physically empty)
-            await moveVictim(violatorOriginalSpot.id);
-            await prisma.parkingSpot.update({ where: { id: violatorOriginalSpot.id }, data: { status: 'BOOKED', currentUserId: userId } });
-            io.emit('spot-status-changed', { spotNumber: violatorOriginalSpot.spotNumber, status: 'BOOKED' });
+            const [victimPlate, violatorPlate, victimRentalCheck] = await Promise.all([
+              getCarPlate(userId),
+              getCarPlate(violatorUserId),
+              // Determine if victim is a long-term renter
+              bookingId
+                ? prisma.longTermRental.findUnique({ where: { id: bookingId } })
+                : prisma.longTermRental.findFirst({ where: { userId, status: 'ACTIVE' } }),
+            ]);
+            // Victim is physically inside (arrivedAt set) → mark new spot OCCUPIED immediately
+            // so exit gate opens automatically without needing a fresh LPR scan
+            const victimIsInside = !!(victimRentalCheck?.arrivedAt);
+            const victimNewSpotStatus = victimIsInside ? 'OCCUPIED' : (victimRentalCheck ? 'RESERVED' : 'BOOKED');
 
-            // Move violator's booking OR rental → victim's spot (where they physically are)
+            // 1. Move victim → violator's original spot (physically empty)
+            await moveVictim(violatorOriginalSpot.id);
+            await prisma.parkingSpot.update({
+              where: { id: violatorOriginalSpot.id },
+              data: { status: victimNewSpotStatus, currentUserId: userId, currentUserPlate: victimPlate },
+            });
+            io.emit('spot-status-changed', { spotNumber: violatorOriginalSpot.spotNumber, status: victimNewSpotStatus, carPlate: victimPlate });
+
+            // 2. Move violator's booking/rental → victim's spot (where they physically are)
             if (violatorBooking) {
-              await prisma.booking.update({ where: { id: violatorBooking.id }, data: { spotId: victimOldSpot.id } });
+              await prisma.booking.update({
+                where: { id: violatorBooking.id },
+                data: { spotId: victimOldSpot.id, arrivedAt: violatorBooking.arrivedAt ?? new Date() },
+              });
             } else if (violatorRental) {
               await prisma.longTermRental.update({ where: { id: violatorRental.id }, data: { spotId: victimOldSpot.id } });
             }
-            await prisma.parkingSpot.update({ where: { id: victimOldSpot.id }, data: { currentUserId: violatorUserId } });
-            io.emit('spot-status-changed', { spotNumber: victimOldSpot.spotNumber, status: 'OCCUPIED' });
+            await prisma.parkingSpot.update({
+              where: { id: victimOldSpot.id },
+              data: { status: 'OCCUPIED', currentUserId: violatorUserId, currentUserPlate: violatorPlate },
+            });
+            io.emit('spot-status-changed', { spotNumber: victimOldSpot.spotNumber, status: 'OCCUPIED', carPlate: violatorPlate });
 
             await prisma.complaint.update({
               where: { id: complaint.id },
               data: { status: 'REASSIGNED', newSpotId: violatorOriginalSpot.spotNumber, resolvedAt: new Date(), detectedPlate, violatorUserId },
             });
 
-            // Victim: gets 7-min timer to go park at new spot
+            // Victim: 7-min timer to go park at new spot
             io.emit('spot-reassigned', { userId, newSpotId: violatorOriginalSpot.spotNumber });
-            // Violator: silent update — just change spot label, no timer change
+            // Violator: silent update — spot label changes, timer keeps running
             io.emit('spot-moved', { userId: violatorUserId, newSpotId: victimOldSpot.spotNumber, oldSpotId: violatorOriginalSpot.spotNumber });
 
             logger.info(`🔀 Auto-swap: victim ${userId}→${violatorOriginalSpot.spotNumber}, violator ${violatorUserId}→${victimOldSpot.spotNumber}`);
-          } else {
-            // Violator identified but has no active booking/rental — refund victim
-            await prisma.complaint.update({ where: { id: complaint.id }, data: { detectedPlate, violatorUserId } });
-            await refundVictim();
+
+            // Charge 900₸ fine to violator — financial penalty only, no bans (spec §3.5.6.3)
+            const fineAmount = 900;
+            const violator = await prisma.user.findUnique({ where: { id: violatorUserId } });
+            if (violator) {
+              const charged = Math.min(fineAmount, violator.walletBalance);
+              const debt = fineAmount - charged;
+              const newBalance = Math.max(0, violator.walletBalance - fineAmount);
+
+              await prisma.$transaction([
+                prisma.fine.create({
+                  data: {
+                    userId: violatorUserId,
+                    amount: fineAmount,
+                    paidAmount: charged,
+                    reason: `Автоштраф: занял чужое место (${victimOldSpot.spotNumber}), места поменяны`,
+                    ticketId: complaint.id,
+                    isPaid: charged >= fineAmount,
+                    paidAt: charged >= fineAmount ? new Date() : null,
+                  },
+                }),
+                prisma.user.update({
+                  where: { id: violatorUserId },
+                  data: { walletBalance: newBalance },
+                }),
+                prisma.transaction.create({
+                  data: {
+                    userId: violatorUserId,
+                    amount: -charged,
+                    type: 'PAYMENT',
+                    description: `Автоштраф 900₸: занял место ${victimOldSpot.spotNumber}`,
+                    balanceBefore: violator.walletBalance,
+                    balanceAfter: newBalance,
+                  },
+                }),
+                ...(debt > 0 ? [prisma.transaction.create({
+                  data: {
+                    userId: violatorUserId,
+                    amount: -debt,
+                    type: 'PAYMENT',
+                    description: `Долг по штрафу: ${debt}₸ (пополните кошелёк)`,
+                    balanceBefore: 0,
+                    balanceAfter: 0,
+                  },
+                })] : []),
+              ]);
+
+              io.emit('fine-issued', { userId: violatorUserId, amount: fineAmount, complaintId: complaint.id, spotNumber: victimOldSpot.spotNumber });
+              logger.info(`💸 Auto-fine 900₸ → violator ${violatorUserId}`);
+
+              // Push: violator only gets the fine notification
+              await sendPushToUser(
+                violatorUserId,
+                '⚠️ Штраф 900₸ — смена места',
+                `Вы заняли чужое место (${victimOldSpot.spotNumber}). Штраф 900₸ списан. Ваше место изменено: ${victimOldSpot.spotNumber}.`,
+                { type: 'spot-moved', newSpotId: victimOldSpot.spotNumber }
+              ).catch(() => {});
+            }
+
+            // Push to victim: just redirect, don't mention fine
+            await sendPushToUser(
+              userId,
+              '🔄 Ваше место изменено',
+              `Ваше новое место: ${violatorOriginalSpot.spotNumber}. Пожалуйста, паркуйтесь там.`,
+              { type: 'spot-reassigned', newSpotId: violatorOriginalSpot.spotNumber }
+            ).catch((err) => { logger.warn(`⚠️ Push to victim ${userId} failed:`, err?.message ?? err); });
+
+            io.emit('bookings-updated'); // tells admin dashboard to refetch
+            swapDone = true;
           }
-        } else {
-          // ── Case 4: No free spot, violator not identified ──
-          // If OCR failed (no plate at all) → refund as compensation but keep PENDING for admin manual review
-          // If plate found but no booking/rental → close as REFUNDED (shouldn't happen in closed system)
-          await prisma.complaint.update({ where: { id: complaint.id }, data: { detectedPlate, violatorUserId } });
-          await refundVictim(!detectedPlate);
+        }
+
+        if (!swapDone) {
+          // ── FALLBACK: No swap possible — find a free spot ──
+          const freeSpot = await findFreeSpotNearby(spotId);
+          if (freeSpot) {
+            await moveVictim(freeSpot.id);
+            const victimCarPlate = await getCarPlate(userId);
+            await prisma.parkingSpot.update({ where: { id: freeSpot.id }, data: { status: 'BOOKED', currentUserId: userId, currentUserPlate: victimCarPlate } });
+            await prisma.complaint.update({ where: { id: complaint.id }, data: { status: 'REASSIGNED', newSpotId: freeSpot.spotNumber, resolvedAt: new Date(), detectedPlate, violatorUserId } });
+            io.emit('spot-reassigned', { userId, newSpotId: freeSpot.spotNumber });
+            io.emit('spot-status-changed', { spotNumber: freeSpot.spotNumber, status: 'BOOKED', carPlate: victimCarPlate });
+            await sendPushToUser(userId, '🔄 Вас перенаправили на новое место', `Ваше место было занято. Новое место: ${freeSpot.spotNumber}. Паркуйтесь там.`, { type: 'spot-reassigned', newSpotId: freeSpot.spotNumber }).catch(() => {});
+            logger.info(`🔄 Victim ${userId} → free spot ${freeSpot.spotNumber}`);
+          } else {
+            await prisma.complaint.update({ where: { id: complaint.id }, data: { detectedPlate, violatorUserId } });
+            await refundVictim(!detectedPlate);
+          }
         }
 
         // 3) Cloudinary upload (always, for admin to see the photo)

@@ -1,52 +1,102 @@
 import { calculateShortTermCost, getFreeTravelTimeRemaining } from '../utils/pricing';
 import { logger } from '../server';
 import { prisma } from '../lib/prisma';
-import { noShowQueue } from '../jobs/queues';
+import { noShowQueue, overstayQueue } from '../jobs/queues';
 
 export class BookingService {
 
-  async createShortTermBooking(userId: string, spotId: string, plateNumber: string = '') {
+  async createShortTermBooking(
+    userId: string,
+    spotId: string,
+    plateNumber: string = '',
+    estimatedMinutes: number = 60,
+    promoDiscount: number = 0,
+    bonusDiscount: number = 0,
+  ) {
     try {
       const user = await prisma.user.findUnique({ where: { id: userId } });
-      if (user?.isBanned) {
-        const until = user.bannedUntil ? ` до ${user.bannedUntil.toLocaleDateString('ru-RU')}` : '';
-        throw new Error(`Аккаунт заблокирован из-за нарушений${until}. Обратитесь в поддержку.`);
-      }
-
-      const now = new Date();
-      const estimatedEndTime = new Date(now.getTime() + 30 * 60 * 1000);
+      if (!user) throw new Error('User not found');
 
       const plate = plateNumber || '';
+      const now = new Date();
+      const estimatedEndTime = new Date(now.getTime() + estimatedMinutes * 60 * 1000);
 
-      const booking = await prisma.booking.create({
-        data: {
-          userId,
-          spotId,
-          plateNumber: plate,
-          startTime: now,
-          estimatedEndTime,
-          status: 'PENDING',
-        },
-        include: {
-          spot: true,
-          user: true,
-        },
-      });
+      // Charge wallet immediately at booking creation (per spec)
+      const actualBonus = Math.min(bonusDiscount, user.bonusPoints);
+      const baseCost = calculateShortTermCost(estimatedMinutes);
+      const totalCost = Math.max(0, baseCost - promoDiscount - actualBonus);
 
+      if (totalCost > 0 && user.walletBalance < totalCost) {
+        throw new Error(`Insufficient balance: need ${totalCost}₸, have ${user.walletBalance}₸`);
+      }
 
-      await prisma.parkingSpot.update({
-        where: { id: spotId },
-        data: { status: 'BOOKED', currentUserPlate: plate, currentUserId: userId },
-      });
+      const [booking] = await prisma.$transaction([
+        prisma.booking.create({
+          data: {
+            userId,
+            spotId,
+            plateNumber: plate,
+            startTime: now,
+            estimatedEndTime,
+            bookedMinutes: estimatedMinutes,
+            status: 'CONFIRMED',
+            isPaid: true,
+            totalCost,
+          },
+        }),
+        prisma.parkingSpot.update({
+          where: { id: spotId },
+          data: { status: 'BOOKED', currentUserPlate: plate, currentUserId: userId },
+        }),
+        ...(totalCost > 0 ? [
+          prisma.user.update({
+            where: { id: userId },
+            data: {
+              walletBalance: { decrement: totalCost },
+              ...(actualBonus > 0 ? { bonusPoints: { decrement: actualBonus } } : {}),
+            },
+          }),
+          prisma.transaction.create({
+            data: {
+              userId,
+              amount: -(totalCost),
+              type: 'PAYMENT',
+              description: `Краткосрочная парковка ${estimatedMinutes} мин${actualBonus > 0 ? ` (бонусы: ${actualBonus}₸)` : ''}`,
+              balanceBefore: user.walletBalance,
+              balanceAfter: user.walletBalance - totalCost,
+            },
+          }),
+        ] : [
+          prisma.user.update({
+            where: { id: userId },
+            data: {
+              ...(actualBonus > 0 ? { bonusPoints: { decrement: actualBonus } } : {}),
+            },
+          }),
+        ]),
+      ]);
 
-      // Delayed job: auto-cancel if driver doesn't show up within 30 minutes
+      // Auto-cancel if driver doesn't arrive within 30 min — 50% penalty, 50% refund
       await noShowQueue.add(
         'no-show-check',
         { bookingId: booking.id },
         { delay: 30 * 60 * 1000, jobId: `noshow-${booking.id}` },
       );
 
-      logger.info(`✅ Short-term booking created: ${booking.id}`);
+      // Overstay notifications: 5-min warning → end-of-time grace → billing starts
+      const msToEnd = estimatedEndTime.getTime() - now.getTime();
+      const jobBase = { bookingId: booking.id, userId, spotId };
+
+      if (msToEnd > 5 * 60 * 1000) {
+        await overstayQueue.add('time-ending', { ...jobBase, phase: 'time-ending' },
+          { delay: msToEnd - 5 * 60 * 1000, jobId: `te-${booking.id}` }).catch(() => {});
+      }
+      await overstayQueue.add('warn', { ...jobBase, phase: 'warn' },
+        { delay: msToEnd, jobId: `warn-${booking.id}` }).catch(() => {});
+      await overstayQueue.add('overstay-start', { ...jobBase, phase: 'overstay-start' },
+        { delay: msToEnd + 5 * 60 * 1000, jobId: `os-${booking.id}` }).catch(() => {});
+
+      logger.info(`✅ Short-term booking created & paid: ${booking.id}, -${totalCost}₸`);
       return booking;
     } catch (error) {
       logger.error('❌ Error creating booking:', error);
@@ -115,10 +165,11 @@ export class BookingService {
       const isNoShow = getFreeTravelTimeRemaining(booking.startTime) === 0;
       let refundAmount = 0;
 
-      // No-show refund logic
-      if (isNoShow && booking.totalCost && booking.totalCost > 0) {
-        // Booking model is always short-term; spot type is no longer relevant
-        refundAmount = Math.floor(booking.totalCost * 0.5);
+      if (booking.totalCost && booking.totalCost > 0 && !booking.arrivedAt) {
+        // Manual cancel before arrival: 100% refund. No-show safety-net: 50% refund.
+        refundAmount = isNoShow
+          ? Math.floor(booking.totalCost * 0.5)
+          : booking.totalCost;
 
         if (refundAmount > 0) {
           await prisma.user.update({
@@ -130,15 +181,20 @@ export class BookingService {
               userId: booking.userId,
               amount: refundAmount,
               type: 'REFUND',
-              description: `Возврат при неявке: ${bookingId}`,
+              description: isNoShow
+                ? `Частичный возврат: не явился вовремя (50% от ${booking.totalCost}₸)`
+                : `Полный возврат: бронь отменена пользователем (${refundAmount}₸)`,
               balanceBefore: booking.user?.walletBalance ?? 0,
               balanceAfter: (booking.user?.walletBalance ?? 0) + refundAmount,
             },
           });
-          logger.info(`💰 No-show refund: ${refundAmount}₸ → user ${booking.userId}`);
+          logger.info(`💰 Cancel refund (${isNoShow ? '50%' : '100%'}): ${refundAmount}₸ → user ${booking.userId}`);
         }
-
       }
+
+      // Remove the BullMQ no-show job to prevent double-processing
+      const noShowJob = await noShowQueue.getJob(`noshow-${bookingId}`);
+      if (noShowJob) await noShowJob.remove().catch(() => {});
 
       const updatedBooking = await prisma.booking.update({
         where: { id: bookingId },

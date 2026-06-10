@@ -140,6 +140,13 @@ const translations = {
     exitGraceDesc: "Exit through the barrier within",
     finishAndExit: "Finish & Exit",
     overstayCharged: "Overstay charged",
+    noNotifications: "No notifications yet",
+    spotMovedTo: "Your spot has been changed to",
+    relocateTo: "Move to spot",
+    carAlreadyInside: "Your car is inside — just repark it",
+    fineAlert: "⚠️ You have been fined",
+    fineAlertSpot: "for a parking violation (spot",
+    fineAlertCharged: "Amount deducted from your wallet.",
   },
   kk: {
     home: "Басты", map: "Карта", booking: "Брондау", wallet: "Әмиян", profile: "Жеке бет",
@@ -278,6 +285,13 @@ const translations = {
     exitGraceDesc: "Шлагбаумнан шығыңыз, уақыт:",
     finishAndExit: "Аяқтау және шығу",
     overstayCharged: "Уақытты асыру үшін алынды",
+    noNotifications: "Хабарландырулар жоқ",
+    spotMovedTo: "Орыныңыз ауысты",
+    relocateTo: "Орынға жылжыңыз",
+    carAlreadyInside: "Көлік ішінде — орынды ауыстырыңыз",
+    fineAlert: "⚠️ Сізге айыппұл салынды",
+    fineAlertSpot: "тұрақ тәртібін бұзғаны үшін (орын",
+    fineAlertCharged: "Сома кошельектен алынды.",
   },
   ru: {
     home: "Главная", map: "Карта", booking: "Бронь", wallet: "Кошелёк", profile: "Профиль",
@@ -416,6 +430,13 @@ const translations = {
     exitGraceDesc: "Выезжайте через шлагбаум, осталось:",
     finishAndExit: "Завершить и выехать",
     overstayCharged: "Оплата за превышение времени",
+    noNotifications: "Уведомлений пока нет",
+    spotMovedTo: "Ваше место изменено на",
+    relocateTo: "Переместитесь на место",
+    carAlreadyInside: "Машина уже внутри — просто переставьте её",
+    fineAlert: "⚠️ Вам выписан штраф",
+    fineAlertSpot: "за нарушение парковки (место",
+    fineAlertCharged: "Сумма списана с вашего кошелька.",
   },
 }
 
@@ -474,6 +495,16 @@ export interface Booking {
   rentalDays?: number
   arrivedAt?: Date
   exitRequestedAt?: Date | null
+  bookedMinutes?: number
+}
+
+export interface AppNotification {
+  id: string
+  title: string
+  message: string
+  time: Date
+  read: boolean
+  type: 'fine' | 'spot' | 'booking' | 'info'
 }
 
 interface ParkingContextType {
@@ -509,6 +540,11 @@ interface ParkingContextType {
   language: Language
   setLanguage: (lang: Language) => void
   t: typeof translations['en']
+
+  notifications: AppNotification[]
+  addNotification: (n: Omit<AppNotification, 'id' | 'time' | 'read'>) => void
+  markAllRead: () => void
+  unreadCount: number
 }
 
 const ParkingContext = createContext<ParkingContextType | undefined>(undefined)
@@ -581,12 +617,19 @@ export function ParkingProvider({ children }: { children: ReactNode }) {
   const [isAdminMode, setIsAdminMode] = useState(false)
   const [darkMode, setDarkMode] = useState(false)
   const [language, setLanguage] = useState<Language>("en")
+  const [notifications, setNotifications] = useState<AppNotification[]>([])
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", darkMode)
   }, [darkMode])
   const [isRestoringSession, setIsRestoringSession] = useState(true)
   const t = translations[language]
+
+  const addNotification = (n: Omit<AppNotification, 'id' | 'time' | 'read'>) => {
+    setNotifications(prev => [{ ...n, id: Date.now().toString(), time: new Date(), read: false }, ...prev].slice(0, 20))
+  }
+  const markAllRead = () => setNotifications(prev => prev.map(n => ({ ...n, read: true })))
+  const unreadCount = notifications.filter(n => !n.read).length
   const spotsRef = useRef(spots)
   spotsRef.current = spots
 
@@ -607,8 +650,11 @@ export function ParkingProvider({ children }: { children: ReactNode }) {
           setUser(mapDbUser(dbUser))
           ;(window as typeof window & { __qparkUserId?: string }).__qparkUserId = dbUser.id
           setIsAuthenticated(true)
-          // Register FCM token in background — non-blocking
+          // Register push token — web uses FCM, iOS native uses APNs via Capacitor
           import("@/lib/firebase").then(({ registerFCMToken }) => registerFCMToken(token)).catch(() => {})
+          import("@/lib/push-native").then(({ registerNativePush }) => registerNativePush(token)).catch(() => {})
+          // Init local notifications (works without paid dev account)
+          import("@/lib/local-notify").then(({ initLocalNotifications }) => initLocalNotifications()).catch(() => {})
           try {
             const br = await fetch("/backend/bookings/restore", {
               headers: { Authorization: `Bearer ${token}` },
@@ -685,17 +731,47 @@ export function ParkingProvider({ children }: { children: ReactNode }) {
         setActiveBooking({ ...ab, arrivedAt: new Date() })
       }
     }
-    const handleBookingCreated = () => { fetchSpotsFromBackend() }
+    const notify = (title: string, body: string) => {
+      import("@/lib/local-notify").then(({ showLocalNotification }) => showLocalNotification(title, body)).catch(() => {})
+    }
+
+    const handleBookingCreated = () => { fetchSpotsFromBackend(); addNotification({ type: 'booking', title: t.bookingConfirmed, message: t.spotNowReserved }); notify(t.bookingConfirmed, t.spotNowReserved) }
     const handleBookingCompleted = () => { fetchSpotsFromBackend() }
     const handleBookingCancelled = () => { fetchSpotsFromBackend() }
-    const handleRentalCreated = () => { fetchSpotsFromBackend() }
+    const handleRentalCreated = () => { fetchSpotsFromBackend(); addNotification({ type: 'booking', title: t.reservationConfirmed, message: t.unlimitedEntries }); notify(t.reservationConfirmed, t.unlimitedEntries) }
     const handleBookingExtended = () => { fetchSpotsFromBackend() }
-    const handleFineIssued = (data: { userId: string; amount: number; spotId: string }) => {
+    const handleFineIssued = (data: { userId: string; amount: number; spotId?: string; spotNumber?: string }) => {
       const currentUserId = (window as typeof window & { __qparkUserId?: string }).__qparkUserId
       if (currentUserId && data.userId === currentUserId) {
-        alert(`⚠️ Вам выписан штраф ${data.amount}₸ за нарушение парковки (место ${data.spotId}).\nСумма списана с вашего кошелька.`)
+        const spot = data.spotNumber ?? data.spotId ?? ''
+        const spotText = spot ? ` ${t.fineAlertSpot} ${spot})` : ''
+        alert(`${t.fineAlert} ${data.amount}₸${spotText}.\n${t.fineAlertCharged}`)
+        addNotification({ type: 'fine', title: `${t.fineAlert} ${data.amount}₸`, message: `${t.fineAlertSpot}${spot ? ' ' + spot + ')' : ''}. ${t.fineAlertCharged}` })
+        notify(`⚠️ ${t.fineAlert} ${data.amount}₸`, `${spotText}. ${t.fineAlertCharged}`)
         setUser(prev => prev ? { ...prev, balance: Math.max(0, prev.balance - data.amount) } : prev)
       }
+    }
+    // Overstay / time events from backend BullMQ workers
+    const handleTimeEndingSoon = (data: { userId: string }) => {
+      const currentUserId = (window as typeof window & { __qparkUserId?: string }).__qparkUserId
+      if (!currentUserId || data.userId !== currentUserId) return
+      const msg = '⏰ 5 минут до конца'
+      addNotification({ type: 'info', title: msg, message: 'Хотите продлить?' })
+      notify(msg, 'Время парковки скоро закончится. Продлите или завершите.')
+    }
+    const handleOverstayGrace = (data: { userId: string }) => {
+      const currentUserId = (window as typeof window & { __qparkUserId?: string }).__qparkUserId
+      if (!currentUserId || data.userId !== currentUserId) return
+      const msg = '⏳ Время истекло — 5 мин на выезд'
+      addNotification({ type: 'fine', title: msg, message: 'После этого — 3₸/мин' })
+      notify(msg, 'Даём 5 минут на выезд — потом 3₸/мин.')
+    }
+    const handleOverstayWarning = (data: { userId: string }) => {
+      const currentUserId = (window as typeof window & { __qparkUserId?: string }).__qparkUserId
+      if (!currentUserId || data.userId !== currentUserId) return
+      const msg = '🚨 Идёт списание 3₸/мин'
+      addNotification({ type: 'fine', title: msg, message: 'Нажмите «Завершить парковку»' })
+      notify(msg, 'Льготные 5 минут истекли. Завершите парковку.')
     }
 
     socket.on("spot-status-changed", handleSpotStatusChanged)
@@ -705,6 +781,9 @@ export function ParkingProvider({ children }: { children: ReactNode }) {
     socket.on("rental-created", handleRentalCreated)
     socket.on("booking-extended", handleBookingExtended)
     socket.on("fine-issued", handleFineIssued)
+    socket.on("time-ending-soon", handleTimeEndingSoon)
+    socket.on("overstay-grace-started", handleOverstayGrace)
+    socket.on("overstay-warning", handleOverstayWarning)
 
     return () => {
       socket.off("spot-status-changed", handleSpotStatusChanged)
@@ -714,6 +793,9 @@ export function ParkingProvider({ children }: { children: ReactNode }) {
       socket.off("rental-created", handleRentalCreated)
       socket.off("booking-extended", handleBookingExtended)
       socket.off("fine-issued", handleFineIssued)
+      socket.off("time-ending-soon", handleTimeEndingSoon)
+      socket.off("overstay-grace-started", handleOverstayGrace)
+      socket.off("overstay-warning", handleOverstayWarning)
     }
   }, [])
 
@@ -751,6 +833,10 @@ export function ParkingProvider({ children }: { children: ReactNode }) {
       setLanguage,
       isRestoringSession,
       t,
+      notifications,
+      addNotification,
+      markAllRead,
+      unreadCount,
     }}>
       {children}
     </ParkingContext.Provider>

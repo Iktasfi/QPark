@@ -84,7 +84,7 @@ export function SupportChatScreen() {
   }
 
   return (
-    <div className={`flex flex-col h-full ${darkMode ? "bg-gray-900" : "bg-gray-50"}`}>
+    <div className={`flex flex-col ${darkMode ? "bg-gray-900" : "bg-gray-50"}`} style={{ height: 'calc(100vh - env(safe-area-inset-top) - 8px)' }}>
       {/* Header */}
       <div className={`${darkMode ? "bg-[#2a3654]" : "bg-[#495E8E]"} px-4 pt-6 pb-4 shadow-lg flex items-center gap-3`}>
         <button onClick={() => setCurrentScreen("profile")} className="p-2 rounded-full hover:bg-white/10 transition-colors">

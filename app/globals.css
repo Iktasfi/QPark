@@ -135,7 +135,6 @@
   }
   body {
     @apply bg-background text-foreground;
-    padding-top: env(safe-area-inset-top);
   }
 }
 

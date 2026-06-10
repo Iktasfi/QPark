@@ -5,14 +5,14 @@ import { useParking, mapDbUser } from "@/lib/parking-context"
 import Image from "next/image"
 
 export function HomeScreen() {
-  const { setCurrentScreen, user, setUser, activeBooking, t, spots } = useParking()
+  const { setCurrentScreen, user, setUser, activeBooking, t, spots, notifications, markAllRead, unreadCount } = useParking()
 
   const freeSpots = spots.filter(s => s.status === "FREE").length
   const bookedSpots = spots.filter(s => s.status === "BOOKED" || s.status === "OCCUPIED" || s.status === "RESERVED").length
-  // Legacy — kept for t.shortTerm / t.longTerm labels below
   const freeShortTerm = freeSpots
   const freeLongTerm = bookedSpots
   const [activeTab, setActiveTab] = useState("home")
+  const [showNotifications, setShowNotifications] = useState(false)
 
   useEffect(() => {
     const token = localStorage.getItem("qpark_token")
@@ -33,8 +33,8 @@ export function HomeScreen() {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-      <div className="px-6 py-4 content-bottom-pad">
-        <div className="bg-[#495E8E] rounded-b-[20px] p-4 pb-6 mb-6 shadow-md flex flex-col">
+      <div className="px-6 pt-2 pb-4 content-bottom-pad">
+        <div className="bg-[#495E8E] rounded-b-[20px] p-4 pt-5 pb-6 mb-6 shadow-md flex flex-col">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-3">
               <div className="w-14 h-14 bg-white rounded-full flex items-center justify-center overflow-hidden">
@@ -45,10 +45,13 @@ export function HomeScreen() {
                 <p className="text-white text-xl font-extrabold">{user?.name || "User"}</p>
               </div>
             </div>
-            <button onClick={() => setCurrentScreen("profile")} className="flex items-center gap-4 hover:bg-white/10 rounded-lg p-2 transition-colors">
+            <button onClick={() => { setShowNotifications(true); markAllRead() }} className="relative flex items-center gap-4 hover:bg-white/10 rounded-lg p-2 transition-colors">
               <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center">
                 <Image src="/bell.svg" alt="Notifications" width={32} height={32} className="object-contain" />
               </div>
+              {unreadCount > 0 && (
+                <span className="absolute top-1 right-1 w-5 h-5 bg-red-500 rounded-full text-white text-xs flex items-center justify-center font-bold">{unreadCount}</span>
+              )}
             </button>
           </div>
           <div className="flex items-center justify-between bg-[#354469] rounded-xl p-3">
@@ -85,14 +88,14 @@ export function HomeScreen() {
           <div className="grid grid-cols-2 gap-6">
             <button onClick={() => setCurrentScreen("map")} className="bg-[#F0EDED] dark:bg-gray-800 rounded-[20px] p-5 text-left hover:bg-[#E5DCDC] dark:hover:bg-gray-700 transition-colors" style={{boxShadow: '0 10px 20px rgba(0,0,0,0.08)'}}>
               <h4 className="text-[#333333] dark:text-white font-extrabold text-sm leading-tight mb-3">{t.spotsAvailable}</h4>
-              <p className="text-gray-600 dark:text-gray-400 text-sm mb-4">{freeSpots} мест свободно</p>
+              <p className="text-gray-600 dark:text-gray-400 text-sm mb-4">{freeSpots} {t.spotsAvailable}</p>
               <div className="flex gap-2">
                 {[1,2,3].map(i => <div key={i} className="w-3 h-3 bg-green-500 rounded-full" />)}
               </div>
             </button>
             <button onClick={() => setCurrentScreen("map")} className="bg-[#F0EDED] dark:bg-gray-800 rounded-[20px] p-5 text-left hover:bg-[#E5DCDC] dark:hover:bg-gray-700 transition-colors" style={{boxShadow: '0 10px 20px rgba(0,0,0,0.08)'}}>
-              <h4 className="text-[#333333] dark:text-white font-extrabold text-sm leading-tight mb-3">Занято</h4>
-              <p className="text-gray-600 dark:text-gray-400 text-sm mb-4">{bookedSpots} мест занято</p>
+              <h4 className="text-[#333333] dark:text-white font-extrabold text-sm leading-tight mb-3">{t.statusOccupied}</h4>
+              <p className="text-gray-600 dark:text-gray-400 text-sm mb-4">{bookedSpots} {t.takenShort}</p>
               <div className="flex gap-2">
                 {[1,2].map(i => <div key={i} className="w-3 h-3 bg-orange-400 rounded-full" />)}
               </div>
@@ -142,6 +145,40 @@ export function HomeScreen() {
           </div>
         </div>
       </div>
+
+      {/* Notification panel */}
+      {showNotifications && (
+        <div className="fixed inset-0 z-50 flex flex-col justify-end" onClick={() => setShowNotifications(false)}>
+          <div className="absolute inset-0 bg-black/40" />
+          <div className="relative bg-white dark:bg-gray-900 rounded-t-3xl max-h-[70vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-800">
+              <h2 className="font-bold text-base text-gray-900 dark:text-white">{t.notifications}</h2>
+              <button onClick={() => setShowNotifications(false)} className="text-gray-400 text-xl font-light">✕</button>
+            </div>
+            <div className="overflow-y-auto flex-1">
+              {notifications.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-12 text-gray-400">
+                  <span className="text-4xl mb-3">🔔</span>
+                  <p className="text-sm">{t.noNotifications}</p>
+                </div>
+              ) : notifications.map(n => (
+                <div key={n.id} className="flex gap-3 px-5 py-4 border-b border-gray-50 dark:border-gray-800">
+                  <span className="text-xl mt-0.5">
+                    {n.type === 'fine' ? '⚠️' : n.type === 'spot' ? '📍' : '✅'}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-gray-900 dark:text-white">{n.title}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{n.message}</p>
+                    <p className="text-xs text-gray-300 dark:text-gray-600 mt-1">
+                      {n.time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="fixed bottom-0 left-0 right-0 bottom-nav bg-white dark:bg-gray-900 border-t border-gray-300 dark:border-gray-700 z-50 shadow-lg">
         <div className="flex justify-around items-center px-4" style={{height: '64px'}}>

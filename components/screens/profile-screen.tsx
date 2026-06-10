@@ -70,7 +70,8 @@ const termsContent: Record<Language, { sections: { title: string; body: string }
 }
 
 export function ProfileScreen() {
-  const { user, setUser, setIsAuthenticated, setCurrentScreen, darkMode, setDarkMode, language, setLanguage, t } = useParking()
+  const { user, setUser, setIsAuthenticated, setCurrentScreen, darkMode, setDarkMode, language, setLanguage, t, notifications: appNotifications, markAllRead, unreadCount } = useParking()
+  const [showNotifPanel, setShowNotifPanel] = useState(false)
   const [isAddingCar, setIsAddingCar] = useState(false)
   const [newCar, setNewCar] = useState({ brand: "", model: "", plateNumber: "" })
   const [carError, setCarError] = useState("")
@@ -200,7 +201,7 @@ export function ProfileScreen() {
 
   if (showSettings) {
     return (
-      <div className={`flex flex-col h-full ${darkMode ? "bg-gray-900" : "bg-gray-50"}`}>
+      <div className={`flex flex-col ${darkMode ? "bg-gray-900" : "bg-gray-50"}`} style={{ height: 'calc(100vh - env(safe-area-inset-top) - 8px)' }}>
         <div className={`${darkMode ? "bg-[#2a3654]" : "bg-[#495E8E]"} rounded-b-[2.5rem] px-5 pt-6 pb-8 shadow-lg`}>
           <div className="flex items-center gap-3 mb-2">
             <button onClick={() => setShowSettings(false)} className="p-2 rounded-full hover:bg-white/10 transition-colors">
@@ -445,7 +446,7 @@ export function ProfileScreen() {
   }
 
   return (
-    <div className={`flex flex-col h-full ${darkMode ? "bg-gray-900" : "bg-gray-50"}`}>
+    <div className={`flex flex-col ${darkMode ? "bg-gray-900" : "bg-gray-50"}`} style={{ height: 'calc(100vh - env(safe-area-inset-top) - 8px)' }}>
       <div className={`${darkMode ? "bg-[#2a3654]" : "bg-[#495E8E]"} rounded-b-[2.5rem] px-5 pt-6 pb-6 shadow-lg`}>
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-xl font-bold text-white">{t.profile}</h1>
@@ -453,9 +454,9 @@ export function ProfileScreen() {
             <button onClick={() => setShowSettings(true)} className="p-2 rounded-full hover:bg-white/10 transition-colors">
               <Settings className="w-5 h-5 text-white" />
             </button>
-            <button className="p-2 rounded-full hover:bg-white/10 transition-colors relative">
+            <button onClick={() => { setShowNotifPanel(true); markAllRead() }} className="p-2 rounded-full hover:bg-white/10 transition-colors relative">
               <Bell className="w-5 h-5 text-white" />
-              <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-[#495E8E]"></span>
+              {unreadCount > 0 && <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-[#495E8E]"></span>}
             </button>
           </div>
         </div>
@@ -717,6 +718,35 @@ export function ProfileScreen() {
           ))}
         </div>
       </div>
+
+      {showNotifPanel && (
+        <div className="fixed inset-0 z-50 flex flex-col justify-end" onClick={() => setShowNotifPanel(false)}>
+          <div className="absolute inset-0 bg-black/40" />
+          <div className={`relative rounded-t-3xl max-h-[70vh] flex flex-col ${darkMode ? "bg-gray-900" : "bg-white"}`} onClick={e => e.stopPropagation()}>
+            <div className={`flex items-center justify-between px-5 py-4 border-b ${darkMode ? "border-gray-800" : "border-gray-100"}`}>
+              <h2 className={`font-bold text-base ${darkMode ? "text-white" : "text-gray-900"}`}>{t.notifications}</h2>
+              <button onClick={() => setShowNotifPanel(false)} className="text-gray-400 text-xl font-light">✕</button>
+            </div>
+            <div className="overflow-y-auto flex-1">
+              {appNotifications.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-12 text-gray-400">
+                  <span className="text-4xl mb-3">🔔</span>
+                  <p className="text-sm">{t.noNotifications}</p>
+                </div>
+              ) : appNotifications.map(n => (
+                <div key={n.id} className={`flex gap-3 px-5 py-4 border-b ${darkMode ? "border-gray-800" : "border-gray-50"}`}>
+                  <span className="text-xl mt-0.5">{n.type === 'fine' ? '⚠️' : n.type === 'spot' ? '📍' : '✅'}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className={`text-sm font-semibold ${darkMode ? "text-white" : "text-gray-900"}`}>{n.title}</p>
+                    <p className={`text-xs mt-0.5 ${darkMode ? "text-gray-400" : "text-gray-500"}`}>{n.message}</p>
+                    <p className={`text-xs mt-1 ${darkMode ? "text-gray-600" : "text-gray-300"}`}>{n.time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -1,10 +1,30 @@
 import { Queue } from 'bullmq';
 
-export const redisConnection = {
-  host: process.env.REDIS_HOST || 'localhost',
-  port: parseInt(process.env.REDIS_PORT || '6379'),
-  password: process.env.REDIS_PASSWORD || undefined,
-};
+// Support both REDIS_URL (Railway/Upstash) and individual REDIS_HOST/PORT/PASSWORD vars
+function buildRedisConnection() {
+  const url = process.env.REDIS_URL || process.env.REDIS_PRIVATE_URL;
+  if (url) {
+    // Parse redis://:password@host:port or rediss://... (TLS)
+    try {
+      const parsed = new URL(url);
+      return {
+        host: parsed.hostname,
+        port: parseInt(parsed.port || '6379'),
+        password: parsed.password || undefined,
+        tls: parsed.protocol === 'rediss:' ? {} : undefined,
+      };
+    } catch {
+      // fallback below
+    }
+  }
+  return {
+    host: process.env.REDIS_HOST || 'localhost',
+    port: parseInt(process.env.REDIS_PORT || '6379'),
+    password: process.env.REDIS_PASSWORD || undefined,
+  };
+}
+
+export const redisConnection = buildRedisConnection();
 
 // No-show grace-period queue: delayed jobs fire 30 min after booking creation
 export const noShowQueue = new Queue('noshow', { connection: redisConnection });
@@ -12,5 +32,5 @@ export const noShowQueue = new Queue('noshow', { connection: redisConnection });
 // Rental expiry queue: delayed job fires when the paid rental period ends
 export const rentalExpiryQueue = new Queue('rental-expiry', { connection: redisConnection });
 
-// Overstay queue: fires 7 min after booking estimatedEndTime to warn the user
+// Overstay queue: fires at booking estimatedEndTime / rental endDate
 export const overstayQueue = new Queue('overstay', { connection: redisConnection });

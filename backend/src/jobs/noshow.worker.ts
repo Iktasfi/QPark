@@ -3,6 +3,7 @@ import type { Server as SocketIOServer } from 'socket.io';
 import { prisma } from '../lib/prisma';
 import { logger } from '../server';
 import { redisConnection } from './queues';
+import { sendPushToUser } from '../utils/notifications';
 
 export function startNoShowWorker(io: SocketIOServer) {
   const worker = new Worker(
@@ -22,6 +23,13 @@ export function startNoShowWorker(io: SocketIOServer) {
         return;
       }
 
+      const user = await prisma.user.findUnique({ where: { id: booking.userId } });
+
+      // 50% penalty: keep half, refund the other half to wallet
+      const totalCost = booking.totalCost ?? 0;
+      const penaltyAmount = Math.ceil(totalCost * 0.5);
+      const refundAmount = totalCost - penaltyAmount;
+
       await prisma.$transaction([
         prisma.booking.update({
           where: { id: bookingId },
@@ -31,6 +39,22 @@ export function startNoShowWorker(io: SocketIOServer) {
           where: { id: booking.spotId },
           data: { status: 'FREE', currentUserPlate: null, currentUserId: null },
         }),
+        ...(refundAmount > 0 && user ? [
+          prisma.user.update({
+            where: { id: booking.userId },
+            data: { walletBalance: { increment: refundAmount } },
+          }),
+          prisma.transaction.create({
+            data: {
+              userId: booking.userId,
+              amount: refundAmount,
+              type: 'REFUND',
+              description: `Частичный возврат: не явился вовремя (50% от ${totalCost}₸)`,
+              balanceBefore: user.walletBalance,
+              balanceAfter: user.walletBalance + refundAmount,
+            },
+          }),
+        ] : []),
       ]);
 
       io.emit('spot-status-changed', {
@@ -38,6 +62,16 @@ export function startNoShowWorker(io: SocketIOServer) {
         status: 'FREE',
         carPlate: null,
       });
+
+      if (totalCost > 0) {
+        await sendPushToUser(
+          booking.userId,
+          '⏰ Бронь отменена',
+          `Вы не явились вовремя. Штраф: ${penaltyAmount}₸. Возврат: ${refundAmount}₸.`,
+          { type: 'no-show' }
+        ).catch(() => {});
+        logger.info(`💸 No-show: kept ${penaltyAmount}₸ penalty, refunded ${refundAmount}₸ to user ${booking.userId}`);
+      }
 
       logger.info(
         `⏰ No-show auto-cancelled via BullMQ: booking ${bookingId}, spot ${booking.spot.spotNumber}`,

@@ -100,7 +100,7 @@ export function OnboardingScreen() {
   }
 
   return (
-    <div className={`flex flex-col h-full ${darkMode ? "bg-gray-900" : "bg-gray-50"}`}>
+    <div className={`flex flex-col ${darkMode ? "bg-gray-900" : "bg-gray-50"}`} style={{ height: 'calc(100vh - env(safe-area-inset-top) - 8px)' }}>
       <div className={`${darkMode ? "bg-gray-800" : "bg-white"} px-6 pt-8 pb-6 shadow-sm`}>
         <div className="flex gap-2 mb-4">
           {(["profile", "cars"] as Step[]).map((s) => (

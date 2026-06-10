@@ -8,6 +8,50 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
 });
 
 export class PaymentService {
+  // Shared: collect outstanding fine debts after wallet is credited
+  private async collectFineDebts(userId: string, startingBalance: number): Promise<number> {
+    const unpaidFines = await prisma.fine.findMany({
+      where: { userId, isPaid: false },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    let remainingBalance = startingBalance;
+    for (const fine of unpaidFines) {
+      const stillOwed = fine.amount - fine.paidAmount;
+      if (stillOwed <= 0) continue;
+      if (remainingBalance <= 0) break;
+
+      const collecting = Math.min(stillOwed, remainingBalance);
+      const newPaidAmount = fine.paidAmount + collecting;
+      const fullyPaid = newPaidAmount >= fine.amount;
+
+      await prisma.$transaction([
+        prisma.fine.update({
+          where: { id: fine.id },
+          data: { paidAmount: newPaidAmount, isPaid: fullyPaid, paidAt: fullyPaid ? new Date() : null },
+        }),
+        prisma.user.update({
+          where: { id: userId },
+          data: { walletBalance: { decrement: collecting } },
+        }),
+        prisma.transaction.create({
+          data: {
+            userId,
+            amount: -collecting,
+            type: 'PAYMENT',
+            description: `Погашение долга по штрафу${fullyPaid ? ' (полностью)' : ` (осталось ${fine.amount - newPaidAmount}₸)`}`,
+            balanceBefore: remainingBalance,
+            balanceAfter: remainingBalance - collecting,
+          },
+        }),
+      ]);
+
+      remainingBalance -= collecting;
+      logger.info(`💸 Fine debt collected: fine ${fine.id}, collected ${collecting}₸, fullyPaid=${fullyPaid}`);
+    }
+    return remainingBalance;
+  }
+
   async topUpWallet(userId: string, amount: number) {
     if (amount <= 0) throw new Error('Amount must be positive');
 
@@ -32,7 +76,8 @@ export class PaymentService {
     ]);
 
     logger.info(`✅ Wallet top-up: ${userId}, +${amount}₸ → ${updatedUser.walletBalance}₸`);
-    return { transaction, walletBalance: updatedUser.walletBalance };
+    const finalBalance = await this.collectFineDebts(userId, updatedUser.walletBalance);
+    return { transaction, walletBalance: finalBalance };
   }
 
   async debitWallet(userId: string, amount: number, description: string) {
@@ -242,7 +287,7 @@ export class PaymentService {
   }
 
   async createStripeIntent(userId: string, amount: number) {
-    if (amount < 100) throw new Error('Минимальная сумма пополнения — 100₸');
+    if (amount < 300) throw new Error('Минимальная сумма пополнения — 300₸ (ограничение платёжной системы)');
     const user = await prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new Error('User not found');
 
@@ -300,7 +345,8 @@ export class PaymentService {
     ]);
 
     logger.info(`✅ Stripe top-up confirmed: ${userId}, +${amount}₸ → ${updatedUser.walletBalance}₸`);
-    return { transaction, walletBalance: updatedUser.walletBalance };
+    const finalBalance = await this.collectFineDebts(userId, updatedUser.walletBalance);
+    return { transaction, walletBalance: finalBalance };
   }
 
   async getUserTransactions(userId: string, limit = 50) {

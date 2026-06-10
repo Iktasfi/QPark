@@ -31,6 +31,15 @@ const locations: MapLocation[] = [
   { id: 8,  name: "Парковка №8",  address: "Бейбітшілік, 17, Астана",          spots: 16, prefix: "P8",  lat: 51.1724, lng: 71.4392 },
   { id: 9,  name: "Парковка №9",  address: "Иманов, 21, Астана",               spots: 21, prefix: "P9",  lat: 51.1685, lng: 71.4545 },
   { id: 10, name: "Парковка №10", address: "Хан Шатыр, пр. Туран, 3, Астана", spots: 18, prefix: "P10", lat: 51.1298, lng: 71.4044 },
+  { id: 11, name: "Парковка №11", address: "пр. Мәңгілік Ел, 55, Астана",     spots: 20, prefix: "P11", lat: 51.0972, lng: 71.4052 },
+  { id: 12, name: "Парковка №12", address: "Орынбор, 2 (у EXPO), Астана",      spots: 16, prefix: "P12", lat: 51.0866, lng: 71.4100 },
+  { id: 13, name: "Парковка №13", address: "пр. Туран, 37, Астана",             spots: 18, prefix: "P13", lat: 51.1050, lng: 71.4220 },
+  { id: 14, name: "Парковка №14", address: "Нуржол бул., 5 (Байтерек), Астана",  spots: 14, prefix: "P14", lat: 51.1283, lng: 71.4301 },
+  { id: 15, name: "Парковка №15", address: "Сыганак, 43 (ЖК Нурсай), Астана",   spots: 18, prefix: "P15", lat: 51.1152, lng: 71.3918 },
+  { id: 16, name: "Парковка №16", address: "Кабанбай батыр, 17 (ЖК Байтерек), Астана", spots: 17, prefix: "P16", lat: 51.0938, lng: 71.4108 },
+  { id: 17, name: "Парковка №17", address: "Орынбор, 48 (ЖК Авиатор), Астана",  spots: 15, prefix: "P17", lat: 51.0762, lng: 71.4398 },
+  { id: 18, name: "Парковка №18", address: "Улы Дала, 8 (ЖК Думан), Астана",    spots: 16, prefix: "P18", lat: 51.0638, lng: 71.4062 },
+  { id: 19, name: "Парковка №19", address: "Иманова, 14 (ЖК Комфорт), Астана",  spots: 17, prefix: "P19", lat: 51.1082, lng: 71.4158 },
 ]
 
 export function MapScreen() {

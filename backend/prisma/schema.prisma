@@ -81,6 +81,7 @@ model Booking {
   status           BookingStatus @default(PENDING)
   isPaid           Boolean       @default(false)
   totalCost        Float         @default(0)
+  bookedMinutes    Int           @default(60)
   minutesExtended  Int           @default(0)
   photoUrl         String?
   photoUploadedAt  DateTime?
@@ -107,7 +108,8 @@ model LongTermRental {
   totalCost       Float
   startDate       DateTime
   endDate         DateTime
-  arrivedAt       DateTime?
+  arrivedAt          DateTime?
+  exitRequestedAt    DateTime?
   isPaid          Boolean      @default(false)
   status          RentalStatus @default(ACTIVE)
   photoUrl        String?
@@ -347,6 +349,7 @@ model Fine {
   id          String    @id @default(cuid())
   userId      String
   amount      Float
+  paidAmount  Float     @default(0)
   reason      String
   ticketId    String?
   isPaid      Boolean   @default(false)

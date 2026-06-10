@@ -8,6 +8,8 @@ import { getExtendBookingCost } from '../utils/pricing';
 import { logger } from '../server';
 import { prisma } from '../lib/prisma';
 import { uploadPhotoToCloudinary } from '../utils/cloudinary';
+import { sendPushToUser } from '../utils/notifications';
+import { overstayQueue, noShowQueue } from '../jobs/queues';
 
 const router = Router();
 
@@ -17,10 +19,12 @@ router.use(verifyToken);
 
 router.post('/', requireCarPlate, validateBooking, async (req: Request, res: Response) => {
   try {
-    const { spotId } = req.body;
+    const { spotId, carPlate, estimatedMinutes = 60, promoDiscount = 0, bonusDiscount = 0 } = req.body;
     const userId = req.userId!;
 
-    const booking = await bookingService.createShortTermBooking(userId, spotId);
+    const booking = await bookingService.createShortTermBooking(
+      userId, spotId, carPlate ?? '', Number(estimatedMinutes), Number(promoDiscount), Number(bonusDiscount),
+    );
 
 
     const { io } = await import('../server');
@@ -82,39 +86,70 @@ router.get('/restore', async (req: Request, res: Response) => {
     const userId = req.userId!;
     const now = new Date();
     const expiredCutoff = new Date(now.getTime() - 30 * 60 * 1000);
+    const EXIT_GRACE_MS = 7 * 60 * 1000;
 
-    // Cancel no-show short-term bookings: PENDING, older than 30 min, not yet arrived
-    await prisma.booking.updateMany({
+    // Safety-net: cancel no-show PENDING bookings older than 30 min that the BullMQ worker
+    // might have missed (e.g. Redis restart). Includes proper 50% penalty / 50% refund.
+    const noShowBookings = await prisma.booking.findMany({
       where: { userId, status: 'PENDING', startTime: { lt: expiredCutoff }, arrivedAt: null },
-      data: { status: 'CANCELLED' },
+      include: { user: true },
     });
-
-    // Auto-complete exit requests where grace period (7 min) has expired — free the spot
-    const staleExits = await prisma.booking.findMany({
-      where: {
-        userId,
-        status: { in: ['PENDING', 'CONFIRMED'] },
-        exitRequestedAt: { not: null, lt: new Date(now.getTime() - 8 * 60 * 1000) },
-      },
-    });
-    for (const b of staleExits) {
+    for (const b of noShowBookings) {
+      const totalCost = b.totalCost ?? 0;
+      const penaltyAmount = Math.ceil(totalCost * 0.5);
+      const refundAmount = totalCost - penaltyAmount;
       await prisma.$transaction([
-        prisma.booking.update({ where: { id: b.id }, data: { status: 'COMPLETED' } }),
-        prisma.parkingSpot.update({ where: { id: b.spotId }, data: { status: 'FREE', currentUserId: null, currentUserPlate: null } }),
+        prisma.booking.update({
+          where: { id: b.id },
+          data: { status: 'CANCELLED', actualEndTime: now },
+        }),
+        prisma.parkingSpot.update({
+          where: { id: b.spotId },
+          data: { status: 'FREE', currentUserPlate: null, currentUserId: null },
+        }),
+        ...(refundAmount > 0 && b.user ? [
+          prisma.user.update({
+            where: { id: userId },
+            data: { walletBalance: { increment: refundAmount } },
+          }),
+          prisma.transaction.create({
+            data: {
+              userId,
+              amount: refundAmount,
+              type: 'REFUND',
+              description: `Частичный возврат: не явился вовремя (50% от ${totalCost}₸)`,
+              balanceBefore: b.user.walletBalance,
+              balanceAfter: b.user.walletBalance + refundAmount,
+            },
+          }),
+        ] : []),
       ]);
+      logger.info(`⏰ Restore safety-net: cancelled no-show booking ${b.id}, refunded ${refundAmount}₸`);
     }
 
-    // Short-term: active booking (PENDING = waiting to arrive, CONFIRMED = arrived)
+    // Short-term: find any active booking
     const booking = await prisma.booking.findFirst({
       where: { userId, status: { in: ['PENDING', 'CONFIRMED'] } },
       orderBy: { createdAt: 'desc' },
     });
 
-    const bookingSpot = booking
-      ? await prisma.parkingSpot.findUnique({ where: { id: booking.spotId } })
-      : null;
-
     if (booking) {
+      // If exit grace has already expired: the car is still physically on the lot.
+      // The spot stays OCCUPIED — only physical LPR exit will free it and complete the booking.
+      // Return null so the user can interact with the app normally; the booking stays in DB.
+      if (booking.exitRequestedAt) {
+        const graceElapsed = now.getTime() - booking.exitRequestedAt.getTime();
+        if (graceElapsed >= EXIT_GRACE_MS) {
+          return res.json(null);
+        }
+      }
+
+      const bookingSpot = await prisma.parkingSpot.findUnique({ where: { id: booking.spotId } });
+      const GRACE_MS = 5 * 60 * 1000;
+      const overstayStartMs = booking.estimatedEndTime.getTime() + GRACE_MS;
+      const overstayMs = Math.max(0, now.getTime() - overstayStartMs);
+      const overstayMinutes = Math.floor(overstayMs / 60000);
+      const waitingFee = overstayMinutes * 3;
       return res.json({
         id: booking.id,
         spotId: bookingSpot?.spotNumber ?? booking.spotId,
@@ -127,23 +162,33 @@ router.get('/restore', async (req: Request, res: Response) => {
         arrivedAt: booking.arrivedAt,
         exitRequestedAt: booking.exitRequestedAt,
         isPaid: booking.isPaid,
-        waitingFee: 0,
+        isOvertime: now > booking.estimatedEndTime,
+        waitingFee,
+        currentDebt: waitingFee,
+        bookedMinutes: booking.bookedMinutes + (booking.minutesExtended ?? 0),
       });
     }
 
-    // Long-term: active rental — show until endDate passes or user explicitly cancels
+    // Long-term: active rental — show while active OR expired but not yet exited
     const rental = await prisma.longTermRental.findFirst({
-      where: {
-        userId,
-        status: 'ACTIVE',
-        endDate: { gt: now }, // only if the period hasn't expired
-      },
+      where: { userId, status: 'ACTIVE' },
       orderBy: { createdAt: 'desc' },
       include: { spot: true },
     });
 
     if (rental) {
-      const remainingMs = rental.endDate.getTime() - now.getTime();
+      // Same rule: if exit grace expired, car is still on lot — wait for LPR exit
+      if (rental.exitRequestedAt) {
+        const graceElapsed = now.getTime() - rental.exitRequestedAt.getTime();
+        if (graceElapsed >= EXIT_GRACE_MS) {
+          return res.json(null);
+        }
+      }
+
+      const isExpired = rental.endDate < now;
+      const remainingMs = Math.max(0, rental.endDate.getTime() - now.getTime());
+      const overstayMs = isExpired ? now.getTime() - rental.endDate.getTime() : 0;
+      const overstayMinutes = Math.floor(overstayMs / 60000);
       return res.json({
         id: rental.id,
         spotId: rental.spot?.spotNumber ?? rental.spotId,
@@ -157,6 +202,9 @@ router.get('/restore', async (req: Request, res: Response) => {
         isPaid: rental.isPaid,
         waitingFee: 0,
         rentalDays: rental.rentalDays,
+        isExpired,
+        exitRequestedAt: rental.exitRequestedAt,
+        currentDebt: overstayMinutes * 3,
       });
     }
 
@@ -281,52 +329,73 @@ router.post('/extend-waiting', async (req: Request, res: Response) => {
 });
 
 
-router.post('/:id/extend', checkBalance(getExtendBookingCost()), async (req: Request, res: Response) => {
+router.post('/:id/extend', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const userId = req.userId!;
+    const additionalMinutes: number = Number(req.body.additionalMinutes) || 30;
 
+    const booking = await prisma.booking.findUnique({ where: { id } });
+    if (!booking) return res.status(404).json({ error: 'Booking not found' });
+    if (booking.userId !== userId) return res.status(403).json({ error: 'Access denied' });
 
-    const booking = await prisma.booking.findUnique({
-      where: { id },
-    });
+    const { calculateShortTermCost } = await import('../utils/pricing');
+    const extendCost = calculateShortTermCost(additionalMinutes);
 
-    if (!booking) {
-      return res.status(404).json({ error: 'Booking not found' });
+    const owner = await prisma.user.findUnique({ where: { id: userId } });
+    if (!owner) return res.status(404).json({ error: 'User not found' });
+    if (owner.walletBalance < extendCost) {
+      return res.status(402).json({ error: `Недостаточно средств: нужно ${extendCost}₸, есть ${owner.walletBalance}₸` });
     }
 
-    if (booking.userId !== userId) {
-      return res.status(403).json({ error: 'Access denied' });
+    const newEndTime = new Date(new Date(booking.estimatedEndTime).getTime() + additionalMinutes * 60 * 1000);
+
+    const [updatedBooking, updatedUser] = await prisma.$transaction([
+      prisma.booking.update({
+        where: { id },
+        data: { estimatedEndTime: newEndTime, minutesExtended: { increment: additionalMinutes } },
+      }),
+      prisma.user.update({ where: { id: userId }, data: { walletBalance: { decrement: extendCost } } }),
+      prisma.transaction.create({
+        data: {
+          userId, amount: -extendCost, type: 'PAYMENT',
+          description: `Продление на ${additionalMinutes} мин: место ${booking.spotId}`,
+          balanceBefore: owner.walletBalance, balanceAfter: owner.walletBalance - extendCost,
+        },
+      }),
+    ]) as [typeof booking, typeof owner, unknown];
+
+    // Remove old overstay/warning jobs before scheduling new ones
+    await Promise.all([
+      overstayQueue.getJob(`te-${id}`).then(j => j?.remove()).catch(() => {}),
+      overstayQueue.getJob(`warn-${id}`).then(j => j?.remove()).catch(() => {}),
+      overstayQueue.getJob(`os-${id}`).then(j => j?.remove()).catch(() => {}),
+    ]);
+
+    // Schedule new overstay jobs for the updated end time (use stable IDs so they can be removed again on next extension)
+    const msToNewEnd = newEndTime.getTime() - Date.now();
+    if (msToNewEnd > 5 * 60 * 1000) {
+      await overstayQueue.add('time-ending', { bookingId: id, userId, spotId: booking.spotId, phase: 'time-ending' },
+        { delay: msToNewEnd - 5 * 60 * 1000, jobId: `te-${id}` }).catch(() => {});
     }
-
-
-    const extendCost = getExtendBookingCost();
-    const { walletBalance } = await paymentService.debitWallet(
-      userId,
-      extendCost,
-      `Продление бронирования: ${id}`
-    );
-
-
-    const updatedBooking = await prisma.booking.update({
-      where: { id },
-      data: {
-        estimatedEndTime: new Date(
-          new Date(booking.estimatedEndTime).getTime() + 30 * 60 * 1000
-        ),
-        minutesExtended: { increment: 30 },
-      },
-    });
-
+    await overstayQueue.add('warn', { bookingId: id, userId, spotId: booking.spotId, phase: 'warn' },
+      { delay: msToNewEnd, jobId: `warn-${id}` }).catch(() => {});
+    await overstayQueue.add('overstay-start', { bookingId: id, userId, spotId: booking.spotId, phase: 'overstay-start' },
+      { delay: msToNewEnd + 5 * 60 * 1000, jobId: `os-${id}` }).catch(() => {});
 
     const { io } = await import('../server');
-    io.emit('booking-extended', { bookingId: updatedBooking.id, endTime: updatedBooking.estimatedEndTime });
+    io.emit('booking-extended', {
+      bookingId: updatedBooking.id,
+      endTime: updatedBooking.estimatedEndTime,
+      additionalMinutes,
+    });
 
     res.json({
       booking: { ...updatedBooking, endTime: updatedBooking.estimatedEndTime },
-      walletBalance,
+      walletBalance: updatedUser.walletBalance,
       extendCost,
-      message: '✅ Booking extended by 30 minutes',
+      newEndTime,
+      message: `✅ Booking extended by ${additionalMinutes} minutes`,
     });
   } catch (error) {
     logger.error('❌ Error extending booking:', error);
@@ -350,22 +419,50 @@ router.post('/cancel-by-spot', async (req: Request, res: Response) => {
 
     const booking = await prisma.booking.findFirst({
       where: { spotId: spot.id, userId, status: { in: ['PENDING', 'CONFIRMED'] } },
+      include: { user: true },
       orderBy: { createdAt: 'desc' },
     });
 
+    // 100% refund if user cancels manually before arriving (waiting status)
+    const refundAmount = (booking && !booking.arrivedAt && booking.totalCost && booking.totalCost > 0)
+      ? booking.totalCost
+      : 0;
+
     await prisma.$transaction([
-      ...(booking ? [prisma.booking.update({ where: { id: booking.id }, data: { status: 'CANCELLED' } })] : []),
+      ...(booking ? [prisma.booking.update({ where: { id: booking.id }, data: { status: 'CANCELLED', actualEndTime: new Date() } })] : []),
       prisma.parkingSpot.update({
         where: { spotNumber },
         data: { status: 'FREE', currentUserPlate: null, currentUserId: null },
       }),
+      ...(refundAmount > 0 && booking?.user ? [
+        prisma.user.update({
+          where: { id: userId },
+          data: { walletBalance: { increment: refundAmount } },
+        }),
+        prisma.transaction.create({
+          data: {
+            userId,
+            amount: refundAmount,
+            type: 'REFUND',
+            description: `Полный возврат: бронь отменена пользователем (${refundAmount}₸)`,
+            balanceBefore: booking.user.walletBalance,
+            balanceAfter: booking.user.walletBalance + refundAmount,
+          },
+        }),
+      ] : []),
     ]);
+
+    // Cancel the BullMQ no-show job so it doesn't fire and double-refund
+    if (booking) {
+      const noShowJob = await noShowQueue.getJob(`noshow-${booking.id}`);
+      if (noShowJob) await noShowJob.remove().catch(() => {});
+    }
 
     const { io } = await import('../server');
     io.emit('spot-status-changed', { spotNumber, status: 'FREE', carPlate: null });
     if (booking) io.emit('booking-cancelled', { bookingId: booking.id, spotNumber });
 
-    res.json({ success: true, message: 'Booking cancelled' });
+    res.json({ success: true, refundAmount, message: 'Booking cancelled' });
   } catch (error) {
     logger.error('❌ Error cancelling booking by spot:', error);
     res.status(500).json({ error: 'Failed to cancel booking' });
@@ -373,13 +470,11 @@ router.post('/cancel-by-spot', async (req: Request, res: Response) => {
 });
 
 
-// User presses "Finish Parking" — charges overstay, marks exit intent, SPOT STAYS OCCUPIED
-// (Car is physically still in spot until LPR detects exit)
+// User presses "Finish Parking" (short-term) — charges overstay, marks exit intent, SPOT STAYS OCCUPIED
 router.post('/finish-parking', async (req: Request, res: Response) => {
   try {
     const userId = req.userId!;
     const now = new Date();
-    const OVERSTAY_CHARGE_MS = 5 * 60 * 1000; // charges start 5 min after estimatedEndTime
 
     const booking = await prisma.booking.findFirst({
       where: { userId, status: { in: ['PENDING', 'CONFIRMED'] } },
@@ -390,41 +485,134 @@ router.post('/finish-parking', async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'No active booking found' });
     }
 
-    // If already pressed Finish Parking once, don't charge again
     if (booking.exitRequestedAt) {
       return res.json({ overstayCharge: 0, newBalance: null, message: 'Already processing exit' });
     }
 
+    // Overstay starts 5 min after estimatedEndTime (grace period)
+    const OVERSTAY_GRACE_MS = 5 * 60 * 1000;
+    const overstayStartMs = booking.estimatedEndTime.getTime() + OVERSTAY_GRACE_MS;
     let overstayCharge = 0;
-    const overstayStart = new Date(booking.estimatedEndTime.getTime() + OVERSTAY_CHARGE_MS);
-    if (now > overstayStart) {
-      const overstayMs = now.getTime() - overstayStart.getTime();
+    if (now.getTime() > overstayStartMs) {
+      const overstayMs = now.getTime() - overstayStartMs;
       const overstayMinutes = Math.floor(overstayMs / 60000);
       overstayCharge = overstayMinutes * 3;
     }
 
     let newBalance: number | null = null;
     if (overstayCharge > 0) {
-      const owner = await prisma.user.findUnique({ where: { id: userId }, select: { walletBalance: true } });
+      const owner = await prisma.user.findUnique({ where: { id: userId } });
       if (owner) {
         const charged = Math.min(overstayCharge, owner.walletBalance);
-        const updated = await prisma.user.update({
-          where: { id: userId },
-          data: { walletBalance: { decrement: charged } },
-          select: { walletBalance: true },
-        });
+        const [, updated] = await prisma.$transaction([
+          prisma.transaction.create({
+            data: {
+              userId, amount: -charged, type: 'PAYMENT',
+              description: `Овертайм при выезде: ${Math.floor(overstayCharge / 3)} мин × 3₸`,
+              balanceBefore: owner.walletBalance,
+              balanceAfter: owner.walletBalance - charged,
+            },
+          }),
+          prisma.user.update({ where: { id: userId }, data: { walletBalance: { decrement: charged } }, select: { walletBalance: true } }),
+        ]);
         newBalance = updated.walletBalance;
         overstayCharge = charged;
       }
     }
 
-    // Mark exit intent — spot stays OCCUPIED until car physically leaves via LPR
     await prisma.booking.update({ where: { id: booking.id }, data: { exitRequestedAt: now } });
+
+    sendPushToUser(
+      userId,
+      '🚗 Выезжайте в течение 7 минут',
+      'Таймер запущен. Подъедьте к шлагбауму и выедьте. Если не выедете за 7 минут — штраф 900₸. ⚠️ Не нажимайте «Завершить», пока не находитесь у выезда!',
+      { type: 'exit-grace-started' }
+    ).catch(() => {});
+
+    overstayQueue.add('check', {
+      bookingId: booking.id, userId, spotId: booking.spotId, phase: 'fake-finish-check',
+    }, { delay: 7 * 60 * 1000 }).catch(() => {});
 
     res.json({ overstayCharge, newBalance, message: '✅ Exit grace started' });
   } catch (error) {
     logger.error('❌ Error in finish-parking:', error);
     res.status(500).json({ error: 'Failed to finish parking' });
+  }
+});
+
+// User presses "Завершить аренду" (long-term expired) — charges debt, sets exitRequestedAt
+router.post('/finish-parking-longterm', async (req: Request, res: Response) => {
+  try {
+    const userId = req.userId!;
+    const now = new Date();
+
+    const rental = await prisma.longTermRental.findFirst({
+      where: { userId, status: 'ACTIVE' },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (!rental) {
+      return res.status(404).json({ error: 'No active rental found' });
+    }
+
+    if (rental.exitRequestedAt) {
+      return res.json({ debtCharged: 0, message: 'Already processing exit' });
+    }
+
+    const isExpired = rental.endDate < now;
+    let debtCharged = 0;
+
+    if (isExpired) {
+      const overstayMs = now.getTime() - rental.endDate.getTime();
+      const overstayMinutes = Math.floor(overstayMs / 60000);
+      const debtAmount = overstayMinutes * 3;
+
+      if (debtAmount > 0) {
+        const owner = await prisma.user.findUnique({ where: { id: userId } });
+        if (!owner) return res.status(404).json({ error: 'User not found' });
+
+        if (owner.walletBalance < debtAmount) {
+          return res.status(402).json({
+            error: 'Insufficient balance',
+            debtAmount,
+            balance: owner.walletBalance,
+            insufficient: true,
+          });
+        }
+
+        const charged = Math.min(debtAmount, owner.walletBalance);
+        await prisma.$transaction([
+          prisma.user.update({ where: { id: userId }, data: { walletBalance: { decrement: charged } } }),
+          prisma.transaction.create({
+            data: {
+              userId, amount: -charged, type: 'PAYMENT',
+              description: `Долг за превышение аренды: ${overstayMinutes} мин × 3₸`,
+              balanceBefore: owner.walletBalance,
+              balanceAfter: owner.walletBalance - charged,
+            },
+          }),
+        ]);
+        debtCharged = charged;
+      }
+    }
+
+    await prisma.longTermRental.update({ where: { id: rental.id }, data: { exitRequestedAt: now } });
+
+    sendPushToUser(
+      userId,
+      '✅ Долг оплачен',
+      'Шлагбаум откроется автоматически при выезде. У вас 7 минут.',
+      { type: 'lt-exit-ready' }
+    ).catch(() => {});
+
+    overstayQueue.add('check', {
+      rentalId: rental.id, userId, spotId: rental.spotId, phase: 'fake-finish-check',
+    }, { delay: 7 * 60 * 1000 }).catch(() => {});
+
+    res.json({ debtCharged, message: '✅ Exit approved' });
+  } catch (error) {
+    logger.error('❌ Error in finish-parking-longterm:', error);
+    res.status(500).json({ error: 'Failed to finish rental' });
   }
 });
 

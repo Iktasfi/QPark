@@ -64,7 +64,7 @@ const liveEventMeta: Record<string, { label: string; color: string; emoji: strin
 }
 
 interface DbUser { id: string; phoneNumber: string; firstName: string | null; lastName: string | null; walletBalance: number; cars: { id: string; plateNumber: string; brand: string; model: string }[] }
-interface DbBooking { id: string; spotNumber: string; plateNumber: string; userName: string; status: string; startTime: string; totalCost: number }
+interface DbBooking { id: string; spotNumber: string; plateNumber: string; userName: string; status: string; startTime: string; totalCost: number; exitRequestedAt?: string | null }
 interface DbRental { id: string; spotNumber: string; plateNumber: string; userName: string; rentalDays: number; totalCost: number; status: string; endDate: string }
 interface DbTransaction { id: string; amount: number; type: string; description: string | null; balanceBefore: number; balanceAfter: number; stripePaymentIntentId: string | null; createdAt: string; user: { phoneNumber: string; firstName: string | null; lastName: string | null } }
 
@@ -95,17 +95,11 @@ export function AdminDashboard() {
   const [pendingPhotos, setPendingPhotos] = useState<{id: string; type: string; photoUrl: string | null; photoUploadedAt: string | null; spotNumber: string; plateNumber: string; userName: string}[]>([])
   const [complaints, setComplaints] = useState<{id: string; spotId: string; reason: string; photoUrl: string | null; status: string; createdAt: string; detectedPlate: string | null; violatorUserId: string | null; user: {firstName: string | null; phoneNumber: string}}[]>([])
   const [applications, setApplications] = useState<{id: string; companyName: string; ownerName: string; phone: string; email: string | null; address: string; city: string; spotsCount: number; description: string | null; status: string; adminNote: string | null; createdAt: string}[]>([])
-  const [showAddLocation, setShowAddLocation] = useState(false)
   const [supportConversations, setSupportConversations] = useState<{userId: string; userName: string; phoneNumber: string; lastMessage: string; lastMessageAt: string; fromAdmin: boolean; unreadCount: number}[]>([])
   const [selectedSupportUser, setSelectedSupportUser] = useState<string | null>(null)
   const [supportMessages, setSupportMessages] = useState<{id: string; text: string; fromAdmin: boolean; createdAt: string}[]>([])
   const [supportReply, setSupportReply] = useState("")
   const [supportSending, setSupportSending] = useState(false)
-  const [showB2BForm, setShowB2BForm] = useState(false)
-  const [locationForm, setLocationForm] = useState({ name: "", address: "", spots: "" })
-  const [b2bForm, setB2bForm] = useState({ companyName: "", ownerName: "", phone: "", address: "", spots: "", docs: "" })
-  const [locationAdded, setLocationAdded] = useState(false)
-  const [b2bSent, setB2bSent] = useState(false)
   const mockLocations = [
     { id: 1,  name: "Парковка №1",  address: "Улы Дала, 1",              spots: 30, free: 12, status: "Активна", prefix: "SP"  },
     { id: 2,  name: "Парковка №2",  address: "Сыганак, 5",               spots: 25, free: 8,  status: "Активна", prefix: "P2"  },
@@ -117,6 +111,15 @@ export function AdminDashboard() {
     { id: 8,  name: "Парковка №8",  address: "Бейбітшілік, 17",          spots: 16, free: 16, status: "Активна", prefix: "P8"  },
     { id: 9,  name: "Парковка №9",  address: "Иманов, 21",               spots: 21, free: 21, status: "Активна", prefix: "P9"  },
     { id: 10, name: "Парковка №10", address: "Хан Шатыр, пр. Туран, 3", spots: 18, free: 18, status: "Активна", prefix: "P10" },
+    { id: 11, name: "Парковка №11", address: "пр. Мәңгілік Ел, 55",     spots: 20, free: 20, status: "Активна", prefix: "P11" },
+    { id: 12, name: "Парковка №12", address: "Орынбор, 2 (у EXPO)",      spots: 16, free: 16, status: "Активна", prefix: "P12" },
+    { id: 13, name: "Парковка №13", address: "пр. Туран, 37",             spots: 18, free: 18, status: "Активна", prefix: "P13" },
+    { id: 14, name: "Парковка №14", address: "Нуржол бул., 5 (Байтерек)",  spots: 14, free: 14, status: "Активна", prefix: "P14" },
+    { id: 15, name: "Парковка №15", address: "Сыганак, 43 (ЖК Нурсай)",   spots: 18, free: 18, status: "Активна", prefix: "P15" },
+    { id: 16, name: "Парковка №16", address: "Кабанбай батыр, 17 (ЖК Байтерек)", spots: 17, free: 17, status: "Активна", prefix: "P16" },
+    { id: 17, name: "Парковка №17", address: "Орынбор, 48 (ЖК Авиатор)",  spots: 15, free: 15, status: "Активна", prefix: "P17" },
+    { id: 18, name: "Парковка №18", address: "Улы Дала, 8 (ЖК Думан)",    spots: 16, free: 16, status: "Активна", prefix: "P18" },
+    { id: 19, name: "Парковка №19", address: "Иманова, 14 (ЖК Комфорт)",  spots: 17, free: 17, status: "Активна", prefix: "P19" },
   ]
   const [selectedLocationId, setSelectedLocationId] = useState(1)
   const selectedLocation = mockLocations.find(l => l.id === selectedLocationId)!
@@ -227,6 +230,8 @@ export function AdminDashboard() {
       })
     }
     socket.on("support-new-message", onSupportMessage)
+    // Instant refresh after a complaint swap — bookings/rentals change spots
+    socket.on("bookings-updated", fetchParkingData)
 
     const fallback = setInterval(fetchParkingData, 5000)
 
@@ -240,9 +245,24 @@ export function AdminDashboard() {
       socket.off("rental-created", onRentalCreated)
       socket.off("payment-completed", onPaymentCompleted)
       socket.off("support-new-message", onSupportMessage)
+      socket.off("bookings-updated", fetchParkingData)
       clearInterval(fallback)
     }
   }, [])
+
+  // Auto-load violator info when complaint has violatorUserId already set
+  useEffect(() => {
+    const token = localStorage.getItem("admin_token") || localStorage.getItem("qpark_token")
+    complaints.forEach(c => {
+      if (c.violatorUserId && !violatorLookup[c.id]) {
+        setViolatorLookup(prev => ({ ...prev, [c.id]: "loading" }))
+        fetch(`${RAILWAY}/admin/users/${c.violatorUserId}`, { headers: { Authorization: `Bearer ${token}` } })
+          .then(r => r.ok ? r.json() : null)
+          .then(data => setViolatorLookup(prev => ({ ...prev, [c.id]: data })))
+          .catch(() => setViolatorLookup(prev => ({ ...prev, [c.id]: null })))
+      }
+    })
+  }, [complaints])
 
   const fetchParkingData = async () => {
     try {
@@ -517,9 +537,56 @@ export function AdminDashboard() {
               </div>
             ) : null}
 
-            {/* Admin tip */}
-            <div className="rounded-xl px-4 py-3 text-xs text-yellow-300/70" style={{ background: "rgba(251,191,36,0.06)", border: "1px solid rgba(251,191,36,0.12)" }}>
-              💡 Нажмите ↺ на карточке чтобы освободить место, или используйте дропдаун для изменения статуса.
+            {/* Admin actions */}
+            <div className="space-y-2 pt-1">
+              {/* Открыть шлагбаум вручную — если OCR не прочитал номер */}
+              {(spot.status === "BOOKED" || spot.status === "RESERVED" || spot.status === "OCCUPIED") && (
+                <button
+                  onClick={async () => {
+                    const token = localStorage.getItem("qpark_token")
+                    const res = await fetch(`${RAILWAY}/admin/open-gate`, {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+                      body: JSON.stringify({ spotNumber: spot.spotNumber, carPlate: plate }),
+                    })
+                    if (res.ok) { fetchParkingData(); setSpotModal(null) }
+                    else alert("Ошибка при открытии шлагбаума")
+                  }}
+                  className="w-full py-2.5 rounded-xl text-sm font-semibold text-white transition-colors"
+                  style={{ background: "rgba(96,165,250,0.2)", border: "1px solid rgba(96,165,250,0.3)" }}
+                >
+                  🔓 Открыть шлагбаум вручную
+                </button>
+              )}
+
+              {/* Подтвердить выезд — если Finish нажат но OCR не прочитал номер на выезде */}
+              {spot.status === "OCCUPIED" && booking && (
+                <button
+                  onClick={async () => {
+                    if (!confirm(`Подтвердить выезд для бронирования ${booking.id}?`)) return
+                    const token = localStorage.getItem("qpark_token")
+                    const res = await fetch(`${RAILWAY}/admin/confirm-exit/${booking.id}`, {
+                      method: "POST",
+                      headers: { Authorization: `Bearer ${token}` },
+                    })
+                    if (res.ok) { fetchParkingData(); setSpotModal(null) }
+                    else alert("Ошибка при подтверждении выезда")
+                  }}
+                  className="w-full py-2.5 rounded-xl text-sm font-semibold text-white transition-colors"
+                  style={{ background: "rgba(74,222,128,0.15)", border: "1px solid rgba(74,222,128,0.25)" }}
+                >
+                  ✓ Подтвердить выезд вручную
+                  {booking.exitRequestedAt && (
+                    <span className="block text-xs font-normal opacity-60 mt-0.5">
+                      Finish нажат в {new Date(booking.exitRequestedAt).toLocaleTimeString("ru-RU")}
+                    </span>
+                  )}
+                </button>
+              )}
+
+              <div className="rounded-xl px-4 py-2.5 text-xs text-yellow-300/70" style={{ background: "rgba(251,191,36,0.06)", border: "1px solid rgba(251,191,36,0.12)" }}>
+                💡 Нажмите ↺ на карточке чтобы освободить место
+              </div>
             </div>
           </div>
         </div>
@@ -536,7 +603,6 @@ export function AdminDashboard() {
     { id: "complaints",   label: "⚠️ Жалобы",    count: complaints.filter(c => c.status === "PENDING" || c.status === "OPEN").length },
     { id: "applications", label: "📋 Заявки",    count: applications.filter(a => a.status === "NEW").length },
     { id: "support",      label: "💬 Чат",       count: supportConversations.reduce((s, c) => s + c.unreadCount, 0) },
-    { id: "locations",    label: "Локации",      count: mockLocations.length },
   ]
 
   return (
@@ -1284,14 +1350,40 @@ export function AdminDashboard() {
                                       </div>
                                     )}
 
-                                    {/* Fine button */}
-                                    {(c.status === "PENDING" || c.status === "OPEN" || c.status === "REASSIGNED" || c.status === "REFUNDED") && (
+                                    {/* Fine + Swap button — works for PENDING/OPEN; swap-only for CLOSED */}
+                                    {(c.status === "PENDING" || c.status === "OPEN" || c.status === "CLOSED") && (
                                       <button
-                                        onClick={() => issueFine(info.id, info.firstName ?? info.phoneNumber)}
+                                        onClick={async () => {
+                                          const alreadyFined = c.status === "CLOSED"
+                                          const label = alreadyFined
+                                            ? `Поменять места?\nШтраф уже выписан. Только обменяем бронирования.\n${info.firstName ?? info.phoneNumber} (${info.car.plateNumber})`
+                                            : `Выписать штраф 900₸ и поменять места?\n${info.firstName ?? info.phoneNumber} (${info.car.plateNumber})`
+                                          if (!confirm(label)) return
+                                          const token = localStorage.getItem("admin_token") || localStorage.getItem("qpark_token")
+                                          await fetch(`${RAILWAY}/admin/complaints/${c.id}/set-violator`, {
+                                            method: "PATCH",
+                                            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+                                            body: JSON.stringify({ plateNumber: info.car.plateNumber }),
+                                          }).catch(() => {})
+                                          const res = await fetch(`${RAILWAY}/admin/complaints/${c.id}/reassign`, {
+                                            method: "POST",
+                                            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+                                          })
+                                          const data = await res.json()
+                                          if (res.ok && data.action === "swapped") {
+                                            setComplaints(prev => prev.map(x => x.id === c.id ? { ...x, status: "REASSIGNED" } : x))
+                                            alert(`✅ ${alreadyFined ? "Места поменяны!" : "Штраф 900₸ выписан!"}\n🔄 Места поменяны:\n• Жертва → ${data.victimNewSpot}\n• Нарушитель → ${data.violatorNewSpot}\nОба пользователя получили уведомления.`)
+                                          } else if (res.ok && data.action === "reassigned") {
+                                            setComplaints(prev => prev.map(x => x.id === c.id ? { ...x, status: "REASSIGNED" } : x))
+                                            alert(`✅ Жертва перенесена на ${data.newSpotId}`)
+                                          } else {
+                                            alert(`❌ ${data.error ?? "Ошибка"}`)
+                                          }
+                                        }}
                                         className="w-full py-3 rounded-xl font-bold text-white text-sm transition-all hover:opacity-90 active:scale-98"
-                                        style={{ background: "linear-gradient(135deg, #dc2626 0%, #991b1b 100%)" }}
+                                        style={{ background: c.status === "CLOSED" ? "linear-gradient(135deg, #1d4ed8 0%, #1e3a8a 100%)" : "linear-gradient(135deg, #dc2626 0%, #991b1b 100%)" }}
                                       >
-                                        ⚡ Выписать штраф 900 ₸ — {info.firstName ?? info.phoneNumber}
+                                        {c.status === "CLOSED" ? "🔄 Поменять места (штраф уже выписан)" : "⚡ Штраф 900₸ + Поменять места"}
                                       </button>
                                     )}
                                   </div>
@@ -1303,8 +1395,8 @@ export function AdminDashboard() {
                             )
                           })()}
 
-                          {/* Action buttons */}
-                          {(c.status === "PENDING" || c.status === "OPEN" || c.status === "REASSIGNED" || c.status === "REFUNDED") && (
+                          {/* Fallback: no violator identified — just find free spot */}
+                          {(c.status === "PENDING" || c.status === "OPEN") && !c.violatorUserId && (
                             <div className="flex gap-2 pt-1">
                               <button
                                 onClick={async () => {
@@ -1316,56 +1408,17 @@ export function AdminDashboard() {
                                   const data = await res.json()
                                   if (data.action === "reassigned") {
                                     setComplaints(prev => prev.map(x => x.id === c.id ? { ...x, status: "REASSIGNED" } : x))
-                                    alert(`✅ Пользователь перенесён на ${data.newSpotId}`)
-                                  } else if (data.action === "swapped") {
-                                    setComplaints(prev => prev.map(x => x.id === c.id ? { ...x, status: "REASSIGNED" } : x))
-                                    alert(`🔄 Места поменяны автоматически!\nМашина 1 → ${data.newSpotId}\nНарушитель оштрафован 900₸`)
+                                    alert(`✅ Жертва перенесена на ${data.newSpotId}`)
                                   } else if (data.action === "refunded") {
                                     setComplaints(prev => prev.map(x => x.id === c.id ? { ...x, status: "REFUNDED" } : x))
-                                    alert(`💸 Нет свободных мест и нарушитель не определён. Возврат ${data.refundAmount}₸`)
+                                    alert(`💸 Нет свободных мест. Возврат ${data.refundAmount}₸`)
                                   }
                                 }}
                                 className="flex-1 py-2.5 rounded-xl text-xs font-semibold text-white transition-all hover:opacity-80"
                                 style={{ background: "#354469" }}
                               >
-                                🔄 Найти новое место
+                                🔄 Найти свободное место для жертвы
                               </button>
-                              {c.violatorUserId ? (
-                                <button
-                                  onClick={async () => {
-                                    const violatorInfo = violatorLookup[c.id]
-                                    const name = (violatorInfo && violatorInfo !== "loading") ? ((violatorInfo as ViolatorInfo).firstName ?? (violatorInfo as ViolatorInfo).phoneNumber) : "нарушителю"
-                                    if (!confirm(`Выписать штраф 900₸ ${name}?`)) return
-                                    const token = localStorage.getItem("admin_token") || localStorage.getItem("qpark_token")
-                                    const res = await fetch(`${RAILWAY}/admin/complaints/${c.id}/fine`, {
-                                      method: "POST",
-                                      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-                                      body: JSON.stringify({ violatorUserId: c.violatorUserId, amount: 900 }),
-                                    })
-                                    if (res.ok) setComplaints(prev => prev.map(x => x.id === c.id ? { ...x, status: "CLOSED" } : x))
-                                    else alert("❌ Ошибка")
-                                  }}
-                                  className="px-4 py-2.5 rounded-xl text-xs font-semibold text-white transition-all hover:opacity-80"
-                                  style={{ background: "linear-gradient(135deg, #dc2626 0%, #991b1b 100%)" }}
-                                >
-                                  ⚡ Штраф 900₸
-                                </button>
-                              ) : (
-                                <button
-                                  onClick={async () => {
-                                    const token = localStorage.getItem("admin_token") || localStorage.getItem("qpark_token")
-                                    const res = await fetch(`${RAILWAY}/admin/complaints/${c.id}/fine`, {
-                                      method: "POST",
-                                      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-                                      body: JSON.stringify({ amount: 900 }),
-                                    })
-                                    if (res.ok) setComplaints(prev => prev.map(x => x.id === c.id ? { ...x, status: "CLOSED" } : x))
-                                  }}
-                                  className="px-4 py-2.5 rounded-xl text-xs font-semibold text-white/60 border border-white/10 hover:bg-white/5 transition-all"
-                                >
-                                  ✓ Закрыть
-                                </button>
-                              )}
                             </div>
                           )}
                         </div>
@@ -1579,149 +1632,6 @@ export function AdminDashboard() {
           </div>
         )}
 
-        {activeTab === "locations" && (
-          <div className="space-y-4">
-
-            {/* Existing locations */}
-            <div className={CARD} style={CARD_BG}>
-              <div className="flex items-center justify-between mb-4">
-                <p className="text-white/70 text-sm font-semibold">Парковочные локации ({mockLocations.length})</p>
-                <button onClick={() => { setShowAddLocation(true); setLocationAdded(false) }}
-                  className="px-4 py-2 rounded-xl text-sm font-semibold text-white transition-all hover:opacity-80"
-                  style={{ background: "#354469" }}>
-                  + Добавить локацию
-                </button>
-              </div>
-              <div className="space-y-3">
-                {mockLocations.map(loc => (
-                  <div key={loc.id} className="flex items-center justify-between p-4 rounded-xl border border-white/10"
-                    style={{ background: "rgba(255,255,255,0.03)" }}>
-                    <div>
-                      <p className="text-white font-semibold text-sm">{loc.name}</p>
-                      <p className="text-white/40 text-xs mt-0.5">{loc.address}</p>
-                      <p className="text-white/30 text-xs mt-0.5">{loc.spots} мест · {loc.free} свободно</p>
-                    </div>
-                    <span className="px-3 py-1 rounded-full text-xs font-medium"
-                      style={{ background: "rgba(34,197,94,0.15)", color: "#22c55e" }}>
-                      {loc.status}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Add location form */}
-            {showAddLocation && (
-              <div className={CARD} style={CARD_BG}>
-                <p className="text-white/70 text-sm font-semibold mb-4">Новая локация</p>
-                {locationAdded ? (
-                  <div className="text-center py-6">
-                    <p className="text-green-400 font-semibold">✅ Локация добавлена!</p>
-                    <button onClick={() => { setShowAddLocation(false); setLocationForm({ name: "", address: "", spots: "" }) }}
-                      className="mt-3 text-white/40 text-sm hover:text-white/70">Закрыть</button>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {[
-                      { label: "Название", field: "name", placeholder: "Парковка №4" },
-                      { label: "Адрес", field: "address", placeholder: "ул. Достык, 12" },
-                      { label: "Количество мест", field: "spots", placeholder: "20" },
-                    ].map(({ label, field, placeholder }) => (
-                      <div key={field}>
-                        <label className="text-xs text-white/30 mb-1.5 block">{label}</label>
-                        <input value={locationForm[field as keyof typeof locationForm]}
-                          onChange={e => setLocationForm({ ...locationForm, [field]: e.target.value })}
-                          placeholder={placeholder}
-                          className="w-full px-3 py-2.5 rounded-xl text-sm text-white border border-white/10 focus:outline-none focus:border-white/30 placeholder-white/20"
-                          style={{ background: "rgba(255,255,255,0.06)" }} />
-                      </div>
-                    ))}
-                    <div className="flex gap-2 pt-1">
-                      <button onClick={() => setShowAddLocation(false)}
-                        className="flex-1 py-3 rounded-xl text-sm font-semibold text-white/50 border border-white/10 hover:bg-white/5">
-                        Отмена
-                      </button>
-                      <button disabled={!locationForm.name || !locationForm.address || !locationForm.spots}
-                        onClick={() => setLocationAdded(true)}
-                        className="flex-1 py-3 rounded-xl text-sm font-semibold text-white disabled:opacity-40 hover:opacity-80"
-                        style={{ background: "#354469" }}>
-                        Добавить
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* B2B landlord stub */}
-            <div className={CARD} style={{ background: "rgba(168,85,247,0.06)", border: "1px solid rgba(168,85,247,0.2)" }}>
-              <div className="flex items-center gap-2 mb-1">
-                <span className="text-purple-400 text-lg">🏢</span>
-                <p className="text-purple-300 text-sm font-semibold">Для арендодателей</p>
-                <span className="px-2 py-0.5 rounded-full text-xs font-medium ml-auto"
-                  style={{ background: "rgba(168,85,247,0.2)", color: "#a855f7" }}>Future Work</span>
-              </div>
-              <p className="text-white/40 text-xs mb-4">
-                Владельцы парковок смогут добавлять свои объекты и зарабатывать через платформу QPark
-              </p>
-              <button onClick={() => { setShowB2BForm(!showB2BForm); setB2bSent(false) }}
-                className="w-full py-3 rounded-xl text-sm font-semibold transition-all hover:opacity-80"
-                style={{ background: "rgba(168,85,247,0.15)", color: "#a855f7", border: "1px solid rgba(168,85,247,0.3)" }}>
-                {showB2BForm ? "Скрыть форму" : "Подать заявку на размещение"}
-              </button>
-
-              {showB2BForm && (
-                <div className="mt-4 space-y-3">
-                  {b2bSent ? (
-                    <div className="text-center py-4">
-                      <p className="text-purple-400 font-semibold">✅ Заявка отправлена!</p>
-                      <p className="text-white/40 text-xs mt-1">Мы свяжемся с вами в течение 1-2 рабочих дней</p>
-                    </div>
-                  ) : (
-                    <>
-                      {[
-                        { label: "Название компании / ИП", field: "companyName", placeholder: "ТОО QPark Partner" },
-                        { label: "Имя владельца", field: "ownerName", placeholder: "Иван Иванов" },
-                        { label: "Номер телефона", field: "phone", placeholder: "+7 700 000 0000" },
-                        { label: "Адрес парковки", field: "address", placeholder: "ул. Сыганак, 5, Астана" },
-                        { label: "Количество мест", field: "spots", placeholder: "50" },
-                      ].map(({ label, field, placeholder }) => (
-                        <div key={field}>
-                          <label className="text-xs text-white/30 mb-1.5 block">{label}</label>
-                          <input value={b2bForm[field as keyof typeof b2bForm]}
-                            onChange={e => setB2bForm({ ...b2bForm, [field]: e.target.value })}
-                            placeholder={placeholder}
-                            className="w-full px-3 py-2.5 rounded-xl text-sm text-white border border-white/10 focus:outline-none focus:border-white/30 placeholder-white/20"
-                            style={{ background: "rgba(255,255,255,0.06)" }} />
-                        </div>
-                      ))}
-                      <div>
-                        <label className="text-xs text-white/30 mb-1.5 block">
-                          Документы правообладателя <span className="text-purple-400/60">(правоустанавливающий документ, план объекта)</span>
-                        </label>
-                        <div className="w-full px-3 py-4 rounded-xl border border-dashed border-white/20 text-center cursor-pointer hover:border-purple-400/40 transition-colors"
-                          style={{ background: "rgba(255,255,255,0.03)" }}>
-                          <p className="text-white/30 text-sm">📎 Прикрепить файлы</p>
-                          <p className="text-white/20 text-xs mt-1">PDF, JPG, PNG — макс. 10 МБ</p>
-                        </div>
-                      </div>
-                      <button onClick={() => setB2bSent(true)}
-                        disabled={!b2bForm.companyName || !b2bForm.phone || !b2bForm.address}
-                        className="w-full py-3 rounded-xl text-sm font-semibold text-white disabled:opacity-40 hover:opacity-80 transition-all"
-                        style={{ background: "rgba(168,85,247,0.4)" }}>
-                        Отправить заявку
-                      </button>
-                      <p className="text-white/20 text-xs text-center">
-                        После проверки документов администратор свяжется с вами
-                      </p>
-                    </>
-                  )}
-                </div>
-              )}
-            </div>
-
-          </div>
-        )}
       </div>
       <SpotModal />
     </div>

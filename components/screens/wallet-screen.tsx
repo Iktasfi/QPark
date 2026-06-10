@@ -15,7 +15,7 @@ export function WalletScreen() {
 
   useEffect(() => { setMounted(true) }, [])
 
-  const topUpAmounts = [500, 1000, 2000, 5000]
+  const topUpAmounts = [300, 500, 1000, 2000]
 
   const handleStripeSuccess = (walletBalance: number) => {
     if (!user || !selectedAmount) return
@@ -47,7 +47,7 @@ export function WalletScreen() {
 
   if (view === "topup" && !selectedAmount) {
     return (
-      <div className={`relative flex flex-col h-full ${darkMode ? "bg-gray-900" : "bg-[#F8F9FC]"}`}>
+      <div className={`relative flex flex-col ${darkMode ? "bg-gray-900" : "bg-[#F8F9FC]"}`} style={{ height: 'calc(100vh - env(safe-area-inset-top) - 8px)' }}>
         <div className="text-center pt-6 pb-4">
           <h1 className={`text-2xl font-bold ${darkMode ? "text-white" : "text-[#1a1a2e]"}`}>{t.topUpBalance}</h1>
         </div>
@@ -74,9 +74,8 @@ export function WalletScreen() {
             ))}
           </div>
 
-          {/* Custom amount input */}
           <div className={`rounded-2xl border-2 transition-all overflow-hidden ${
-            customAmount && Number(customAmount) >= 100
+            customAmount && Number(customAmount) >= 300
               ? "border-[#495E8E]"
               : darkMode ? "border-gray-700" : "border-gray-200"
           } ${darkMode ? "bg-gray-800" : "bg-white"}`}>
@@ -84,7 +83,7 @@ export function WalletScreen() {
               <span className={`text-lg font-bold ${darkMode ? "text-gray-400" : "text-gray-400"}`}>₸</span>
               <input
                 type="number"
-                min={100}
+                min={300}
                 value={customAmount}
                 onChange={e => {
                   setCustomAmount(e.target.value)
@@ -95,7 +94,7 @@ export function WalletScreen() {
                   darkMode ? "text-white placeholder:text-gray-600" : "text-[#1a1a2e] placeholder:text-gray-400"
                 }`}
               />
-              {customAmount && Number(customAmount) >= 100 && (
+              {customAmount && Number(customAmount) >= 300 && (
                 <button
                   onClick={() => setSelectedAmount(Number(customAmount))}
                   className="px-4 py-2 bg-[#495E8E] text-white rounded-xl text-sm font-semibold hover:bg-[#3d4c73] transition-colors"
@@ -104,8 +103,8 @@ export function WalletScreen() {
                 </button>
               )}
             </div>
-            {customAmount && Number(customAmount) < 100 && (
-              <p className="px-4 pb-2 text-xs text-red-400">Минимальная сумма — 100₸</p>
+            {customAmount && Number(customAmount) < 300 && (
+              <p className="px-4 pb-2 text-xs text-red-400">Минимальная сумма — 300₸</p>
             )}
           </div>
 
@@ -143,7 +142,7 @@ export function WalletScreen() {
   }
 
   return (
-    <div className={`relative flex flex-col h-full ${darkMode ? "bg-gray-900" : "bg-[#F8F9FC]"} overflow-hidden`}>
+    <div className={`relative flex flex-col ${darkMode ? "bg-gray-900" : "bg-[#F8F9FC]"} overflow-hidden`} style={{ height: 'calc(100vh - env(safe-area-inset-top) - 8px)' }}>
       <div className="text-center pt-6 pb-4">
         <h1 className={`text-2xl font-bold ${darkMode ? "text-white" : "text-[#1a1a2e]"}`}>{t.wallet}</h1>
         <p className={`text-sm ${darkMode ? "text-gray-400" : "text-gray-400"} mt-1`}>{t.manageBalance}</p>

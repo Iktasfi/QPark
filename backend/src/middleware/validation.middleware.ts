@@ -79,7 +79,12 @@ export const validatePromoCodeCreate = [
 
 
 export const validateWalletTopup = [
-  body('amount').isFloat({ min: 100 }).withMessage('Minimum amount is 100₸'),
+  body('amount').isFloat({ min: 300 }).withMessage('Минимальная сумма пополнения — 300₸'),
+  handleValidationErrors,
+];
+
+export const validateDirectTopup = [
+  body('amount').isFloat({ min: 1 }).withMessage('Amount must be at least 1'),
   handleValidationErrors,
 ];
 

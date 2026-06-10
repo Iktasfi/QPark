@@ -6,7 +6,6 @@ import { getSocket } from "@/lib/socket"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Separator } from "@/components/ui/separator"
 import { MapPin, Car, Clock, AlertTriangle, Camera, Calendar, Check, X, Wallet } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -19,7 +18,7 @@ const extendOptions = [
 ]
 
 export function ActiveBookingScreen() {
-  const { activeBooking, selectedSpot: _selectedSpot, spots, user, setCurrentScreen, setActiveBooking, updateSpot, setUser, t } = useParking()
+  const { activeBooking, selectedSpot: _selectedSpot, spots, user, setCurrentScreen, setActiveBooking, updateSpot, setUser, t, addNotification } = useParking()
 
   const selectedSpot = activeBooking
     ? (spots.find(s => s.id === activeBooking.spotId) ?? _selectedSpot)
@@ -33,35 +32,34 @@ export function ActiveBookingScreen() {
   }, [])
 
   const isLongTerm = selectedSpot?.type === "long-term" || activeBooking?.type === "long-term"
-  const isArrived = !isLongTerm && selectedSpot?.status === "OCCUPIED"
+  // Use arrivedAt from booking record — reliable across swaps/reassignments
+  const isArrived = !isLongTerm && !!activeBooking?.arrivedAt
   const elapsedSec = activeBooking ? Math.floor((now - new Date(activeBooking.startTime).getTime()) / 1000) : 0
   const timer = Math.max(0, 30 * 60 - elapsedSec)
 
-  // Overstay timeline (after estimatedEndTime):
-  //   0 min      → push "time's up, press Finish Parking"
-  //   0–5 min    → warning period (no charge yet)
-  //   5 min+     → charging 3₸/min, shown in Cost Breakdown
-  const GRACE_MS            = 7  * 60 * 1000  // arrival grace (reach spot after LPR entry)
-  const OVERSTAY_CHARGE_MS  = 5  * 60 * 1000  // charges start 5 min after time expires
+  const GRACE_MS = 7 * 60 * 1000          // arrival grace (LPR entry)
+  const OVERSTAY_GRACE_MS = 5 * 60 * 1000 // 5-min buffer after paid time before charges
 
-  // Short-term overstay (requires spot OCCUPIED)
-  const endTimeMs   = activeBooking?.endTime ? new Date(activeBooking.endTime).getTime() : null
-  const isWarnPeriod   = isArrived && endTimeMs !== null && now > endTimeMs && now <= endTimeMs + OVERSTAY_CHARGE_MS
-  const isOverstay     = isArrived && endTimeMs !== null && now > endTimeMs + OVERSTAY_CHARGE_MS
-  const warnSecondsLeft  = isWarnPeriod && endTimeMs ? Math.floor((endTimeMs + OVERSTAY_CHARGE_MS - now) / 1000) : 0
-  const overstayMinutes  = isOverstay   && endTimeMs ? Math.floor((now - (endTimeMs + OVERSTAY_CHARGE_MS)) / 60000) : 0
-  const overtimeCost     = overstayMinutes * 3
+  // Short-term overstay
+  const endTimeMs           = activeBooking?.endTime ? new Date(activeBooking.endTime).getTime() : null
+  const overstayGraceEndMs  = endTimeMs ? endTimeMs + OVERSTAY_GRACE_MS : null
+  // Grace period: paid time expired but 5-min buffer still running
+  const isOverstayGrace     = isArrived && endTimeMs !== null && now > endTimeMs && overstayGraceEndMs !== null && now <= overstayGraceEndMs
+  const overstayGraceRemSec = isOverstayGrace && overstayGraceEndMs ? Math.max(0, Math.floor((overstayGraceEndMs - now) / 1000)) : 0
+  // Actual overstay: 5-min grace expired
+  const isOverstay          = isArrived && overstayGraceEndMs !== null && now > overstayGraceEndMs
+  const overstayMinutes     = isOverstay && overstayGraceEndMs ? Math.floor((now - overstayGraceEndMs) / 60000) : 0
+  const overtimeCost        = overstayMinutes * 3
 
-  // Long-term overstay
-  const ltInsideSpot = isLongTerm && selectedSpot?.status === "OCCUPIED"
-  const endDateMs    = activeBooking?.endDate ? new Date(activeBooking.endDate).getTime() : null
-  const isLtGrace    = ltInsideSpot && endDateMs !== null && now > endDateMs && now <= endDateMs + GRACE_MS
-  const isLtWarn     = ltInsideSpot && endDateMs !== null && now > endDateMs + GRACE_MS && now <= endDateMs + OVERSTAY_CHARGE_MS + GRACE_MS
-  const isLtOverstay = ltInsideSpot && endDateMs !== null && now > endDateMs + GRACE_MS + OVERSTAY_CHARGE_MS
-  const ltGraceSecondsLeft = isLtGrace ? Math.floor((endDateMs! + GRACE_MS - now) / 1000) : 0
-  const ltWarnSecondsLeft  = isLtWarn  ? Math.floor((endDateMs! + GRACE_MS + OVERSTAY_CHARGE_MS - now) / 1000) : 0
-  const ltOverstayMinutes  = isLtOverstay ? Math.floor((now - (endDateMs! + GRACE_MS + OVERSTAY_CHARGE_MS)) / 60000) : 0
-  const ltOvertimeCost     = ltOverstayMinutes * 3
+  // Long-term overstay: charges start immediately at endDate
+  const ltInsideSpot    = isLongTerm && selectedSpot?.status === "OCCUPIED"
+  const endDateMs       = activeBooking?.endDate ? new Date(activeBooking.endDate).getTime() : null
+  const isLtExpired     = isLongTerm && endDateMs !== null && now > endDateMs
+  const isLtOverstay    = ltInsideSpot && isLtExpired
+  const ltOverstayMinutes = isLtOverstay && endDateMs ? Math.floor((now - endDateMs) / 60000) : 0
+  // Live debt for expired rental (even if car is outside)
+  const ltDebtMinutes   = isLtExpired && endDateMs ? Math.floor((now - endDateMs) / 60000) : 0
+  const ltDebt          = ltDebtMinutes * 3
 
   const GRACE_SECONDS = 7 * 60
 
@@ -70,9 +68,35 @@ export function ActiveBookingScreen() {
     ? new Date(activeBooking.arrivedAt).getTime()
     : null
 
-  // User pressed "Finish Parking" during grace → skip remaining grace, start timer from that moment
+  // User pressed "Start Parking" — persisted to localStorage so it survives navigation/refresh
   const [confirmedParked, setConfirmedParked] = useState(false)
   const [confirmedParkedAt, setConfirmedParkedAt] = useState<number | null>(null)
+
+  // Restore confirmedParkedAt from localStorage on mount
+  useEffect(() => {
+    if (!activeBooking?.id) return
+    const stored = localStorage.getItem(`parkingStarted-${activeBooking.id}`)
+    if (stored) {
+      setConfirmedParked(true)
+      setConfirmedParkedAt(parseInt(stored, 10))
+    }
+  }, [activeBooking?.id])
+
+  // Schedule iOS notifications from real endTime whenever arrivedAt becomes known.
+  // Covers two cases: (a) LPR fires while app is open → booking-updated handler calls this,
+  // (b) booking is restored from server with arrivedAt already set → this effect fires once.
+  useEffect(() => {
+    if (isLongTerm || !activeBooking?.id || !activeBooking.arrivedAt || !activeBooking.endTime) return
+    if (notifScheduledForRef.current === activeBooking.id) return
+    notifScheduledForRef.current = activeBooking.id
+    const endMs = new Date(activeBooking.endTime).getTime()
+    if (endMs > Date.now()) {
+      import('@/lib/local-notify').then(({ rescheduleBookingNotifications }) => {
+        rescheduleBookingNotifications(endMs)
+      }).catch(() => {})
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeBooking?.id, activeBooking?.arrivedAt, activeBooking?.endTime])
 
   const rawElapsed = arrivedAtMs ? Math.floor((now - arrivedAtMs) / 1000) : 0
   const graceRemaining = Math.max(0, GRACE_SECONDS - rawElapsed)
@@ -83,20 +107,17 @@ export function ActiveBookingScreen() {
     ? Math.max(0, Math.floor((now - parkingStart) / 1000))
     : 0
 
-  // Booked duration = endTime - parking start (set by backend at LPR entry)
-  const bookedDurationSec = endTimeMs && parkingStart
-    ? Math.max(0, Math.floor((endTimeMs - parkingStart) / 1000))
-    : null
-  // Cap displayed timer at booked duration — overstay banners handle the rest
-  const displayDuration = bookedDurationSec !== null
-    ? Math.min(parkingDuration, bookedDurationSec)
-    : parkingDuration
-
+  // Booked duration = exactly what user paid for.
+  // Prefer the explicit bookedMinutes field (set at booking creation and carried in socket events).
+  // Fall back to deriving it from timestamps only when bookedMinutes is unavailable.
+  const bookedDurationSec = activeBooking?.bookedMinutes
+    ? activeBooking.bookedMinutes * 60
+    : (endTimeMs && arrivedAtMs
+        ? Math.max(0, Math.floor((endTimeMs - arrivedAtMs - GRACE_MS) / 1000))
+        : null)
   // "5 min left" warning: show when ≤5 min remain in booked time
   const timeLeftSec = bookedDurationSec !== null ? Math.max(0, bookedDurationSec - parkingDuration) : null
-  const isTimeEndingSoon = isParking && !isWarnPeriod && !isOverstay && timeLeftSec !== null && timeLeftSec > 0 && timeLeftSec <= 5 * 60
-  // Time is up: timer hit booked duration (or no endTime info → never)
-  const isTimeUp = isParking && bookedDurationSec !== null && parkingDuration >= bookedDurationSec
+  const isTimeEndingSoon = isParking && !isOverstay && timeLeftSec !== null && timeLeftSec > 0 && timeLeftSec <= 5 * 60
 
   // Exit grace: user pressed "Finish" → 7-min window to drive to barrier
   const [exitGraceStarted, setExitGraceStarted] = useState(false)
@@ -108,10 +129,16 @@ export function ActiveBookingScreen() {
   const exitGraceRemaining = Math.max(0, 7 * 60 - exitGraceElapsed)
 
   const [showGateOpened] = useState(false)
+  const notifScheduledForRef = useRef<string | null>(null)
   const [insufficientBalance, setInsufficientBalance] = useState<{ need: number; have: number } | null>(null)
+  const [ltFinishing, setLtFinishing] = useState(false)
+  const [ltExitRequested, setLtExitRequested] = useState(() => !!activeBooking?.exitRequestedAt)
   const [showExtend, setShowExtend] = useState(false)
   const [selectedExtendDays, setSelectedExtendDays] = useState<number | null>(null)
   const [isExtending, setIsExtending] = useState(false)
+  const [showExtendShort, setShowExtendShort] = useState(false)
+  const [selectedExtendMins, setSelectedExtendMins] = useState<number | null>(null)
+  const [isExtendingShort, setIsExtendingShort] = useState(false)
   const [isTerminating, setIsTerminating] = useState(false)
   const [showTerminateConfirm, setShowTerminateConfirm] = useState(false)
   const [showComplaint, setShowComplaint] = useState(false)
@@ -184,8 +211,13 @@ export function ActiveBookingScreen() {
         setUser({ ...user, balance: data.newBalance })
       }
 
+      // Cancel all pending booking notifications since the session is ending
+      import('@/lib/local-notify').then(({ cancelBookingNotifications }) => cancelBookingNotifications()).catch(() => {})
+
       setExitGraceStarted(true)
       setExitGraceStartedAt(Date.now())
+      // Persist exitRequestedAt so state survives navigation
+      setActiveBooking({ ...activeBooking, exitRequestedAt: new Date() })
 
       // After 7 min: just navigate home — spot freed only when car exits via LPR/simulate-exit
       exitTimerRef.current = setTimeout(() => {
@@ -200,47 +232,139 @@ export function ActiveBookingScreen() {
     }
   }
 
-  const handleExtendRental = () => {
+  const handleFinishParkingLongterm = async () => {
+    if (!user || !activeBooking || ltFinishing) return
+    setLtFinishing(true)
+    try {
+      const token = localStorage.getItem("qpark_token")
+      const res = await fetch("/backend/bookings/finish-parking-longterm", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const data = await res.json()
+      if (res.status === 402 && data.insufficient) {
+        setInsufficientBalance({ need: data.debtAmount, have: data.balance })
+        return
+      }
+      if (!res.ok) throw new Error(data.error || "Failed to finish rental")
+      if (data.debtCharged > 0 && user) {
+        setUser({ ...user, balance: user.balance - data.debtCharged })
+      }
+      setLtExitRequested(true)
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to finish rental")
+    } finally {
+      setLtFinishing(false)
+    }
+  }
+
+  const shortExtendOptions = [
+    { mins: 15, price: 45 },
+    { mins: 30, price: 90 },
+    { mins: 45, price: 135 },
+    { mins: 60, price: 150 },
+  ]
+
+  const handleExtendShortBooking = async () => {
+    if (!selectedExtendMins || !activeBooking || !user) return
+    setIsExtendingShort(true)
+    try {
+      const token = localStorage.getItem('qpark_token')
+      const res = await fetch(`/backend/bookings/${activeBooking.id}/extend`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ additionalMinutes: selectedExtendMins }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Failed to extend')
+
+      // Update local state — extend endTime and bookedMinutes so the timer reflects new duration
+      const newEnd = data.newEndTime ? new Date(data.newEndTime) : activeBooking.endTime
+      setActiveBooking({
+        ...activeBooking,
+        endTime: newEnd,
+        bookedMinutes: (activeBooking.bookedMinutes ?? 0) + selectedExtendMins,
+      })
+      setUser({ ...user, balance: data.walletBalance ?? user.balance - (data.extendCost ?? 0) })
+
+      // Reschedule iOS local notifications for the new end time (cancels old ones first)
+      if (newEnd) {
+        import('@/lib/local-notify').then(({ rescheduleBookingNotifications }) => {
+          rescheduleBookingNotifications(new Date(newEnd).getTime())
+        }).catch(() => {})
+      }
+
+      setShowExtendShort(false)
+      setSelectedExtendMins(null)
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Ошибка продления')
+    } finally {
+      setIsExtendingShort(false)
+    }
+  }
+
+  const handleExtendRental = async () => {
     if (!selectedExtendDays || !activeBooking || !user) return
     setIsExtending(true)
-    const option = extendOptions.find(o => o.days === selectedExtendDays)!
-    setTimeout(() => {
-      setActiveBooking({ ...activeBooking, rentalDays: (activeBooking.rentalDays ?? 0) + selectedExtendDays })
+    try {
+      const token = localStorage.getItem("qpark_token")
+      const res = await fetch(`/backend/rentals/${activeBooking.id}/extend`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ additionalDays: selectedExtendDays }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? "Failed to extend rental")
+
+      setActiveBooking({
+        ...activeBooking,
+        rentalDays: (activeBooking.rentalDays ?? 0) + selectedExtendDays,
+        endDate: data.newEndDate ? new Date(data.newEndDate) : activeBooking.endDate,
+      })
       setUser({
         ...user,
-        balance: user.balance - option.price,
+        balance: user.balance - (data.extendCost ?? 0),
         transactions: [
           {
             id: `t-${Date.now()}`,
             type: "longterm_charge",
-            amount: -option.price,
+            amount: -(data.extendCost ?? 0),
             description: `Extended rental ${activeBooking.spotId} by ${selectedExtendDays} day${selectedExtendDays > 1 ? "s" : ""}`,
             date: new Date(),
           },
           ...user.transactions,
         ],
       })
-      setIsExtending(false)
       setShowExtend(false)
       setSelectedExtendDays(null)
-    }, 800)
+    } catch (err: any) {
+      console.error("Extend rental error:", err)
+    } finally {
+      setIsExtending(false)
+    }
   }
 
   const handleCancelBooking = useCallback(async () => {
     if (selectedSpot) {
       updateSpot(selectedSpot.id, { status: "FREE", bookedBy: undefined, plateNumber: undefined })
     }
-    setActiveBooking(null)
-    setCurrentScreen("home")
     const token = localStorage.getItem("qpark_token")
     try {
-      await fetch("/backend/bookings/cancel-by-spot", {
+      const res = await fetch("/backend/bookings/cancel-by-spot", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         body: JSON.stringify({ spotNumber: activeBooking?.spotId }),
       })
+      if (res.ok && user) {
+        const data = await res.json()
+        if (data.refundAmount && data.refundAmount > 0) {
+          setUser({ ...user, balance: user.balance + data.refundAmount })
+        }
+      }
     } catch {}
-  }, [selectedSpot, activeBooking, updateSpot, setActiveBooking, setCurrentScreen])
+    setActiveBooking(null)
+    setCurrentScreen("home")
+  }, [selectedSpot, activeBooking, user, setUser, updateSpot, setActiveBooking, setCurrentScreen])
 
   const handleTerminateRental = useCallback(async () => {
     if (!activeBooking || !user) return
@@ -319,24 +443,29 @@ export function ActiveBookingScreen() {
   }
 
   const [spotMovedNotice, setSpotMovedNotice] = useState<string | null>(null)
+  const [gateBlockedReason, setGateBlockedReason] = useState<string | null>(null)
 
   // Listen for spot reassignment from admin
   useEffect(() => {
     const socket = getSocket()
 
-    // Victim: gets new spot offer with 7-min timer
+    // Victim: already physically inside — update spot label, clear "waiting for admin" state, show notice
     const handleReassigned = (data: { userId: string; newSpotId: string }) => {
-      if (data.userId === user?.id) {
-        setNewSpotOffer({ spotId: data.newSpotId })
+      if (data.userId === user?.id && activeBooking) {
+        setActiveBooking({ ...activeBooking, spotId: data.newSpotId, arrivedAt: activeBooking.arrivedAt ?? new Date() })
+        setComplaintSent(false)
+        setSpotMovedNotice(data.newSpotId)
+        setTimeout(() => setSpotMovedNotice(null), 10000)
+        addNotification({ type: 'spot', title: t.newSpotFound, message: `${t.newSpotFoundDesc} ${data.newSpotId}` })
       }
     }
 
-    // Violator: booking silently moved to where they physically are — just update label, keep timer
     const handleSpotMoved = (data: { userId: string; newSpotId: string; oldSpotId?: string }) => {
       if (data.userId === user?.id && activeBooking) {
-        setActiveBooking({ ...activeBooking, spotId: data.newSpotId })
+        setActiveBooking({ ...activeBooking, spotId: data.newSpotId, arrivedAt: activeBooking.arrivedAt ?? new Date() })
         setSpotMovedNotice(data.newSpotId)
         setTimeout(() => setSpotMovedNotice(null), 6000)
+        addNotification({ type: 'spot', title: t.spotMovedTo, message: data.newSpotId })
       }
     }
 
@@ -359,19 +488,32 @@ export function ActiveBookingScreen() {
         setUser({ ...user, balance: user.balance - data.cost })
       }
     }
-    const handleBookingExtended = (data: { bookingId: string; endTime: string }) => {
-      if (activeBooking && data.bookingId === activeBooking.id) {
-        setActiveBooking({ ...activeBooking, endTime: new Date(data.endTime) })
-      }
-    }
-    // LPR entry: backend recalculates estimatedEndTime based on actual arrival
-    const handleBookingUpdated = (data: { bookingId: string; endTime: string; arrivedAt?: string }) => {
+    const handleBookingExtended = (data: { bookingId: string; endTime: string; additionalMinutes?: number }) => {
       if (activeBooking && data.bookingId === activeBooking.id) {
         setActiveBooking({
           ...activeBooking,
           endTime: new Date(data.endTime),
-          ...(data.arrivedAt ? { arrivedAt: new Date(data.arrivedAt) } : {}),
+          ...(data.additionalMinutes ? { bookedMinutes: (activeBooking.bookedMinutes ?? 0) + data.additionalMinutes } : {}),
         })
+      }
+    }
+    // LPR entry: backend recalculates estimatedEndTime based on actual arrival
+    const handleBookingUpdated = (data: { bookingId: string; endTime: string; arrivedAt?: string; bookedMinutes?: number }) => {
+      if (activeBooking && data.bookingId === activeBooking.id) {
+        const wasArrived = !!activeBooking.arrivedAt
+        setActiveBooking({
+          ...activeBooking,
+          endTime: new Date(data.endTime),
+          ...(data.arrivedAt ? { arrivedAt: new Date(data.arrivedAt) } : {}),
+          ...(data.bookedMinutes ? { bookedMinutes: data.bookedMinutes } : {}),
+        })
+        // First arrival: reschedule iOS notifications from the real server endTime
+        if (data.arrivedAt && !wasArrived && data.endTime) {
+          const endMs = new Date(data.endTime).getTime()
+          import('@/lib/local-notify').then(({ rescheduleBookingNotifications }) => {
+            rescheduleBookingNotifications(endMs)
+          }).catch(() => {})
+        }
       }
     }
     // LPR (or simulate-exit) confirmed the car physically left → cancel fallback timer and go home
@@ -381,10 +523,23 @@ export function ActiveBookingScreen() {
           clearTimeout(exitTimerRef.current)
           exitTimerRef.current = null
         }
+        if (data.bookingId) localStorage.removeItem(`parkingStarted-${data.bookingId}`)
+        import('@/lib/local-notify').then(({ cancelBookingNotifications }) => cancelBookingNotifications()).catch(() => {})
         setActiveBooking(null)
         setCurrentScreen("home")
       }
     }
+    // LPR denied at our spot — OCR couldn't read plate or plate mismatch
+    const handleGateDenied = (data: { carPlate: string; spotNumber: string; reason: string }) => {
+      if (!activeBooking || isArrived) return
+      // Match by spot number or by user's car plate
+      const ourSpot = data.spotNumber === activeBooking.spotId
+      const ourPlate = user?.cars.some(c => c.plateNumber.replace(/\s/g, '').toUpperCase() === data.carPlate.replace(/\s/g, '').toUpperCase())
+      if (ourSpot || ourPlate) {
+        setGateBlockedReason(data.reason || 'Шлагбаум не открылся')
+      }
+    }
+
     socket.on("spot-reassigned", handleReassigned)
     socket.on("spot-moved", handleSpotMoved)
     socket.on("no-spots-available", handleNoSpots)
@@ -393,6 +548,7 @@ export function ActiveBookingScreen() {
     socket.on("booking-extended", handleBookingExtended)
     socket.on("booking-updated", handleBookingUpdated)
     socket.on("parking-exit-confirmed", handleParkingExitConfirmed)
+    socket.on("lpr-gate-denied", handleGateDenied)
     return () => {
       socket.off("spot-reassigned", handleReassigned)
       socket.off("spot-moved", handleSpotMoved)
@@ -402,6 +558,7 @@ export function ActiveBookingScreen() {
       socket.off("booking-extended", handleBookingExtended)
       socket.off("booking-updated", handleBookingUpdated)
       socket.off("parking-exit-confirmed", handleParkingExitConfirmed)
+      socket.off("lpr-gate-denied", handleGateDenied)
     }
   }, [user, activeBooking])
 
@@ -446,7 +603,7 @@ export function ActiveBookingScreen() {
 
   if (!activeBooking) {
     return (
-      <div className="flex flex-col h-full pb-4">
+      <div className="flex flex-col pb-4" style={{ height: 'calc(100vh - env(safe-area-inset-top) - 8px)' }}>
         <div className="px-4 pt-4 pb-2">
           <h1 className="text-xl font-bold text-foreground">{t.myBookings}</h1>
           <p className="text-sm text-muted-foreground">{t.noActiveBooking}</p>
@@ -534,7 +691,25 @@ export function ActiveBookingScreen() {
       {spotMovedNotice && (
         <div className="rounded-xl px-4 py-3 text-sm font-medium text-white bg-blue-600 flex items-center gap-2">
           <span>📍</span>
-          <span>Ваше место изменено на <strong>{spotMovedNotice}</strong></span>
+          <span>{t.spotMovedTo} <strong>{spotMovedNotice}</strong></span>
+        </div>
+      )}
+
+      {/* LPR gate denied — OCR couldn't read plate or mismatch */}
+      {gateBlockedReason && (
+        <div className="rounded-xl px-4 py-3 bg-red-50 border border-red-300 flex items-start gap-3">
+          <AlertTriangle className="h-5 w-5 text-red-500 shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <p className="text-sm font-semibold text-red-700">Шлагбаум не открылся</p>
+            <p className="text-xs text-red-600 mb-2">{gateBlockedReason} — напишите менеджеру, он откроет вручную</p>
+            <button
+              onClick={() => setCurrentScreen("support")}
+              className="text-xs font-semibold text-white bg-red-500 hover:bg-red-600 rounded-lg px-3 py-1.5 transition-colors"
+            >
+              Написать менеджеру →
+            </button>
+          </div>
+          <button onClick={() => setGateBlockedReason(null)} className="text-red-400 hover:text-red-600 text-lg leading-none">×</button>
         </div>
       )}
       <div className="flex items-center justify-between">
@@ -555,19 +730,20 @@ export function ActiveBookingScreen() {
         </div>
       </div>
       
-      {/* Stage 1: 0–5 min warning — press Finish Parking to avoid charges */}
-      {isWarnPeriod && (
+      {/* 5-min overstay grace: paid time expired, grace countdown running.
+          Hidden if exit grace is already started (don't show two timers at once). */}
+      {isOverstayGrace && !exitGraceStarted && (
         <div className="rounded-xl px-4 py-3 bg-orange-500/10 border border-orange-500/40 flex items-center gap-3">
           <AlertTriangle className="h-5 w-5 text-orange-500 shrink-0" />
           <div className="flex-1">
-            <p className="text-sm font-semibold text-orange-600">Последнее предупреждение</p>
-            <p className="text-xs text-orange-500">Списание начнётся через <strong>{formatTime(warnSecondsLeft)}</strong> · выедьте сейчас</p>
+            <p className="text-sm font-semibold text-orange-600">Время истекло — льготный период</p>
+            <p className="text-xs text-orange-500">Через <strong>{Math.floor(overstayGraceRemSec / 60)}:{String(overstayGraceRemSec % 60).padStart(2, '0')}</strong> начнётся списание 3₸/мин</p>
           </div>
         </div>
       )}
 
-      {/* Stage 3: 12+ min charging 3₸/min */}
-      {isOverstay && (
+      {/* Overstay: 5-min grace expired, charges running */}
+      {isOverstay && !exitGraceStarted && (
         <div className="rounded-xl px-4 py-3 bg-red-500/10 border border-red-500/40 flex items-center gap-3">
           <AlertTriangle className="h-5 w-5 text-red-500 shrink-0" />
           <div className="flex-1">
@@ -578,33 +754,32 @@ export function ActiveBookingScreen() {
         </div>
       )}
 
-      {/* Long-term overstay: rental expired but car still inside */}
-      {isLtGrace && (
-        <div className="rounded-xl px-4 py-3 bg-amber-500/10 border border-amber-500/30 flex items-center gap-3">
-          <Clock className="h-5 w-5 text-amber-500 shrink-0" />
-          <div className="flex-1">
-            <p className="text-sm font-semibold text-amber-600">Аренда истекла</p>
-            <p className="text-xs text-amber-500">Пожалуйста выедьте в течение <strong>{formatTime(ltGraceSecondsLeft)}</strong></p>
+      {/* Long-term: rental expired — show debt and Finish Parking button */}
+      {isLtExpired && !ltExitRequested && (
+        <div className="rounded-xl px-4 py-3 bg-red-500/10 border border-red-500/40 space-y-2">
+          <div className="flex items-center gap-3">
+            <AlertTriangle className="h-5 w-5 text-red-500 shrink-0" />
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-red-600">Аренда истекла</p>
+              <p className="text-xs text-red-500">
+                Идёт списание <strong>3₸/мин</strong> · {ltOverstayMinutes} мин
+              </p>
+            </div>
+            {ltDebt > 0 && <p className="text-lg font-bold text-red-600 shrink-0">−{ltDebt}₸</p>}
           </div>
+          {isLtOverstay && (
+            <p className="text-xs text-red-500 pl-8">Автомобиль всё ещё на парковке. Долг растёт.</p>
+          )}
         </div>
       )}
-      {isLtWarn && (
-        <div className="rounded-xl px-4 py-3 bg-orange-500/10 border border-orange-500/40 flex items-center gap-3">
-          <AlertTriangle className="h-5 w-5 text-orange-500 shrink-0" />
+      {/* Long-term: exit approved — car can now leave */}
+      {isLtExpired && ltExitRequested && (
+        <div className="rounded-xl px-4 py-3 bg-green-500/10 border border-green-500/40 flex items-center gap-3">
+          <Check className="h-5 w-5 text-green-600 shrink-0" />
           <div className="flex-1">
-            <p className="text-sm font-semibold text-orange-600">Последнее предупреждение</p>
-            <p className="text-xs text-orange-500">Списание начнётся через <strong>{formatTime(ltWarnSecondsLeft)}</strong> · выедьте сейчас</p>
+            <p className="text-sm font-semibold text-green-700">Долг оплачен — можно выезжать</p>
+            <p className="text-xs text-green-600">Подъедьте к шлагбауму — он откроется автоматически</p>
           </div>
-        </div>
-      )}
-      {isLtOverstay && (
-        <div className="rounded-xl px-4 py-3 bg-red-500/10 border border-red-500/40 flex items-center gap-3">
-          <AlertTriangle className="h-5 w-5 text-red-500 shrink-0" />
-          <div className="flex-1">
-            <p className="text-sm font-semibold text-red-600">Превышение времени аренды</p>
-            <p className="text-xs text-red-500">Идёт списание <strong>3₸/мин</strong> · уже {ltOverstayMinutes} мин</p>
-          </div>
-          <p className="text-lg font-bold text-red-600 shrink-0">−{ltOvertimeCost}₸</p>
         </div>
       )}
 
@@ -656,6 +831,12 @@ export function ActiveBookingScreen() {
             {timer < 300 && (
               <p className="mt-2 text-sm text-destructive">{t.hurryExpire}</p>
             )}
+            <button
+              onClick={() => setCurrentScreen("support")}
+              className="mt-2 text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground transition-colors"
+            >
+              Шлагбаум не открывается? Написать менеджеру
+            </button>
           </CardContent>
         </Card>
       )}
@@ -685,50 +866,138 @@ export function ActiveBookingScreen() {
         </Card>
       )}
 
-      {/* Arrival grace card or parking timer card */}
-      {!isLongTerm && isArrived && !exitGraceStarted && (
-        !isParking ? (
-          <Card className="border-green-400 bg-green-50">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <Clock className="h-8 w-8 text-green-600" />
+      {/* Short-term unified timer — 3 phases: active → grace → overstay.
+          Only visible after user presses Start Parking (isParking).
+          Before that: "Time to arrive" (30 min) → "Find and park" (7 min) → here. */}
+      {!isLongTerm && !exitGraceStarted && endTimeMs !== null && isArrived && isParking && (
+        <Card className={cn(
+          "overflow-hidden",
+          isOverstay
+            ? "border-red-500 bg-red-50 dark:bg-red-950/30"
+            : isOverstayGrace
+              ? "border-orange-400 bg-orange-50 dark:bg-orange-950/30"
+              : isTimeEndingSoon
+                ? "border-yellow-400 bg-yellow-50 dark:bg-yellow-950/30"
+                : "border-[#36549B] bg-[#36549B]/5"
+        )}>
+          <CardContent className="p-5">
+            {isOverstay ? (
+              /* ─── Phase 3: Overstay — red cost meter ─── */
+              <div className="space-y-4">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="h-5 w-5 text-red-500 shrink-0" />
+                  <p className="text-sm font-bold text-red-600">Сверхурочное время</p>
+                </div>
+                <div className="flex items-end justify-between">
                   <div>
-                    <p className="text-sm text-green-700 font-medium">{t.findAndParkSpot}</p>
-                    <p className="text-3xl font-bold text-green-800">{formatTime(graceRemaining)}</p>
+                    <p className="text-5xl font-bold tabular-nums text-red-600">{overtimeCost} ₸</p>
+                    <p className="text-sm text-red-500 mt-1">{overstayMinutes} мин × 3 ₸/мин</p>
+                  </div>
+                  <div className="flex flex-col items-end gap-1">
+                    <span className="text-xs font-semibold text-red-500 bg-red-100 px-2 py-0.5 rounded-full">Долг растёт</span>
+                    <p className="text-xs text-gray-500 text-right">+3 ₸ каждую<br/>минуту</p>
                   </div>
                 </div>
-                <div className="text-right">
-                  <p className="text-xs text-green-600">{t.meterStartsAfter}</p>
-                  <p className="text-sm font-semibold text-green-700">0 &#8376;</p>
-                </div>
+                <p className="text-xs text-red-400">Спишется автоматически при завершении парковки</p>
               </div>
-            </CardContent>
-          </Card>
-        ) : (
-          <Card className={isTimeUp ? "border-orange-400 bg-orange-50" : "border-[#36549B] bg-[#36549B]/5"}>
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <Clock className={`h-8 w-8 ${isTimeUp ? "text-orange-500" : "text-[#36549B]"}`} />
+            ) : isOverstayGrace ? (
+              /* ─── Phase 2: Grace — orange 5-min countdown ─── */
+              <div className="space-y-4">
+                <div className="flex items-center gap-2">
+                  <Clock className="h-5 w-5 text-orange-500 shrink-0" />
+                  <p className="text-sm font-bold text-orange-600">Время вышло — льготный период</p>
+                </div>
+                <div className="flex items-end justify-between">
                   <div>
-                    <p className="text-sm text-muted-foreground">{t.parkingDuration}</p>
-                    <p className={`text-3xl font-bold ${isTimeUp ? "text-orange-600" : "text-foreground"}`}>{formatTime(displayDuration)}</p>
-                    {bookedDurationSec !== null && (
-                      <p className="text-xs text-muted-foreground">из {formatTime(bookedDurationSec)}</p>
+                    <p className="text-5xl font-bold tabular-nums text-orange-700">{formatTime(overstayGraceRemSec)}</p>
+                    <p className="text-xs text-orange-500 mt-1">до начала 3 ₸/мин</p>
+                  </div>
+                  <p className="text-sm text-orange-600 font-medium text-right">Выезжайте<br/>или продлите</p>
+                </div>
+                <Button
+                  size="lg"
+                  className="w-full bg-orange-500 hover:bg-orange-600 text-white"
+                  onClick={() => setShowExtendShort(true)}
+                >
+                  <Calendar className="h-4 w-4 mr-2" />
+                  Продлить аренду
+                </Button>
+              </div>
+            ) : (
+              /* ─── Phase 1: Active — countdown with elapsed ─── */
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Clock className={`h-5 w-5 ${isTimeEndingSoon ? "text-yellow-600" : "text-[#36549B]"}`} />
+                    <p className={`text-sm font-semibold ${isTimeEndingSoon ? "text-yellow-700" : "text-[#36549B]"}`}>
+                      {isTimeEndingSoon ? '⚠️ Скоро истекает' : 'Осталось времени'}
+                    </p>
+                  </div>
+                  {activeBooking?.isPaid && (
+                    <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-100">
+                      <Check className="h-3 w-3 text-green-600" />
+                      <span className="text-xs font-semibold text-green-700">{t.paid}</span>
+                    </div>
+                  )}
+                </div>
+                <div className="flex items-end justify-between">
+                  <div>
+                    <p className={`text-5xl font-bold tabular-nums ${isTimeEndingSoon ? "text-yellow-700" : "text-foreground"}`}>
+                      {formatTime(timeLeftSec ?? Math.max(0, Math.floor((endTimeMs - now) / 1000)))}
+                    </p>
+                    {activeBooking?.endTime && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        до {new Date(activeBooking.endTime).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}
+                      </p>
                     )}
                   </div>
+                  {bookedDurationSec !== null && timeLeftSec !== null && (
+                    <div className="text-right">
+                      <p className="text-xs text-gray-500">Прошло</p>
+                      <p className="text-2xl font-bold tabular-nums text-gray-700 dark:text-gray-300">{formatTime(bookedDurationSec - timeLeftSec)}</p>
+                      <p className="text-xs text-gray-400">из {formatTime(bookedDurationSec)}</p>
+                    </div>
+                  )}
                 </div>
-                {activeBooking?.isPaid && (
-                  <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-green-100 dark:bg-green-900/30">
-                    <Check className="h-4 w-4 text-green-600" />
-                    <span className="text-sm font-semibold text-green-700 dark:text-green-400">{t.paid}</span>
-                  </div>
-                )}
+                <Button
+                  variant="outline"
+                  size="lg"
+                  className={cn(
+                    "w-full",
+                    isTimeEndingSoon
+                      ? "border-yellow-500 text-yellow-700 hover:bg-yellow-50"
+                      : "border-[#354469] text-[#354469] hover:bg-[#354469] hover:text-white"
+                  )}
+                  onClick={() => setShowExtendShort(true)}
+                >
+                  <Calendar className="h-4 w-4 mr-2" />
+                  Продлить аренду
+                </Button>
               </div>
-            </CardContent>
-          </Card>
-        )
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Arrival grace: user entered barrier but hasn't pressed Start Parking yet */}
+      {!isLongTerm && isArrived && !exitGraceStarted && !isParking && (
+        <Card className="border-green-400 bg-green-50">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Clock className="h-8 w-8 text-green-600" />
+                <div>
+                  <p className="text-sm text-green-700 font-medium">{t.findAndParkSpot}</p>
+                  <p className="text-3xl font-bold text-green-800">{formatTime(graceRemaining)}</p>
+                </div>
+              </div>
+              <div className="text-right">
+                <p className="text-xs text-green-600">{t.meterStartsAfter}</p>
+                <p className="text-sm font-semibold text-green-700">0 &#8376;</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       )}
 
       
@@ -751,14 +1020,14 @@ export function ActiveBookingScreen() {
 
           <Card className={selectedSpot?.status === "OCCUPIED"
             ? "border-green-300 bg-green-50"
-            : (reassignedAt !== null || complaintSent)
+            : (reassignedAt !== null || complaintSent || activeBooking?.arrivedAt)
               ? "border-orange-300 bg-orange-50"
               : "border-purple-200 bg-purple-50"
           }>
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <div className={`h-3 w-3 rounded-full ${selectedSpot?.status === "OCCUPIED" ? "bg-green-500" : (reassignedAt !== null || complaintSent) ? "bg-orange-400" : "bg-purple-400"}`} />
+                  <div className={`h-3 w-3 rounded-full ${selectedSpot?.status === "OCCUPIED" ? "bg-green-500" : (reassignedAt !== null || complaintSent || activeBooking?.arrivedAt) ? "bg-orange-400" : "bg-purple-400"}`} />
                   <div>
                     <p className="text-sm font-semibold text-foreground">
                       {selectedSpot?.status === "OCCUPIED"
@@ -767,7 +1036,9 @@ export function ActiveBookingScreen() {
                           ? t.moveToNewSpot
                           : complaintSent
                             ? t.insideWaiting
-                            : t.spotReservedOutside}
+                            : (activeBooking?.arrivedAt && selectedSpot?.status !== "RESERVED")
+                              ? `${t.relocateTo} ${activeBooking.spotId}`
+                              : t.spotReservedOutside}
                     </p>
                     <p className="text-xs text-muted-foreground">
                       {selectedSpot?.status === "OCCUPIED"
@@ -776,11 +1047,13 @@ export function ActiveBookingScreen() {
                           ? t.moveToNewSpotDesc
                           : complaintSent
                             ? t.adminFindingSpot
-                            : t.driveInLpr}
+                            : (activeBooking?.arrivedAt && selectedSpot?.status !== "RESERVED")
+                              ? t.carAlreadyInside
+                              : t.driveInLpr}
                     </p>
                   </div>
                 </div>
-                <Car className={`h-6 w-6 ${selectedSpot?.status === "OCCUPIED" ? "text-green-600" : (reassignedAt !== null || complaintSent) ? "text-orange-500" : "text-purple-400"}`} />
+                <Car className={`h-6 w-6 ${selectedSpot?.status === "OCCUPIED" ? "text-green-600" : (reassignedAt !== null || complaintSent || activeBooking?.arrivedAt) ? "text-orange-500" : "text-purple-400"}`} />
               </div>
             </CardContent>
           </Card>
@@ -825,30 +1098,6 @@ export function ActiveBookingScreen() {
         </CardContent>
       </Card>
       
-      {/* Overstay cost breakdown — live running charge shown when charges active */}
-      {!isLongTerm && isArrived && isOverstay && !exitGraceStarted && (
-        <Card className="border-red-300 bg-red-50">
-          <CardContent className="p-4">
-            <h3 className="mb-3 font-medium text-red-700">Превышение времени</h3>
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Тариф</span>
-                <span className="text-foreground">3 ₸/мин</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Превышение</span>
-                <span className="text-red-600 font-medium">{overstayMinutes} мин</span>
-              </div>
-              <Separator />
-              <div className="flex justify-between font-semibold">
-                <span className="text-red-700">Накоплено</span>
-                <span className="text-red-600 text-base">{overtimeCost} ₸</span>
-              </div>
-              <p className="text-xs text-red-500 mt-1">Спишется при нажатии «Завершить парковку»</p>
-            </div>
-          </CardContent>
-        </Card>
-      )}
       
       <div className="space-y-2 mt-2">
         {/* "5 min left" warning banner */}
@@ -864,7 +1113,12 @@ export function ActiveBookingScreen() {
           <Button
             size="lg"
             className="w-full gap-2 bg-[#354469] hover:bg-[#354469]/90"
-            onClick={() => { setConfirmedParked(true); setConfirmedParkedAt(Date.now()) }}
+            onClick={() => {
+              const t = Date.now()
+              setConfirmedParked(true)
+              setConfirmedParkedAt(t)
+              if (activeBooking?.id) localStorage.setItem(`parkingStarted-${activeBooking.id}`, String(t))
+            }}
           >
             <Check className="h-5 w-5" />
             {t.startParking}
@@ -917,7 +1171,23 @@ export function ActiveBookingScreen() {
           </div>
         )}
         
-        {isLongTerm && (
+        {isLongTerm && isLtExpired && !ltExitRequested && (
+          <Button
+            size="lg"
+            className="w-full gap-2 bg-red-600 hover:bg-red-700 text-white"
+            onClick={handleFinishParkingLongterm}
+            disabled={ltFinishing}
+          >
+            <Check className="h-5 w-5" />
+            {ltFinishing
+              ? t.processing
+              : ltDebt > 0
+                ? `Завершить аренду — оплатить ${ltDebt}₸`
+                : "Завершить аренду"}
+          </Button>
+        )}
+
+        {isLongTerm && !isLtExpired && (
           <Button
             variant="outline"
             size="lg"
@@ -1019,6 +1289,76 @@ export function ActiveBookingScreen() {
                   ? `${t.confirmExtend} +${selectedExtendDays} day${selectedExtendDays > 1 ? "s" : ""} · ${extendOptions.find(o => o.days === selectedExtendDays)!.price.toLocaleString()} ₸`
                   : t.selectPeriod}
             </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Short-term extend modal */}
+      {showExtendShort && (
+        <div className="absolute inset-0 z-50 flex flex-col justify-end">
+          <div className="absolute inset-0 bg-black/40" onClick={() => { setShowExtendShort(false); setSelectedExtendMins(null) }} />
+          <div className="relative bg-white dark:bg-gray-900 rounded-t-3xl flex flex-col" style={{ maxHeight: '80vh' }}>
+            <div className="px-5 pt-5 pb-2 flex-shrink-0">
+              <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-gray-200 dark:bg-gray-700" />
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <Clock className="h-5 w-5 text-[#36549B]" />
+                  <h2 className="text-lg font-bold text-gray-900 dark:text-white">Продлить парковку</h2>
+                </div>
+                <button
+                  onClick={() => { setShowExtendShort(false); setSelectedExtendMins(null) }}
+                  className="p-1 rounded-full hover:bg-gray-100"
+                >
+                  <X className="h-5 w-5 text-gray-500" />
+                </button>
+              </div>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
+                Выберите, на сколько минут продлить. Оплата спишется сразу.
+              </p>
+            </div>
+
+            <div className="overflow-y-auto flex-1 px-5 space-y-2 pb-3">
+              {shortExtendOptions.map((option) => (
+                <button
+                  key={option.mins}
+                  onClick={() => setSelectedExtendMins(option.mins)}
+                  className={cn(
+                    "flex w-full items-center justify-between rounded-xl border-2 p-3 transition-all",
+                    selectedExtendMins === option.mins
+                      ? "border-[#354469] bg-[#354469]/5 dark:bg-[#354469]/20"
+                      : "border-gray-200 dark:border-gray-700 hover:border-[#354469]/40"
+                  )}
+                >
+                  <div className="text-left">
+                    <p className="font-semibold text-gray-900 dark:text-white">+{option.mins} мин</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">3 ₸/мин</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <p className="font-bold text-[#36549B]">{option.price} ₸</p>
+                    {selectedExtendMins === option.mins && (
+                      <div className="flex h-5 w-5 items-center justify-center rounded-full bg-[#354469]">
+                        <Check className="h-3 w-3 text-white" />
+                      </div>
+                    )}
+                  </div>
+                </button>
+              ))}
+            </div>
+
+            <div className="px-5 pt-3 pb-10 flex-shrink-0 border-t border-gray-100 dark:border-gray-800">
+              <Button
+                size="lg"
+                className="w-full bg-[#354469] hover:bg-[#354469]/90"
+                disabled={!selectedExtendMins || isExtendingShort}
+                onClick={handleExtendShortBooking}
+              >
+                {isExtendingShort
+                  ? "Обработка..."
+                  : selectedExtendMins
+                    ? `Продлить +${selectedExtendMins} мин · ${shortExtendOptions.find(o => o.mins === selectedExtendMins)!.price} ₸`
+                    : "Выберите время"}
+              </Button>
+            </div>
           </div>
         </div>
       )}

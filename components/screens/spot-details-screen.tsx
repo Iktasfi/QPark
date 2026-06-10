@@ -136,13 +136,20 @@ export function SpotDetailsScreen() {
         plateNumber: selectedCarData.plateNumber,
         type: bookingType,
         status: "active" as const,
-        startTime: new Date(),
-        isPaid: isLongTerm, // long-term is paid immediately from wallet
+        // Use server's startTime so the no-show timer stays consistent across restores
+        startTime: data.booking?.startTime ? new Date(data.booking.startTime) : new Date(),
+        isPaid: true, // always paid upfront (short-term charges at booking, long-term charges at booking)
         waitingFee: 0,
         rentalDays: selectedRentalDays || undefined,
         endDate: isLongTerm && selectedRentalDays
           ? new Date(Date.now() + selectedRentalDays * 24 * 60 * 60 * 1000)
           : undefined,
+        // Short-term: estimatedEndTime from backend drives the countdown timer
+        endTime: !isLongTerm && data.booking?.estimatedEndTime
+          ? new Date(data.booking.estimatedEndTime)
+          : undefined,
+        // Original booked duration so the timer is always exactly what was paid for
+        bookedMinutes: !isLongTerm ? selectedDuration : undefined,
       }
 
       setActiveBooking(booking)
@@ -152,6 +159,9 @@ export function SpotDetailsScreen() {
         plateNumber: selectedCarData.plateNumber,
         bookedAt: new Date(),
       })
+
+      // Notifications are scheduled after LPR entry (in active-booking-screen) when the real
+      // estimatedEndTime is known from the server — scheduling here would use wrong times.
 
       if (data.newBalance !== undefined) {
         const paidAmount = getPrice()
@@ -226,7 +236,7 @@ export function SpotDetailsScreen() {
               </div>
               <div>
                 <p className="text-2xl font-bold text-foreground">{selectedSpot.id}</p>
-                <Badge variant="secondary">Свободно</Badge>
+                <Badge variant="secondary">{t.statusFree}</Badge>
               </div>
             </div>
             <div className="text-right">
@@ -263,7 +273,7 @@ export function SpotDetailsScreen() {
             </button>
 
             <button
-              onClick={() => { setBookingType("long-term"); setSelectedDuration(null) }}
+              onClick={() => { setBookingType("long-term"); setSelectedDuration(60) }}
               className={cn(
                 "flex flex-col items-center gap-1.5 rounded-xl border-2 p-3 transition-all",
                 bookingType === "long-term"

@@ -1,15 +1,34 @@
 import { Router, Request, Response } from 'express';
 import parkingService from '../services/parking.service';
 import paymentService from '../services/payment.service';
-import { calculateShortTermCost, getLongTermPrice } from '../utils/pricing';
+import { calculateShortTermCost, getLongTermPrice, calculateCashback } from '../utils/pricing';
 import { logger } from '../server';
 import jwt from 'jsonwebtoken';
 import { prisma } from '../lib/prisma';
-import { rentalExpiryQueue, overstayQueue } from '../jobs/queues';
+import { noShowQueue, rentalExpiryQueue, overstayQueue } from '../jobs/queues';
 import { sendPushToUser } from '../utils/notifications';
 
 const router = Router();
 
+// Schedules (or reschedules) all overstay/warning BullMQ jobs for a short-term booking.
+// Always removes existing jobs first so old timers don't accumulate.
+async function scheduleBookingTimerJobs(bookingId: string, userId: string, spotId: string, endTime: Date) {
+  await Promise.all([
+    overstayQueue.getJob(`te-${bookingId}`).then(j => j?.remove()).catch(() => {}),
+    overstayQueue.getJob(`warn-${bookingId}`).then(j => j?.remove()).catch(() => {}),
+    overstayQueue.getJob(`os-${bookingId}`).then(j => j?.remove()).catch(() => {}),
+  ]);
+  const jobBase = { bookingId, userId, spotId };
+  const msToEnd = Math.max(0, endTime.getTime() - Date.now());
+  if (msToEnd > 5 * 60 * 1000) {
+    await overstayQueue.add('time-ending', { ...jobBase, phase: 'time-ending' },
+      { delay: msToEnd - 5 * 60 * 1000, jobId: `te-${bookingId}` }).catch(() => {});
+  }
+  await overstayQueue.add('warn', { ...jobBase, phase: 'warn' },
+    { delay: msToEnd, jobId: `warn-${bookingId}` }).catch(() => {});
+  await overstayQueue.add('overstay-start', { ...jobBase, phase: 'overstay-start' },
+    { delay: msToEnd + 5 * 60 * 1000, jobId: `os-${bookingId}` }).catch(() => {});
+}
 
 const CYR_TO_LAT: Record<string, string> = {
   'А':'A','В':'B','Е':'E','К':'K','М':'M','Н':'H','О':'O','Р':'P','С':'C','Т':'T','У':'Y','Х':'X',
@@ -170,14 +189,21 @@ router.post('/lpr/entry', async (req: Request, res: Response) => {
         return res.json({ success: false, message: 'Plate does not match rental' });
       }
 
-      const isExiting = spot.status === 'OCCUPIED';
-      const toggledStatus = isExiting ? 'RESERVED' : 'OCCUPIED';
-      const eventType = isExiting ? 'exit' : 'entry';
+      // /lpr/entry is always entry — use endpoint name, not spot status
+      const toggledStatus = 'OCCUPIED';
+      const eventType = 'entry';
 
       await prisma.parkingSpot.update({
         where: { spotNumber },
         data: { status: toggledStatus, currentUserPlate: carPlate },
       });
+
+      if (!rental.arrivedAt) {
+        await prisma.longTermRental.update({
+          where: { id: rental.id },
+          data: { arrivedAt: new Date() },
+        });
+      }
 
       io.emit('lpr-gate-open', { carPlate, spotNumber, type: eventType });
       io.emit('spot-status-changed', { spotNumber, status: toggledStatus, carPlate });
@@ -201,24 +227,21 @@ router.post('/lpr/entry', async (req: Request, res: Response) => {
         where: { spotId: spot.id, status: { in: ['PENDING', 'CONFIRMED'] } },
       });
       if (activeBooking) {
-        // estimatedEndTime = arrivedAt + 7min arrival grace + booked duration
-        // Frontend computes bookedDurationSec = endTime - (arrivedAt + 7min), so grace must be included
-        const bookedMs = activeBooking.estimatedEndTime.getTime() - activeBooking.startTime.getTime();
-        const newEstimatedEnd = new Date(now.getTime() + 7 * 60 * 1000 + bookedMs);
-        await prisma.booking.update({
-          where: { id: activeBooking.id },
-          data: { arrivedAt: now, photoTimerStart: now, photoStatus: 'PENDING', estimatedEndTime: newEstimatedEnd },
-        });
-        // Notify frontend of corrected endTime
-        io.emit('booking-updated', { bookingId: activeBooking.id, endTime: newEstimatedEnd, arrivedAt: now });
-        // "5 min left" push at endTime - 5 min
-        const fiveMinWarningDelay = newEstimatedEnd.getTime() - Date.now() - 5 * 60 * 1000;
-        if (fiveMinWarningDelay > 0) {
-          overstayQueue.add('check', { bookingId: activeBooking.id, userId: activeBooking.userId, spotId: spot.id, phase: 'time-ending' }, { delay: fiveMinWarningDelay }).catch(() => {});
+        if (activeBooking.arrivedAt) {
+          // Already arrived — just re-broadcast existing state, don't recalculate
+          const bookedMins = activeBooking.bookedMinutes + (activeBooking.minutesExtended ?? 0);
+          io.emit('booking-updated', { bookingId: activeBooking.id, endTime: activeBooking.estimatedEndTime, arrivedAt: activeBooking.arrivedAt, bookedMinutes: bookedMins });
+        } else {
+          // First arrival: set arrivedAt and recalculate endTime from original bookedMinutes
+          const bookedMins = activeBooking.bookedMinutes + (activeBooking.minutesExtended ?? 0);
+          const newEstimatedEnd = new Date(now.getTime() + 7 * 60 * 1000 + bookedMins * 60 * 1000);
+          await prisma.booking.update({
+            where: { id: activeBooking.id },
+            data: { arrivedAt: now, photoTimerStart: now, photoStatus: 'PENDING', estimatedEndTime: newEstimatedEnd },
+          });
+          io.emit('booking-updated', { bookingId: activeBooking.id, endTime: newEstimatedEnd, arrivedAt: now, bookedMinutes: bookedMins });
+          await scheduleBookingTimerJobs(activeBooking.id, activeBooking.userId, spot.id, newEstimatedEnd);
         }
-        // Overstay warn push immediately when time expires (not +7 min anymore)
-        const warnDelay = Math.max(0, newEstimatedEnd.getTime() - Date.now());
-        overstayQueue.add('check', { bookingId: activeBooking.id, userId: activeBooking.userId, spotId: spot.id, phase: 'warn' }, { delay: warnDelay }).catch(() => {});
       }
 
       io.emit('lpr-gate-open', { carPlate, spotNumber, type: 'entry' });
@@ -260,40 +283,47 @@ router.post('/lpr/exit-lpr', async (req: Request, res: Response) => {
         return res.json({ success: false, message: 'Plate does not match rental' });
       }
 
-      // Charge overstay: 3₸/min after 12 min past rental endDate
-      const actualEnd = new Date();
-      const overstayStart = new Date(activeRental.endDate.getTime() + 12 * 60 * 1000);
-      const overstayMs = Math.max(0, actualEnd.getTime() - overstayStart.getTime());
-      const overstayMinutes = Math.floor(overstayMs / 60000);
-      if (overstayMinutes > 0) {
-        const overstayCost = overstayMinutes * 3;
-        const owner = await prisma.user.findUnique({ where: { id: activeRental.userId } });
-        if (owner) {
-          const charged = Math.min(overstayCost, owner.walletBalance);
-          await Promise.all([
-            prisma.user.update({ where: { id: owner.id }, data: { walletBalance: { decrement: charged } } }),
-            prisma.transaction.create({
-              data: {
-                userId: owner.id, amount: -charged, type: 'PAYMENT',
-                description: `Овертайм: ${overstayMinutes} мин × 3₸`,
-                balanceBefore: owner.walletBalance,
-                balanceAfter: owner.walletBalance - charged,
-              },
-            }),
-          ]);
-          io.emit('overstay-charged', { userId: owner.id, minutes: overstayMinutes, cost: charged });
-          logger.info(`💸 Long-term overstay: ${owner.id}, ${overstayMinutes} min, -${charged}₸`);
-        }
+      const now = new Date();
+      const isExpired = activeRental.endDate < now;
+      const carIsInside = spot.status === 'OCCUPIED';
+
+      // Rental expired and user hasn't paid debt in app → block gate
+      if (isExpired && !activeRental.exitRequestedAt) {
+        io.emit('lpr-gate-denied', {
+          carPlate, spotNumber,
+          reason: 'Аренда истекла — откройте приложение, нажмите «Завершить аренду» и оплатите долг',
+        });
+        logger.warn(`⛔ LPR long-term exit blocked — debt unpaid: ${carPlate} at ${spotNumber}`);
+        return res.json({ success: false, message: 'Rental expired — pay debt in app first' });
       }
+
+      // Final exit: rental expired and debt was paid (exitRequestedAt set) → complete rental, free spot
+      if (isExpired && activeRental.exitRequestedAt && carIsInside) {
+        await prisma.$transaction([
+          prisma.longTermRental.update({ where: { id: activeRental.id }, data: { status: 'COMPLETED' } }),
+          prisma.parkingSpot.update({
+            where: { spotNumber },
+            data: { status: 'FREE', currentUserPlate: null, currentUserId: null },
+          }),
+        ]);
+        io.emit('lpr-gate-open', { carPlate, spotNumber, type: 'exit' });
+        io.emit('spot-status-changed', { spotNumber, status: 'FREE', carPlate: null });
+        io.emit('parking-exit-confirmed', { userId: activeRental.userId, rentalId: activeRental.id });
+        logger.info(`✅ LPR long-term final exit: ${carPlate} from ${spotNumber} → FREE`);
+        return res.json({ success: true, message: 'Gate opened, rental completed', newStatus: 'FREE' });
+      }
+
+      // Active rental: /lpr/exit-lpr is always exit
+      const toggledStatus = 'RESERVED';
 
       await prisma.parkingSpot.update({
         where: { spotNumber },
-        data: { status: 'RESERVED', currentUserPlate: carPlate, currentUserId: spot.currentUserId },
+        data: { status: toggledStatus, currentUserPlate: carPlate, currentUserId: spot.currentUserId },
       });
       io.emit('lpr-gate-open', { carPlate, spotNumber, type: 'exit' });
-      io.emit('spot-status-changed', { spotNumber, status: 'RESERVED', carPlate });
-      logger.info(`✅ LPR long-term exit: ${carPlate} from ${spotNumber} → RESERVED`);
-      return res.json({ success: true, message: 'Gate opened for exit', newStatus: 'RESERVED' });
+      io.emit('spot-status-changed', { spotNumber, status: toggledStatus, carPlate });
+      logger.info(`✅ LPR long-term exit: ${carPlate} → ${spotNumber} → ${toggledStatus}`);
+      return res.json({ success: true, message: 'Gate opened (exit)', newStatus: toggledStatus });
     }
 
     // Short-term booking exit: all spots are universal, check for a booking
@@ -328,22 +358,28 @@ router.post('/lpr/exit-lpr', async (req: Request, res: Response) => {
         });
       }
 
-      // If user already paid overstay via "Finish Parking" button, skip charging again
+      // User already settled via "Finish Parking" — no additional charge on LPR exit
       if (paidBooking.exitRequestedAt) {
+        const bonusPrePaid = calculateCashback(paidBooking.totalCost ?? 0);
+        const ownerId = paidBooking.userId;
         await prisma.$transaction([
           prisma.booking.update({ where: { id: paidBooking.id }, data: { status: 'COMPLETED', actualEndTime: new Date() } }),
           prisma.parkingSpot.update({ where: { spotNumber }, data: { status: 'FREE', currentUserPlate: null, currentUserId: null } }),
+          ...(bonusPrePaid > 0 ? [
+            prisma.user.update({ where: { id: ownerId }, data: { bonusPoints: { increment: bonusPrePaid } } }),
+            prisma.transaction.create({ data: { userId: ownerId, amount: bonusPrePaid, type: 'CASHBACK', description: `Кэшбэк 1% за поездку`, balanceBefore: 0, balanceAfter: 0 } }),
+          ] : []),
         ]);
         io.emit('lpr-gate-open', { carPlate, spotNumber, type: 'exit' });
         io.emit('spot-status-changed', { spotNumber, status: 'FREE', carPlate: null });
         io.emit('parking-exit-confirmed', { userId: paidBooking.userId, bookingId: paidBooking.id });
-        logger.info(`✅ LPR exit (overstay pre-paid): ${carPlate} from ${spotNumber}`);
+        logger.info(`✅ LPR exit (overstay pre-paid): ${carPlate} from ${spotNumber}, +${bonusPrePaid} bonus pts`);
         return res.json({ success: true, message: 'Gate opened, exit complete' });
       }
 
-      // Charge overstay: 3₸/min after 5 min past estimatedEndTime
-      const overstayStart = new Date(paidBooking.estimatedEndTime.getTime() + 5 * 60 * 1000);
-      const overstayMs = Math.max(0, actualEnd.getTime() - overstayStart.getTime());
+      // Charge overstay: 3₸/min after 5-min grace past estimatedEndTime
+      const OVERSTAY_GRACE_MS = 5 * 60 * 1000;
+      const overstayMs = Math.max(0, actualEnd.getTime() - paidBooking.estimatedEndTime.getTime() - OVERSTAY_GRACE_MS);
       const overstayMinutes = Math.floor(overstayMs / 60000);
       if (overstayMinutes > 0) {
         const overstayCost = overstayMinutes * 3;
@@ -366,13 +402,17 @@ router.post('/lpr/exit-lpr', async (req: Request, res: Response) => {
         }
       }
 
-      await prisma.parkingSpot.update({
-        where: { spotNumber },
-        data: { status: 'FREE', currentUserPlate: null, currentUserId: null },
-      });
+      const bonusEarned = calculateCashback(paidBooking.totalCost ?? 0);
+      await prisma.$transaction([
+        prisma.parkingSpot.update({ where: { spotNumber }, data: { status: 'FREE', currentUserPlate: null, currentUserId: null } }),
+        ...(bonusEarned > 0 ? [
+          prisma.user.update({ where: { id: paidBooking.userId }, data: { bonusPoints: { increment: bonusEarned } } }),
+          prisma.transaction.create({ data: { userId: paidBooking.userId, amount: bonusEarned, type: 'CASHBACK', description: `Кэшбэк 1% за поездку`, balanceBefore: 0, balanceAfter: 0 } }),
+        ] : []),
+      ]);
       io.emit('lpr-gate-open', { carPlate, spotNumber, type: 'exit' });
       io.emit('spot-status-changed', { spotNumber, status: 'FREE', carPlate: null });
-      logger.info(`✅ LPR exit (paid): ${carPlate} from ${spotNumber} → FREE`);
+      logger.info(`✅ LPR exit (paid): ${carPlate} from ${spotNumber} → FREE, +${bonusEarned} bonus pts`);
       return res.json({ success: true, message: 'Gate opened', newStatus: 'FREE' });
     }
 
@@ -430,10 +470,22 @@ router.post('/lpr/scan', async (req: Request, res: Response) => {
         });
       } else {
         newStatus = 'FREE';
+        // Complete the active short-term booking on exit
+        const exitBooking = await prisma.booking.findFirst({
+          where: { spotId: occupiedSpot.id, status: { in: ['PENDING', 'CONFIRMED'] } },
+          orderBy: { createdAt: 'desc' },
+        });
         await prisma.parkingSpot.update({
           where: { spotNumber },
           data: { status: 'FREE', currentUserPlate: null, currentUserId: null },
         });
+        if (exitBooking) {
+          await prisma.booking.update({
+            where: { id: exitBooking.id },
+            data: { status: 'COMPLETED', actualEndTime: new Date() },
+          });
+          io.emit('parking-exit-confirmed', { userId: exitBooking.userId, bookingId: exitBooking.id });
+        }
       }
 
       io.emit('lpr-gate-open', { carPlate, spotNumber, type: 'exit' });
@@ -450,10 +502,33 @@ router.post('/lpr/scan', async (req: Request, res: Response) => {
 
     if (bookedSpot) {
       const spotNumber = bookedSpot.spotNumber;
+      const now = new Date();
+
       await prisma.parkingSpot.update({
         where: { spotNumber },
         data: { status: 'OCCUPIED' },
       });
+
+      // Mirror lpr/entry: update arrivedAt, recalculate endTime, schedule notifications
+      const scanBooking = await prisma.booking.findFirst({
+        where: { spotId: bookedSpot.id, status: { in: ['PENDING', 'CONFIRMED'] } },
+        orderBy: { createdAt: 'desc' },
+      });
+      if (scanBooking) {
+        if (scanBooking.arrivedAt) {
+          const bookedMins = scanBooking.bookedMinutes + (scanBooking.minutesExtended ?? 0);
+          io.emit('booking-updated', { bookingId: scanBooking.id, endTime: scanBooking.estimatedEndTime, arrivedAt: scanBooking.arrivedAt, bookedMinutes: bookedMins });
+        } else {
+          const bookedMins = scanBooking.bookedMinutes + (scanBooking.minutesExtended ?? 0);
+          const newEstimatedEnd = new Date(now.getTime() + 7 * 60 * 1000 + bookedMins * 60 * 1000);
+          await prisma.booking.update({
+            where: { id: scanBooking.id },
+            data: { arrivedAt: now, photoTimerStart: now, photoStatus: 'PENDING', estimatedEndTime: newEstimatedEnd },
+          });
+          io.emit('booking-updated', { bookingId: scanBooking.id, endTime: newEstimatedEnd, arrivedAt: now, bookedMinutes: bookedMins });
+          await scheduleBookingTimerJobs(scanBooking.id, scanBooking.userId, bookedSpot.id, newEstimatedEnd);
+        }
+      }
 
       io.emit('lpr-gate-open', { carPlate, spotNumber, type: 'entry' });
       io.emit('spot-status-changed', { spotNumber, status: 'OCCUPIED', carPlate });
@@ -501,21 +576,23 @@ router.post('/simulate-entry', async (req: Request, res: Response) => {
       orderBy: { createdAt: 'desc' },
     });
     if (activeBooking) {
+      const { io: simIo } = await import('../server');
       const now = new Date();
-      const bookedMs = activeBooking.estimatedEndTime.getTime() - activeBooking.startTime.getTime();
-      const newEstimatedEnd = new Date(now.getTime() + 7 * 60 * 1000 + bookedMs);
-      await prisma.booking.update({
-        where: { id: activeBooking.id },
-        data: { arrivedAt: now, photoTimerStart: now, photoStatus: 'PENDING', estimatedEndTime: newEstimatedEnd },
-      });
-      io.emit('booking-updated', { bookingId: activeBooking.id, endTime: newEstimatedEnd, arrivedAt: now });
-      const fiveMinDelay = newEstimatedEnd.getTime() - Date.now() - 5 * 60 * 1000;
-      if (fiveMinDelay > 0) {
-        overstayQueue.add('check', { bookingId: activeBooking.id, userId: activeBooking.userId, spotId: spot.id, phase: 'time-ending' }, { delay: fiveMinDelay }).catch(() => {});
+      if (activeBooking.arrivedAt) {
+        const bookedMins = activeBooking.bookedMinutes + (activeBooking.minutesExtended ?? 0);
+        simIo.emit('booking-updated', { bookingId: activeBooking.id, endTime: activeBooking.estimatedEndTime, arrivedAt: activeBooking.arrivedAt, bookedMinutes: bookedMins });
+        logger.info(`⏩ Simulate entry: booking ${activeBooking.id} already arrived, re-broadcast only`);
+      } else {
+        const bookedMins = activeBooking.bookedMinutes + (activeBooking.minutesExtended ?? 0);
+        const newEstimatedEnd = new Date(now.getTime() + 7 * 60 * 1000 + bookedMins * 60 * 1000);
+        await prisma.booking.update({
+          where: { id: activeBooking.id },
+          data: { arrivedAt: now, photoTimerStart: now, photoStatus: 'PENDING', estimatedEndTime: newEstimatedEnd },
+        });
+        simIo.emit('booking-updated', { bookingId: activeBooking.id, endTime: newEstimatedEnd, arrivedAt: now, bookedMinutes: bookedMins });
+        await scheduleBookingTimerJobs(activeBooking.id, activeBooking.userId, spot.id, newEstimatedEnd);
+        logger.info(`✅ Simulate entry: updated booking ${activeBooking.id}, newEndTime=${newEstimatedEnd.toISOString()}`);
       }
-      const warnDelay = Math.max(0, newEstimatedEnd.getTime() - Date.now());
-      overstayQueue.add('check', { bookingId: activeBooking.id, userId: activeBooking.userId, spotId: spot.id, phase: 'warn' }, { delay: warnDelay }).catch(() => {});
-      logger.info(`✅ Simulate entry: updated booking ${activeBooking.id}, newEndTime=${newEstimatedEnd.toISOString()}`);
     }
 
     res.json({ success: true, message: `Car ${carPlate} entered spot ${spotNumber}` });
@@ -546,19 +623,47 @@ router.post('/simulate-exit', async (req: Request, res: Response) => {
       orderBy: { createdAt: 'desc' },
     });
 
+    const { io } = await import('../server');
+    const actualEnd = new Date();
+
+    if (activeBooking) {
+      // Charge overstay only if user didn't already pay via "Finish Parking"
+      if (!activeBooking.exitRequestedAt) {
+        const SIM_GRACE_MS = 5 * 60 * 1000;
+        const overstayMs = Math.max(0, actualEnd.getTime() - activeBooking.estimatedEndTime.getTime() - SIM_GRACE_MS);
+        const overstayMinutes = Math.floor(overstayMs / 60000);
+        if (overstayMinutes > 0) {
+          const overstayCost = overstayMinutes * 3;
+          const owner = await prisma.user.findUnique({ where: { id: activeBooking.userId } });
+          if (owner) {
+            const charged = Math.min(overstayCost, owner.walletBalance);
+            await Promise.all([
+              prisma.user.update({ where: { id: owner.id }, data: { walletBalance: { decrement: charged } } }),
+              prisma.transaction.create({
+                data: {
+                  userId: owner.id, amount: -charged, type: 'PAYMENT',
+                  description: `Овертайм (симуляция): ${overstayMinutes} мин × 3₸`,
+                  balanceBefore: owner.walletBalance,
+                  balanceAfter: owner.walletBalance - charged,
+                },
+              }),
+            ]);
+            io.emit('overstay-charged', { userId: owner.id, minutes: overstayMinutes, cost: charged });
+          }
+        }
+      }
+
+      await prisma.booking.update({
+        where: { id: activeBooking.id },
+        data: { status: 'COMPLETED', actualEndTime: actualEnd },
+      });
+    }
+
     await prisma.parkingSpot.update({
       where: { spotNumber },
       data: { status: 'FREE', currentUserPlate: null, currentUserId: null },
     });
 
-    if (activeBooking) {
-      await prisma.booking.update({
-        where: { id: activeBooking.id },
-        data: { status: 'COMPLETED', actualEndTime: new Date() },
-      });
-    }
-
-    const { io } = await import('../server');
     io.emit('spot-status-changed', { spotNumber, status: 'FREE', carPlate: null });
     if (activeBooking) {
       io.emit('parking-exit-confirmed', { userId: activeBooking.userId, bookingId: activeBooking.id });
@@ -643,7 +748,7 @@ router.post('/set-status', async (req: Request, res: Response) => {
             prisma.booking.create({
               data: {
                 userId, spotId: updatedSpot.id, plateNumber: carPlate,
-                startTime: now, estimatedEndTime: estimated,
+                startTime: now, estimatedEndTime: estimated, bookedMinutes: minutes,
                 status: 'CONFIRMED', isPaid: true, totalCost: cost + actualBonus,
               },
             }),
@@ -665,19 +770,23 @@ router.post('/set-status', async (req: Request, res: Response) => {
           ]);
           bookingRecord = booking;
           newBalance = updatedUser.walletBalance;
-          // Notification jobs scheduled at arrival time (simulate-entry / lpr/entry), not here
+          // Auto-cancel if driver doesn't arrive within 30 min — 50% penalty, 50% refund
+          noShowQueue.add('no-show-check', { bookingId: booking.id },
+            { delay: 30 * 60 * 1000, jobId: `noshow-${booking.id}` }).catch(() => {});
           logger.info(`✅ Short-term booking paid: ${userId}, ${spotNumber}, -${cost}₸ wallet + ${actualBonus} bonus pts`);
         } else {
           const booking = await prisma.booking.create({
             data: {
               userId, spotId: updatedSpot.id, plateNumber: carPlate,
-              startTime: now, estimatedEndTime: estimated,
+              startTime: now, estimatedEndTime: estimated, bookedMinutes: minutes,
               status: 'CONFIRMED', isPaid: true, totalCost: 0,
             },
           });
           bookingRecord = booking;
           newBalance = userRecord.walletBalance;
-          // Notification jobs scheduled at arrival time (simulate-entry / lpr/entry), not here
+          // Auto-cancel if driver doesn't arrive within 30 min — 50% penalty, 50% refund
+          noShowQueue.add('no-show-check', { bookingId: booking.id },
+            { delay: 30 * 60 * 1000, jobId: `noshow-${booking.id}` }).catch(() => {});
           logger.info(`✅ Short-term booking (free/promo/bonus): ${userId}, ${spotNumber}`);
         }
       } catch (e) {
@@ -728,9 +837,17 @@ router.post('/set-status', async (req: Request, res: Response) => {
             { rentalId: rental.id },
             { delay: endDate.getTime() - Date.now(), jobId: `expiry-${rental.id}` },
           ).catch(err => logger.warn('⚠️ Could not schedule expiry job:', err));
-          // Schedule overstay warning 7 min after rental endDate
-          const rentalOverstayDelay = endDate.getTime() - Date.now() + 7 * 60 * 1000;
-          overstayQueue.add('check', { rentalId: rental.id, userId, spotId: spot.id, phase: 'warn' }, { delay: Math.max(rentalOverstayDelay, 0) }).catch(() => {});
+          // Schedule overstay warning exactly at rental endDate (no grace period)
+          const rentalOverstayDelay = Math.max(0, endDate.getTime() - Date.now());
+          overstayQueue.add('check', { rentalId: rental.id, userId, spotId: spot.id, phase: 'warn' }, { delay: rentalOverstayDelay }).catch(() => {});
+          // Schedule early expiry warning: 30 min before for 1-day, 1 day before for 3+ days
+          const earlyWarningMs = Number(rentalDays) === 1
+            ? endDate.getTime() - 30 * 60 * 1000
+            : endDate.getTime() - 24 * 60 * 60 * 1000;
+          const earlyWarningDelay = earlyWarningMs - Date.now();
+          if (earlyWarningDelay > 0) {
+            overstayQueue.add('check', { rentalId: rental.id, userId, spotId: spot.id, phase: 'lt-near-expiry', rentalDays: Number(rentalDays) }, { delay: earlyWarningDelay }).catch(() => {});
+          }
           bookingRecord = { ...rental, _type: 'rental' };
         }
       } catch (e) {
@@ -781,6 +898,15 @@ const LOCATION_CONFIG: Record<number, { prefix: string; short: number; long: num
   8:  { prefix: 'P8',  short:  8, long:  8 },  // 16 — Бейбітшілік
   9:  { prefix: 'P9',  short: 11, long: 10 },  // 21 — Иманов
   10: { prefix: 'P10', short:  9, long:  9 },  // 18 — Хан Шатыр
+  11: { prefix: 'P11', short: 10, long: 10 },  // 20 — Мәңгілік Ел
+  12: { prefix: 'P12', short:  8, long:  8 },  // 16 — EXPO
+  13: { prefix: 'P13', short:  9, long:  9 },  // 18 — Туран
+  14: { prefix: 'P14', short:  7, long:  7 },  // 14 — Байтерек
+  15: { prefix: 'P15', short:  9, long:  9 },  // 18 — ЖК Нурсай
+  16: { prefix: 'P16', short:  9, long:  8 },  // 17 — ЖК Байтерек
+  17: { prefix: 'P17', short:  8, long:  7 },  // 15 — ЖК Авиатор
+  18: { prefix: 'P18', short:  8, long:  8 },  // 16 — ЖК Думан
+  19: { prefix: 'P19', short:  9, long:  8 },  // 17 — ЖК Комфорт
 };
 
 async function ensureLocationSpots(locationId: number) {
