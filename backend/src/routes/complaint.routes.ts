@@ -198,15 +198,10 @@ router.post('/', async (req: Request, res: Response) => {
             : null;
 
           if (violatorOriginalSpot) {
-            const [victimPlate, violatorPlate, victimRentalCheck] = await Promise.all([
+            const [victimPlate, violatorPlate] = await Promise.all([
               getCarPlate(userId),
               getCarPlate(violatorUserId),
-              bookingId
-                ? prisma.longTermRental.findUnique({ where: { id: bookingId } })
-                : prisma.longTermRental.findFirst({ where: { userId, status: 'ACTIVE' } }),
             ]);
-            const victimIsInside = !!(victimRentalCheck?.arrivedAt);
-            const victimNewSpotStatus = victimIsInside ? 'OCCUPIED' : (victimRentalCheck ? 'RESERVED' : 'BOOKED');
 
             // Look for a FREE spot in the same parking lot (excluding both contested spots)
             const freeLotSpot = await findFreeSpotSameLot(
@@ -218,13 +213,13 @@ router.post('/', async (req: Request, res: Response) => {
               // ── CASE A: Free spot found → move victim there, legitimise violator's location ──
               logger.info(`🔄 Free spot found: victim ${userId}→${freeLotSpot.spotNumber}, violator ${violatorUserId} stays at ${victimOldSpot.spotNumber}`);
 
-              // 1. Move victim → free spot
+              // 1. Move victim → free spot (OCCUPIED — both users are physically inside the lot)
               await moveVictim(freeLotSpot.id);
               await prisma.parkingSpot.update({
                 where: { id: freeLotSpot.id },
-                data: { status: victimNewSpotStatus, currentUserId: userId, currentUserPlate: victimPlate },
+                data: { status: 'OCCUPIED', currentUserId: userId, currentUserPlate: victimPlate },
               });
-              io.emit('spot-status-changed', { spotNumber: freeLotSpot.spotNumber, status: victimNewSpotStatus, carPlate: victimPlate });
+              io.emit('spot-status-changed', { spotNumber: freeLotSpot.spotNumber, status: 'OCCUPIED', carPlate: victimPlate });
 
               // 2. Move violator's booking/rental → victim's original spot (where they physically are)
               if (violatorBooking) {
@@ -297,13 +292,13 @@ router.post('/', async (req: Request, res: Response) => {
               // ── CASE B: No free spots → SWAP directly ──
               logger.info(`🔀 No free spots — swap: victim ${userId}→${violatorOriginalSpot.spotNumber}, violator ${violatorUserId}→${victimOldSpot.spotNumber}`);
 
-              // 1. Move victim → violator's originally booked spot
+              // 1. Move victim → violator's originally booked spot (OCCUPIED — both physically inside)
               await moveVictim(violatorOriginalSpot.id);
               await prisma.parkingSpot.update({
                 where: { id: violatorOriginalSpot.id },
-                data: { status: victimNewSpotStatus, currentUserId: userId, currentUserPlate: victimPlate },
+                data: { status: 'OCCUPIED', currentUserId: userId, currentUserPlate: victimPlate },
               });
-              io.emit('spot-status-changed', { spotNumber: violatorOriginalSpot.spotNumber, status: victimNewSpotStatus, carPlate: victimPlate });
+              io.emit('spot-status-changed', { spotNumber: violatorOriginalSpot.spotNumber, status: 'OCCUPIED', carPlate: victimPlate });
 
               // 2. Move violator's booking/rental → victim's original spot (where violator physically is)
               if (violatorBooking) {
