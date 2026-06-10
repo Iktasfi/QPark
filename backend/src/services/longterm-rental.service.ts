@@ -1,7 +1,7 @@
 import { getLongTermPrice } from '../utils/pricing';
 import { logger } from '../server';
 import { prisma } from '../lib/prisma';
-import { reservingCleanupQueue } from '../jobs/queues';
+import { reservingCleanupQueue, longTermNoShowQueue } from '../jobs/queues';
 
 export class LongTermRentalService {
 
@@ -84,6 +84,13 @@ export class LongTermRentalService {
       // Rental succeeded — remove the 15s safety-net cleanup job
       const cleanupJob = await reservingCleanupQueue.getJob(`res-${spotId}`);
       if (cleanupJob) await cleanupJob.remove().catch(() => {});
+
+      // 30-min grace period: cancel rental if user never physically arrives
+      await longTermNoShowQueue.add(
+        'lt-noshow-check',
+        { rentalId: rental.id },
+        { delay: 30 * 60 * 1000, jobId: `ltnoshow-${rental.id}` },
+      ).catch(() => {});
 
       logger.info(`✅ Long-term rental created & paid: ${rental.id}, ${rentalDays} days, -${totalCost}₸`);
       return rentalWithRelations!;

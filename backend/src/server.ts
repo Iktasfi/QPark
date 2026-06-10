@@ -22,6 +22,7 @@ import { startNoShowWorker } from './jobs/noshow.worker';
 import { startRentalExpiryWorker } from './jobs/rental-expiry.worker';
 import { startOverstayWorker } from './jobs/overstay.worker';
 import { startReservingWorker } from './jobs/reserving.worker';
+import { startLongTermNoShowWorker } from './jobs/longterm-noshow.worker';
 
 
 dotenv.config();
@@ -160,6 +161,7 @@ httpServer.listen(PORT, async () => {
   startRentalExpiryWorker(io);
   startOverstayWorker(io);
   startReservingWorker(io);
+  startLongTermNoShowWorker(io);
 });
 
 

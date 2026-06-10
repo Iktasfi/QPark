@@ -5,7 +5,7 @@ import { calculateShortTermCost, getLongTermPrice, calculateCashback } from '../
 import { logger } from '../server';
 import jwt from 'jsonwebtoken';
 import { prisma } from '../lib/prisma';
-import { noShowQueue, rentalExpiryQueue, overstayQueue } from '../jobs/queues';
+import { noShowQueue, rentalExpiryQueue, overstayQueue, longTermNoShowQueue } from '../jobs/queues';
 import { sendPushToUser } from '../utils/notifications';
 
 const router = Router();
@@ -205,6 +205,9 @@ router.post('/lpr/entry', async (req: Request, res: Response) => {
           where: { id: rental.id },
           data: { arrivedAt: new Date() },
         });
+        // User arrived within 30 min — cancel the no-show job (Rule 3)
+        const ltNoShowJob = await longTermNoShowQueue.getJob(`ltnoshow-${rental.id}`);
+        if (ltNoShowJob) await ltNoShowJob.remove().catch(() => {});
       }
 
       io.emit('lpr-gate-open', { carPlate, spotNumber, type: eventType });

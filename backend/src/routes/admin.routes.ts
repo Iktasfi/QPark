@@ -6,6 +6,7 @@ import { prisma } from '../lib/prisma';
 import { findFreeSpotNearby } from '../utils/spots';
 import { sendPushToUser } from '../utils/notifications';
 import paymentService from '../services/payment.service';
+import { longTermNoShowQueue } from '../jobs/queues';
 
 const router = Router();
 
@@ -903,6 +904,9 @@ router.post('/open-gate', async (req: Request, res: Response) => {
       });
       if (isEntry && !rental.arrivedAt) {
         await prisma.longTermRental.update({ where: { id: rental.id }, data: { arrivedAt: new Date() } });
+        // User arrived — cancel the 30-min no-show job (Rule 3)
+        const ltNoShowJob = await longTermNoShowQueue.getJob(`ltnoshow-${rental.id}`);
+        if (ltNoShowJob) await ltNoShowJob.remove().catch(() => {});
       }
       io.emit('lpr-gate-open', { carPlate: carPlate ?? spot.currentUserPlate, spotNumber, type: isEntry ? 'entry' : 'exit' });
       io.emit('spot-status-changed', { spotNumber, status: newStatus, carPlate: carPlate ?? spot.currentUserPlate });
