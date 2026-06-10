@@ -1,7 +1,7 @@
 import { calculateShortTermCost, getFreeTravelTimeRemaining } from '../utils/pricing';
 import { logger } from '../server';
 import { prisma } from '../lib/prisma';
-import { noShowQueue, overstayQueue, reservingCleanupQueue } from '../jobs/queues';
+import { noShowQueue, overstayQueue } from '../jobs/queues';
 
 export class BookingService {
 
@@ -13,129 +13,107 @@ export class BookingService {
     promoDiscount: number = 0,
     bonusDiscount: number = 0,
   ) {
-    // Phase 1: lock spot row with SELECT FOR UPDATE, set RESERVING atomically
-    await prisma.$transaction(async (tx) => {
-      const rows = await tx.$queryRaw<Array<{ id: string; status: string }>>`
-        SELECT id, status FROM "parking_spots" WHERE id = ${spotId} FOR UPDATE
-      `;
-      const spot = rows[0];
-      if (!spot) throw new Error('Spot not found');
-      if (spot.status === 'RESERVING') throw new Error('Место только что забрали, выберите другое');
-      if (spot.status !== 'FREE') throw new Error('Spot is not available');
-      await tx.parkingSpot.update({ where: { id: spotId }, data: { status: 'RESERVING' } });
-    });
-
-    // 15-second safety net: if server crashes before booking completes, reset to FREE
-    await reservingCleanupQueue.add('reserving-cleanup', { spotId }, {
-      delay: 15 * 1000,
-      jobId: `res-${spotId}`,
-    }).catch(() => {});
+    let booking: any;
+    let estimatedEndTime: Date;
+    let now: Date;
+    let totalCost: number;
 
     try {
-      const user = await prisma.user.findUnique({ where: { id: userId } });
-      if (!user) throw new Error('User not found');
+      // Single transaction: lock row with NOWAIT → all checks → booking + spot + wallet atomically
+      const result = await prisma.$transaction(async (tx) => {
+        // NOWAIT: fail immediately if another transaction already holds the lock
+        const rows = await tx.$queryRaw<Array<{ id: string; status: string }>>`
+          SELECT id, status FROM "parking_spots" WHERE id = ${spotId} FOR UPDATE NOWAIT
+        `;
+        const spot = rows[0];
+        if (!spot) throw new Error('Spot not found');
+        if (spot.status !== 'FREE') throw new Error('Spot just taken');
 
-      if (user.walletBalance < 0) {
-        throw new Error(`Debt: balance is ${user.walletBalance}₸. Please top up your wallet to clear the debt before booking.`);
-      }
+        const user = await tx.user.findUnique({ where: { id: userId } });
+        if (!user) throw new Error('User not found');
+        if (user.walletBalance < 0) {
+          throw new Error(`Debt: balance is ${user.walletBalance}₸. Please top up your wallet to clear the debt before booking.`);
+        }
 
-      const plate = plateNumber || '';
-      const now = new Date();
-      const estimatedEndTime = new Date(now.getTime() + estimatedMinutes * 60 * 1000);
+        const plate = plateNumber || '';
+        const txNow = new Date();
+        const txEndTime = new Date(txNow.getTime() + estimatedMinutes * 60 * 1000);
+        const actualBonus = Math.min(bonusDiscount, user.bonusPoints);
+        const baseCost = calculateShortTermCost(estimatedMinutes);
+        const txTotalCost = Math.max(0, baseCost - promoDiscount - actualBonus);
 
-      // Charge wallet immediately at booking creation (per spec)
-      const actualBonus = Math.min(bonusDiscount, user.bonusPoints);
-      const baseCost = calculateShortTermCost(estimatedMinutes);
-      const totalCost = Math.max(0, baseCost - promoDiscount - actualBonus);
+        if (txTotalCost > 0 && user.walletBalance < txTotalCost) {
+          throw new Error(`Insufficient balance: need ${txTotalCost}₸, have ${user.walletBalance}₸`);
+        }
 
-      if (totalCost > 0 && user.walletBalance < totalCost) {
-        throw new Error(`Insufficient balance: need ${totalCost}₸, have ${user.walletBalance}₸`);
-      }
-
-      const [booking] = await prisma.$transaction([
-        prisma.booking.create({
+        const newBooking = await tx.booking.create({
           data: {
-            userId,
-            spotId,
-            plateNumber: plate,
-            startTime: now,
-            estimatedEndTime,
-            bookedMinutes: estimatedMinutes,
-            status: 'CONFIRMED',
-            isPaid: true,
-            totalCost,
+            userId, spotId, plateNumber: plate,
+            startTime: txNow, estimatedEndTime: txEndTime,
+            bookedMinutes: estimatedMinutes, status: 'CONFIRMED', isPaid: true, totalCost: txTotalCost,
           },
-        }),
-        prisma.parkingSpot.update({
+        });
+
+        await tx.parkingSpot.update({
           where: { id: spotId },
           data: { status: 'BOOKED', currentUserPlate: plate, currentUserId: userId },
-        }),
-        ...(totalCost > 0 ? [
-          prisma.user.update({
+        });
+
+        if (txTotalCost > 0) {
+          await tx.user.update({
             where: { id: userId },
             data: {
-              walletBalance: { decrement: totalCost },
+              walletBalance: { decrement: txTotalCost },
               ...(actualBonus > 0 ? { bonusPoints: { decrement: actualBonus } } : {}),
             },
-          }),
-          prisma.transaction.create({
+          });
+          await tx.transaction.create({
             data: {
-              userId,
-              amount: -(totalCost),
-              type: 'PAYMENT',
+              userId, amount: -(txTotalCost), type: 'PAYMENT',
               description: `Краткосрочная парковка ${estimatedMinutes} мин${actualBonus > 0 ? ` (бонусы: ${actualBonus}₸)` : ''}`,
-              balanceBefore: user.walletBalance,
-              balanceAfter: user.walletBalance - totalCost,
+              balanceBefore: user.walletBalance, balanceAfter: user.walletBalance - txTotalCost,
             },
-          }),
-        ] : [
-          prisma.user.update({
-            where: { id: userId },
-            data: {
-              ...(actualBonus > 0 ? { bonusPoints: { decrement: actualBonus } } : {}),
-            },
-          }),
-        ]),
-      ]);
+          });
+        } else if (actualBonus > 0) {
+          await tx.user.update({ where: { id: userId }, data: { bonusPoints: { decrement: actualBonus } } });
+        }
 
-      // Auto-cancel if driver doesn't arrive within 30 min — 50% penalty, 50% refund
-      await noShowQueue.add(
-        'no-show-check',
-        { bookingId: booking.id },
-        { delay: 30 * 60 * 1000, jobId: `noshow-${booking.id}` },
-      );
+        return { booking: newBooking, totalCost: txTotalCost, estimatedEndTime: txEndTime, now: txNow };
+      }, { timeout: 15000 });
 
-      // Overstay notifications: 5-min warning → end-of-time grace → billing starts
-      const msToEnd = estimatedEndTime.getTime() - now.getTime();
-      const jobBase = { bookingId: booking.id, userId, spotId };
+      booking = result.booking;
+      estimatedEndTime = result.estimatedEndTime;
+      now = result.now;
+      totalCost = result.totalCost;
 
-      if (msToEnd > 5 * 60 * 1000) {
-        await overstayQueue.add('time-ending', { ...jobBase, phase: 'time-ending' },
-          { delay: msToEnd - 5 * 60 * 1000, jobId: `te-${booking.id}` }).catch(() => {});
+    } catch (error: any) {
+      // PostgreSQL lock_not_available (55P03) or Prisma P2034 write conflict
+      const msg: string = error?.message ?? '';
+      const causeMsg: string = error?.cause?.message ?? '';
+      if (msg.includes('could not obtain lock') || causeMsg.includes('could not obtain lock') || error?.code === 'P2034') {
+        throw new Error('Spot just taken');
       }
-      await overstayQueue.add('warn', { ...jobBase, phase: 'warn' },
-        { delay: msToEnd, jobId: `warn-${booking.id}` }).catch(() => {});
-      await overstayQueue.add('overstay-start', { ...jobBase, phase: 'overstay-start' },
-        { delay: msToEnd + 5 * 60 * 1000, jobId: `os-${booking.id}` }).catch(() => {});
-
-      // Booking succeeded — remove the 15s safety-net cleanup job
-      const cleanupJob = await reservingCleanupQueue.getJob(`res-${spotId}`);
-      if (cleanupJob) await cleanupJob.remove().catch(() => {});
-
-      logger.info(`✅ Short-term booking created & paid: ${booking.id}, -${totalCost}₸`);
-      return booking;
-    } catch (error) {
-      // Reset spot to FREE and remove cleanup job so user can retry
-      await prisma.parkingSpot.update({
-        where: { id: spotId },
-        data: { status: 'FREE', currentUserPlate: null, currentUserId: null },
-      }).catch(() => {});
-      const cleanupJob = await reservingCleanupQueue.getJob(`res-${spotId}`);
-      if (cleanupJob) await cleanupJob.remove().catch(() => {});
-
       logger.error('❌ Error creating booking:', error);
       throw error;
     }
+
+    // BullMQ jobs are outside the transaction — if these fail, the booking still exists
+    await noShowQueue.add('no-show-check', { bookingId: booking.id },
+      { delay: 30 * 60 * 1000, jobId: `noshow-${booking.id}` }).catch(() => {});
+
+    const msToEnd = estimatedEndTime.getTime() - now.getTime();
+    const jobBase = { bookingId: booking.id, userId, spotId };
+    if (msToEnd > 5 * 60 * 1000) {
+      await overstayQueue.add('time-ending', { ...jobBase, phase: 'time-ending' },
+        { delay: msToEnd - 5 * 60 * 1000, jobId: `te-${booking.id}` }).catch(() => {});
+    }
+    await overstayQueue.add('warn', { ...jobBase, phase: 'warn' },
+      { delay: msToEnd, jobId: `warn-${booking.id}` }).catch(() => {});
+    await overstayQueue.add('overstay-start', { ...jobBase, phase: 'overstay-start' },
+      { delay: msToEnd + 5 * 60 * 1000, jobId: `os-${booking.id}` }).catch(() => {});
+
+    logger.info(`✅ Short-term booking created & paid: ${booking.id}, -${totalCost}₸`);
+    return booking;
   }
 
 

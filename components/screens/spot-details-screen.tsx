@@ -199,6 +199,8 @@ export function SpotDetailsScreen() {
         setBookingError(`${t.insufficientBalance} — ${t.insufficientMsg3}`)
       } else if (msg.includes('Debt:')) {
         setDebtBlocked(true)
+      } else if (msg.includes('Spot just taken')) {
+        setBookingError('Место только что заняли — попробуйте выбрать другое')
       } else {
         setBookingError(msg)
       }

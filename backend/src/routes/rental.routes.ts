@@ -59,9 +59,12 @@ router.post('/', requireCarPlate, validateLongTermRental, async (req: Request, r
       message: '✅ Long-term rental created successfully',
     });
   } catch (error: any) {
+    const msg: string = error?.message ?? 'Failed to create rental';
+    if (msg === 'Spot just taken') return res.status(409).json({ error: msg });
+    if (msg.startsWith('Debt:')) return res.status(400).json({ error: msg });
     logger.error('❌ Error creating rental:', error);
-    const status = error.message?.includes('Insufficient') ? 402 : 500;
-    res.status(status).json({ error: error.message ?? 'Failed to create rental' });
+    const status = msg.includes('Insufficient') ? 402 : 500;
+    res.status(status).json({ error: msg });
   }
 });
 

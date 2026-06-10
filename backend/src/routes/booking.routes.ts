@@ -34,9 +34,12 @@ router.post('/', requireCarPlate, validateBooking, async (req: Request, res: Res
       booking,
       message: '✅ Booking created successfully',
     });
-  } catch (error) {
+  } catch (error: any) {
+    const msg: string = error?.message ?? 'Failed to create booking';
+    if (msg === 'Spot just taken') return res.status(409).json({ error: msg });
+    if (msg.startsWith('Insufficient balance') || msg.startsWith('Debt:')) return res.status(400).json({ error: msg });
     logger.error('❌ Error creating booking:', error);
-    res.status(500).json({ error: 'Failed to create booking' });
+    res.status(500).json({ error: msg });
   }
 });
 
