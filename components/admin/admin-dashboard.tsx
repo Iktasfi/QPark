@@ -310,7 +310,7 @@ export function AdminDashboard() {
   const simulateAction = async (action: "entry" | "exit", spotNumber: string) => {
     setActionLoading(`${action}-${spotNumber}`)
     try {
-      const endpoint = action === "entry" ? "/backend/parking/simulate-entry" : "/backend/parking/lpr/exit"
+      const endpoint = action === "entry" ? "/backend/parking/simulate-entry" : "/backend/parking/simulate-exit"
       const response = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
