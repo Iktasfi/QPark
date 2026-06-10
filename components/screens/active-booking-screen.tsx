@@ -557,6 +557,14 @@ export function ActiveBookingScreen() {
         setActiveBooking({ ...activeBooking, arrivedAt: new Date(data.arrivedAt) })
       }
     }
+    // Long-term no-show: BullMQ job cancelled the rental after 30-min grace period
+    const handleRentalCancelled = (data: { rentalId: string; userId: string }) => {
+      if (!activeBooking || data.rentalId !== activeBooking.id) return
+      if (data.userId && data.userId !== user?.id) return
+      import('@/lib/local-notify').then(({ cancelBookingNotifications }) => cancelBookingNotifications()).catch(() => {})
+      setActiveBooking(null)
+      setCurrentScreen("home")
+    }
 
     socket.on("spot-reassigned", handleReassigned)
     socket.on("spot-moved", handleSpotMoved)
@@ -568,6 +576,7 @@ export function ActiveBookingScreen() {
     socket.on("parking-exit-confirmed", handleParkingExitConfirmed)
     socket.on("lpr-gate-denied", handleGateDenied)
     socket.on("rental-arrived", handleRentalArrived)
+    socket.on("rental-cancelled", handleRentalCancelled)
     return () => {
       socket.off("spot-reassigned", handleReassigned)
       socket.off("spot-moved", handleSpotMoved)
@@ -579,6 +588,7 @@ export function ActiveBookingScreen() {
       socket.off("parking-exit-confirmed", handleParkingExitConfirmed)
       socket.off("lpr-gate-denied", handleGateDenied)
       socket.off("rental-arrived", handleRentalArrived)
+      socket.off("rental-cancelled", handleRentalCancelled)
     }
   }, [user, activeBooking])
 

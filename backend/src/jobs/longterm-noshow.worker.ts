@@ -4,7 +4,7 @@ import { prisma } from '../lib/prisma';
 import { logger } from '../server';
 import { redisConnection } from './queues';
 import { sendPushToUser } from '../utils/notifications';
-import { PRICING } from '../utils/pricing';
+import { getLongTermPrice } from '../utils/pricing';
 
 export function startLongTermNoShowWorker(io: SocketIOServer) {
   return new Worker(
@@ -24,7 +24,7 @@ export function startLongTermNoShowWorker(io: SocketIOServer) {
         return;
       }
 
-      const penalty = PRICING.NOSHOW_LONG_TERM_KEEP; // 900₸ — стоимость одного дня
+      const penalty = getLongTermPrice(1); // стоимость одного дня — удерживается как штраф
       const refundAmount = Math.max(0, (rental.totalCost ?? 0) - penalty);
       const user = rental.user;
       const balBefore = user?.walletBalance ?? 0;
