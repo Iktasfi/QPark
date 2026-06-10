@@ -83,10 +83,15 @@ def notify_backend(car_plate: str, spot_number: str, direction: str) -> dict:
 
 
 
+_CYR_TO_LAT = {
+    'А':'A','В':'B','Е':'E','К':'K','М':'M','Н':'H','О':'O','Р':'P','С':'C','Т':'T','У':'Y','Х':'X',
+}
+
 def clean_plate(raw: str) -> str:
-    """Убрать лишние символы, привести к верхнему регистру."""
-    cleaned = re.sub(r"[^A-Z0-9А-ЯЁ]", "", raw.upper())
-    return cleaned
+    """Убрать пробелы, привести к uppercase, заменить кириллические омографы латиницей."""
+    upper = raw.upper().replace(' ', '')
+    latin = ''.join(_CYR_TO_LAT.get(c, c) for c in upper)
+    return re.sub(r"[^A-Z0-9]", "", latin)
 
 
 def is_valid_plate(plate: str) -> bool:
