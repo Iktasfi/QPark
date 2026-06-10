@@ -149,12 +149,15 @@ export function WalletScreen() {
       </div>
 
       <div className="flex-1 px-4 space-y-4 overflow-y-auto content-bottom-pad">
-        <div className={`relative ${darkMode ? "bg-[#2a3654]" : "bg-[#495E8E]"} rounded-3xl p-5 overflow-hidden`}>
+        <div className={`relative ${(user?.balance ?? 0) < 0 ? "bg-red-600" : darkMode ? "bg-[#2a3654]" : "bg-[#495E8E]"} rounded-3xl p-5 overflow-hidden`}>
           <div className="relative z-10">
-            <p className="text-white/80 text-sm font-medium">{t.currentBalance}</p>
+            <p className="text-white/80 text-sm font-medium">{(user?.balance ?? 0) < 0 ? "Долг" : t.currentBalance}</p>
             <p className="text-white text-4xl font-bold mt-1 tracking-tight">
               {user?.balance ?? 0}<span className="text-3xl">₸</span>
             </p>
+            {(user?.balance ?? 0) < 0 && (
+              <p className="text-white/90 text-xs mt-1 font-medium">Пополните кошелёк — долг погасится автоматически</p>
+            )}
             <p className="text-white/70 text-sm mt-2">{user?.bonusPoints ?? 0} {t.bonusPoints.toLowerCase()}</p>
           </div>
           <div className="absolute top-5 right-5">

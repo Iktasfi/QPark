@@ -501,23 +501,12 @@ router.post('/finish-parking', async (req: Request, res: Response) => {
 
     let newBalance: number | null = null;
     if (overstayCharge > 0) {
-      const owner = await prisma.user.findUnique({ where: { id: userId } });
-      if (owner) {
-        const charged = Math.min(overstayCharge, owner.walletBalance);
-        const [, updated] = await prisma.$transaction([
-          prisma.transaction.create({
-            data: {
-              userId, amount: -charged, type: 'PAYMENT',
-              description: `Овертайм при выезде: ${Math.floor(overstayCharge / 3)} мин × 3₸`,
-              balanceBefore: owner.walletBalance,
-              balanceAfter: owner.walletBalance - charged,
-            },
-          }),
-          prisma.user.update({ where: { id: userId }, data: { walletBalance: { decrement: charged } }, select: { walletBalance: true } }),
-        ]);
-        newBalance = updated.walletBalance;
-        overstayCharge = charged;
-      }
+      const result = await paymentService.chargeWallet(
+        userId, overstayCharge,
+        `Овертайм при выезде: ${Math.floor(overstayCharge / 3)} мин × 3₸`,
+        `Долг за превышение времени парковки (${Math.floor(overstayCharge / 3)} мин × 3₸)`,
+      );
+      newBalance = result.newBalance;
     }
 
     await prisma.booking.update({ where: { id: booking.id }, data: { exitRequestedAt: now } });
@@ -568,31 +557,14 @@ router.post('/finish-parking-longterm', async (req: Request, res: Response) => {
       const debtAmount = overstayMinutes * 3;
 
       if (debtAmount > 0) {
-        const owner = await prisma.user.findUnique({ where: { id: userId } });
-        if (!owner) return res.status(404).json({ error: 'User not found' });
-
-        if (owner.walletBalance < debtAmount) {
-          return res.status(402).json({
-            error: 'Insufficient balance',
-            debtAmount,
-            balance: owner.walletBalance,
-            insufficient: true,
-          });
-        }
-
-        const charged = Math.min(debtAmount, owner.walletBalance);
-        await prisma.$transaction([
-          prisma.user.update({ where: { id: userId }, data: { walletBalance: { decrement: charged } } }),
-          prisma.transaction.create({
-            data: {
-              userId, amount: -charged, type: 'PAYMENT',
-              description: `Долг за превышение аренды: ${overstayMinutes} мин × 3₸`,
-              balanceBefore: owner.walletBalance,
-              balanceAfter: owner.walletBalance - charged,
-            },
-          }),
-        ]);
-        debtCharged = charged;
+        const result = await paymentService.chargeWallet(
+          userId, debtAmount,
+          `Долг за превышение аренды: ${overstayMinutes} мин × 3₸`,
+          `Долг за превышение времени аренды (${overstayMinutes} мин × 3₸)`,
+        );
+        debtCharged = debtAmount;
+        // If balance went negative, still allow exit (gate opens after this call)
+        void result;
       }
     }
 
@@ -831,10 +803,7 @@ router.post('/:id/photo', async (req: Request, res: Response) => {
       io.emit('photo-wrong-spot',  { bookingId: id, spotId: booking.spotId, autoVerified: true });
 
       // Штраф 900₸ за неправильное место
-      await prisma.user.update({
-        where: { id: userId },
-        data: { walletBalance: { decrement: 900 } },
-      });
+      await paymentService.chargeWallet(userId, 900, 'Штраф 900₸: неправильное место парковки', 'Штраф: припаркован не на своём месте');
     } else {
       io.emit('photo-uploaded', { bookingId: id, spotId: booking.spotId });
     }

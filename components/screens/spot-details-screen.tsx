@@ -39,6 +39,7 @@ export function SpotDetailsScreen() {
   const [bookingError, setBookingError]         = useState("")
   const [showConflictModal, setShowConflictModal] = useState(false)
   const [insufficientBalance, setInsufficientBalance] = useState<{ need: number; have: number } | null>(null)
+  const [debtBlocked, setDebtBlocked] = useState(false)
   const [promoCode, setPromoCode]               = useState("")
   const [promoApplied, setPromoApplied]         = useState<{ discount: number; code: string } | null>(null)
   const [promoError, setPromoError]             = useState("")
@@ -196,6 +197,8 @@ export function SpotDetailsScreen() {
       if (match) {
         setInsufficientBalance({ need: parseInt(match[1]), have: parseInt(match[2]) })
         setBookingError(`${t.insufficientBalance} — ${t.insufficientMsg3}`)
+      } else if (msg.includes('Debt:')) {
+        setDebtBlocked(true)
       } else {
         setBookingError(msg)
       }
@@ -600,6 +603,32 @@ export function SpotDetailsScreen() {
               <Button size="lg" className="flex-1 bg-[#354469] hover:bg-[#354469]/90"
                 onClick={() => { setShowConflictModal(false); setCurrentScreen("booking") }}>
                 {t.viewMyBooking}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Debt block modal */}
+      {debtBlocked && (
+        <div className="absolute inset-0 z-50 flex flex-col justify-end">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setDebtBlocked(false)} />
+          <div className="relative bg-white dark:bg-gray-900 rounded-t-3xl px-5 pt-5 pb-10">
+            <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-gray-200" />
+            <div className="flex flex-col items-center gap-3 mb-5">
+              <div className="flex h-14 w-14 items-center justify-center rounded-full bg-red-50">
+                <Wallet className="h-7 w-7 text-red-600" />
+              </div>
+              <h2 className="text-lg font-bold text-gray-900 dark:text-white text-center">У вас долг</h2>
+              <p className="text-sm text-gray-500 dark:text-gray-400 text-center">
+                Погасите долг для продолжения. Пополните кошелёк — долг спишется автоматически.
+              </p>
+            </div>
+            <div className="flex gap-3">
+              <Button variant="outline" size="lg" className="flex-1" onClick={() => setDebtBlocked(false)}>{t.back}</Button>
+              <Button size="lg" className="flex-1 bg-red-600 hover:bg-red-700 text-white"
+                onClick={() => { setDebtBlocked(false); setCurrentScreen("wallet") }}>
+                Пополнить кошелёк
               </Button>
             </div>
           </div>

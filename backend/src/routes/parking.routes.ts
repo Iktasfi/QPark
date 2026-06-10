@@ -383,23 +383,13 @@ router.post('/lpr/exit-lpr', async (req: Request, res: Response) => {
       const overstayMinutes = Math.floor(overstayMs / 60000);
       if (overstayMinutes > 0) {
         const overstayCost = overstayMinutes * 3;
-        const owner = await prisma.user.findUnique({ where: { id: paidBooking.userId } });
-        if (owner) {
-          const charged = Math.min(overstayCost, owner.walletBalance);
-          await Promise.all([
-            prisma.user.update({ where: { id: owner.id }, data: { walletBalance: { decrement: charged } } }),
-            prisma.transaction.create({
-              data: {
-                userId: owner.id, amount: -charged, type: 'PAYMENT',
-                description: `Овертайм: ${overstayMinutes} мин × 3₸`,
-                balanceBefore: owner.walletBalance,
-                balanceAfter: owner.walletBalance - charged,
-              },
-            }),
-          ]);
-          io.emit('overstay-charged', { userId: owner.id, minutes: overstayMinutes, cost: charged });
-          logger.info(`💸 Overstay charge: ${owner.id}, ${overstayMinutes} min, -${charged}₸`);
-        }
+        const result = await paymentService.chargeWallet(
+          paidBooking.userId, overstayCost,
+          `Овертайм: ${overstayMinutes} мин × 3₸`,
+          `Долг за превышение времени парковки (${overstayMinutes} мин × 3₸)`,
+        );
+        io.emit('overstay-charged', { userId: paidBooking.userId, minutes: overstayMinutes, cost: overstayCost });
+        logger.info(`💸 Overstay charge: ${paidBooking.userId}, ${overstayMinutes} min, -${overstayCost}₸ → balance ${result.newBalance}₸`);
       }
 
       const bonusEarned = calculateCashback(paidBooking.totalCost ?? 0);
@@ -634,22 +624,13 @@ router.post('/simulate-exit', async (req: Request, res: Response) => {
         const overstayMinutes = Math.floor(overstayMs / 60000);
         if (overstayMinutes > 0) {
           const overstayCost = overstayMinutes * 3;
-          const owner = await prisma.user.findUnique({ where: { id: activeBooking.userId } });
-          if (owner) {
-            const charged = Math.min(overstayCost, owner.walletBalance);
-            await Promise.all([
-              prisma.user.update({ where: { id: owner.id }, data: { walletBalance: { decrement: charged } } }),
-              prisma.transaction.create({
-                data: {
-                  userId: owner.id, amount: -charged, type: 'PAYMENT',
-                  description: `Овертайм (симуляция): ${overstayMinutes} мин × 3₸`,
-                  balanceBefore: owner.walletBalance,
-                  balanceAfter: owner.walletBalance - charged,
-                },
-              }),
-            ]);
-            io.emit('overstay-charged', { userId: owner.id, minutes: overstayMinutes, cost: charged });
-          }
+          const result = await paymentService.chargeWallet(
+            activeBooking.userId, overstayCost,
+            `Овертайм (симуляция): ${overstayMinutes} мин × 3₸`,
+            `Долг за превышение времени парковки (${overstayMinutes} мин × 3₸)`,
+          );
+          io.emit('overstay-charged', { userId: activeBooking.userId, minutes: overstayMinutes, cost: overstayCost });
+          logger.info(`💸 Simulate overstay: ${activeBooking.userId}, ${overstayMinutes} min → balance ${result.newBalance}₸`);
         }
       }
 

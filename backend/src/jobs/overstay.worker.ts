@@ -4,6 +4,7 @@ import { redisConnection, overstayQueue } from './queues';
 import { prisma } from '../lib/prisma';
 import { logger } from '../server';
 import { sendPushToUser } from '../utils/notifications';
+import paymentService from '../services/payment.service';
 
 // Phase time-ending: fires 5 min before estimatedEndTime → "5 min left" push
 // Phase warn:        fires exactly at estimatedEndTime/endDate → overstay counter starts
@@ -46,41 +47,11 @@ export function startOverstayWorker(io: SocketIOServer) {
           return;
         }
 
-        const owner = await prisma.user.findUnique({ where: { id: userId } });
-        if (owner) {
-          const fineAmount = 900;
-          const charged = Math.min(fineAmount, owner.walletBalance);
-          const unpaidDebt = fineAmount - charged;
-          const ops: Parameters<typeof prisma.$transaction>[0] = [
-            prisma.user.update({ where: { id: userId }, data: { walletBalance: { decrement: charged } } }),
-            prisma.transaction.create({
-              data: {
-                userId,
-                amount: -charged,
-                type: 'PAYMENT',
-                description: 'Штраф 900₸: автомобиль не выехал в течение 7 минут после нажатия «Завершить»',
-                balanceBefore: owner.walletBalance,
-                balanceAfter: owner.walletBalance - charged,
-              },
-            }),
-          ];
-          // If wallet couldn't cover full fine, record the remaining debt — it will be
-          // auto-deducted from the next wallet top-up via collectFineDebts()
-          if (unpaidDebt > 0) {
-            ops.push(
-              prisma.fine.create({
-                data: {
-                  userId,
-                  amount: unpaidDebt,
-                  paidAmount: 0,
-                  reason: `Долг по штрафу: автомобиль не выехал за 7 мин (списано ${charged}₸, осталось ${unpaidDebt}₸)`,
-                  isPaid: false,
-                },
-              }) as any,
-            );
-          }
-          await prisma.$transaction(ops);
-        }
+        await paymentService.chargeWallet(
+          userId, 900,
+          'Штраф 900₸: автомобиль не выехал в течение 7 минут после нажатия «Завершить»',
+          'Штраф: не выехал за 7 мин после Finish',
+        );
 
         // Spot stays OCCUPIED — physical LPR exit will free it later
         // Booking/rental stays active

@@ -17,6 +17,9 @@ export class LongTermRentalService {
 
       if (!user) throw new Error('User not found');
       if (!spot || spot.status !== 'FREE') throw new Error('Spot is not available');
+      if (user.walletBalance < 0) {
+        throw new Error(`Debt: balance is ${user.walletBalance}₸. Please top up your wallet to clear the debt before booking.`);
+      }
       if (totalCost > 0 && user.walletBalance < totalCost) {
         throw new Error(`Insufficient balance: need ${totalCost}₸, have ${user.walletBalance}₸`);
       }

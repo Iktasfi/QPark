@@ -17,6 +17,10 @@ export class BookingService {
       const user = await prisma.user.findUnique({ where: { id: userId } });
       if (!user) throw new Error('User not found');
 
+      if (user.walletBalance < 0) {
+        throw new Error(`Debt: balance is ${user.walletBalance}₸. Please top up your wallet to clear the debt before booking.`);
+      }
+
       const plate = plateNumber || '';
       const now = new Date();
       const estimatedEndTime = new Date(now.getTime() + estimatedMinutes * 60 * 1000);

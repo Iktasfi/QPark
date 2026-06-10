@@ -2,6 +2,7 @@ import Stripe from 'stripe';
 import { calculateShortTermCost, calculateCashback, PRICING } from '../utils/pricing';
 import { logger } from '../server';
 import { prisma } from '../lib/prisma';
+import { sendPushToUser } from '../utils/notifications';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
   apiVersion: '2024-06-20',
@@ -52,30 +53,98 @@ export class PaymentService {
     return remainingBalance;
   }
 
+  // Charge a penalty/fine — allows balance to go negative (debt).
+  // Use for all штрафы and overstay charges. Regular payments should still use debitWallet.
+  async chargeWallet(userId: string, amount: number, description: string, fineReason: string): Promise<{ newBalance: number; debt: number }> {
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new Error('User not found');
+
+    const newBalance = user.walletBalance - amount;
+    const debt = Math.max(0, -newBalance);
+
+    const ops: Parameters<typeof prisma.$transaction>[0] = [
+      prisma.user.update({ where: { id: userId }, data: { walletBalance: { decrement: amount } } }),
+      prisma.transaction.create({
+        data: {
+          userId, amount: -amount, type: 'PAYMENT', description,
+          balanceBefore: user.walletBalance, balanceAfter: newBalance,
+        },
+      }),
+    ];
+
+    if (debt > 0) {
+      ops.push(
+        prisma.fine.create({
+          data: { userId, amount: debt, paidAmount: 0, reason: fineReason, isPaid: false },
+        }) as any,
+      );
+    }
+
+    await prisma.$transaction(ops);
+    logger.info(`💳 chargeWallet: ${userId}, -${amount}₸ → ${newBalance}₸${debt > 0 ? ` (долг ${debt}₸)` : ''}`);
+
+    if (debt > 0) {
+      sendPushToUser(
+        userId,
+        '⚠️ Долг по штрафу',
+        `У вас долг ${debt}₸. Пополните кошелёк — долг погасится автоматически.`,
+        { type: 'debt-created' },
+      ).catch(() => {});
+    }
+
+    return { newBalance, debt };
+  }
+
   async topUpWallet(userId: string, amount: number) {
     if (amount <= 0) throw new Error('Amount must be positive');
 
     const user = await prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new Error('User not found');
 
+    const prevBalance = user.walletBalance;
+    const newBalance = prevBalance + amount;
+
     const [transaction, updatedUser] = await prisma.$transaction([
       prisma.transaction.create({
         data: {
-          userId,
-          amount,
-          type: 'DEPOSIT',
+          userId, amount, type: 'DEPOSIT',
           description: 'Пополнение кошелька',
-          balanceBefore: user.walletBalance,
-          balanceAfter: user.walletBalance + amount,
+          balanceBefore: prevBalance, balanceAfter: newBalance,
         },
       }),
-      prisma.user.update({
-        where: { id: userId },
-        data: { walletBalance: { increment: amount } },
-      }),
+      prisma.user.update({ where: { id: userId }, data: { walletBalance: { increment: amount } } }),
     ]);
 
     logger.info(`✅ Wallet top-up: ${userId}, +${amount}₸ → ${updatedUser.walletBalance}₸`);
+
+    // If the user was in debt (negative balance), the top-up naturally covers it.
+    // Mark unpaid fines as paid and send push.
+    if (prevBalance < 0) {
+      const debtCovered = Math.min(Math.abs(prevBalance), amount);
+      const unpaidFines = await prisma.fine.findMany({ where: { userId, isPaid: false }, orderBy: { createdAt: 'asc' } });
+      let remaining = debtCovered;
+      for (const fine of unpaidFines) {
+        if (remaining <= 0) break;
+        const paying = Math.min(fine.amount - fine.paidAmount, remaining);
+        const newPaid = fine.paidAmount + paying;
+        await prisma.fine.update({
+          where: { id: fine.id },
+          data: { paidAmount: newPaid, isPaid: newPaid >= fine.amount, paidAt: newPaid >= fine.amount ? new Date() : null },
+        });
+        remaining -= paying;
+      }
+      if (updatedUser.walletBalance >= 0) {
+        sendPushToUser(
+          userId,
+          '✅ Долг погашен',
+          `Долг ${Math.abs(prevBalance)}₸ погашен. Баланс: ${updatedUser.walletBalance}₸`,
+          { type: 'debt-cleared' },
+        ).catch(() => {});
+      }
+      return { transaction, walletBalance: updatedUser.walletBalance };
+    }
+
+    // No prior debt — collect any old-style Fine records (legacy path)
     const finalBalance = await this.collectFineDebts(userId, updatedUser.walletBalance);
     return { transaction, walletBalance: finalBalance };
   }

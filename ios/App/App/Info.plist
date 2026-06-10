@@ -47,5 +47,7 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
+	<key>NSUserNotificationUsageDescription</key>
+	<string>QPark отправляет уведомления о статусе парковки, времени истечения и штрафах</string>
 </dict>
 </plist>

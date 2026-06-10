@@ -5,6 +5,7 @@ import { logger } from '../server';
 import { prisma } from '../lib/prisma';
 import { findFreeSpotNearby } from '../utils/spots';
 import { sendPushToUser } from '../utils/notifications';
+import paymentService from '../services/payment.service';
 
 const router = Router();
 
@@ -390,50 +391,15 @@ router.post('/complaints/:id/reassign', async (req: Request, res: Response) => {
       }
     };
 
-    // Fine the violator 900₸
+    // Fine the violator 900₸ — allows negative balance (debt)
     const issueFineToViolator = async (violatorSpotNumber: string) => {
       if (!complaint.violatorUserId) return;
-      const violatorUser = await prisma.user.findUnique({ where: { id: complaint.violatorUserId } });
-      if (!violatorUser) return;
-      const fineAmount = 900;
-      const charged = Math.min(fineAmount, violatorUser.walletBalance);
-      const debt = fineAmount - charged;
-      await Promise.all([
-        prisma.fine.create({
-          data: {
-            userId: complaint.violatorUserId,
-            amount: fineAmount,
-            paidAmount: charged,
-            reason: `Автоштраф: занял чужое место (${violatorSpotNumber}), места поменяны`,
-            isPaid: charged >= fineAmount,
-          },
-        }),
-        prisma.user.update({
-          where: { id: complaint.violatorUserId },
-          data: { walletBalance: { decrement: charged } },
-        }),
-        prisma.transaction.create({
-          data: {
-            userId: complaint.violatorUserId,
-            amount: -charged,
-            type: 'PAYMENT',
-            description: `Автоштраф 900₸: занял место ${violatorSpotNumber}`,
-            balanceBefore: violatorUser.walletBalance,
-            balanceAfter: Math.max(0, violatorUser.walletBalance - fineAmount),
-          },
-        }),
-        ...(debt > 0 ? [prisma.transaction.create({
-          data: {
-            userId: complaint.violatorUserId,
-            amount: 0,
-            type: 'PAYMENT',
-            description: `Долг по штрафу: ${debt}₸ (пополните кошелёк)`,
-            balanceBefore: 0,
-            balanceAfter: 0,
-          },
-        })] : []),
-      ]);
-      io.emit('fine-issued', { userId: complaint.violatorUserId, amount: fineAmount, complaintId: id });
+      await paymentService.chargeWallet(
+        complaint.violatorUserId, 900,
+        `Автоштраф 900₸: занял место ${violatorSpotNumber}`,
+        `Автоштраф: занял чужое место (${violatorSpotNumber}), места поменяны`,
+      );
+      io.emit('fine-issued', { userId: complaint.violatorUserId, amount: 900, complaintId: id });
     };
 
     // ── CASE 1 (PRIORITY): Violator known → always swap bookings ──
