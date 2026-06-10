@@ -8,7 +8,6 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { MapPin, Car, Clock, AlertTriangle, Camera, Calendar, Check, X, Wallet } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { Camera as CapCamera, CameraResultType, CameraSource } from "@capacitor/camera"
 
 const extendOptions = [
   { days: 1,  price: 900,  perDay: 900 },
@@ -408,7 +407,8 @@ export function ActiveBookingScreen() {
   
   const handleTakeComplaintPhoto = async () => {
     try {
-      const photo = await CapCamera.getPhoto({
+      const { Camera, CameraResultType, CameraSource } = await import("@capacitor/camera")
+      const photo = await Camera.getPhoto({
         quality: 70,
         allowEditing: false,
         resultType: CameraResultType.DataUrl,
