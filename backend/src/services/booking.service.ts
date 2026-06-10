@@ -1,7 +1,7 @@
 import { calculateShortTermCost, getFreeTravelTimeRemaining } from '../utils/pricing';
 import { logger } from '../server';
 import { prisma } from '../lib/prisma';
-import { noShowQueue, overstayQueue } from '../jobs/queues';
+import { noShowQueue, overstayQueue, reservingCleanupQueue } from '../jobs/queues';
 
 export class BookingService {
 
@@ -13,6 +13,24 @@ export class BookingService {
     promoDiscount: number = 0,
     bonusDiscount: number = 0,
   ) {
+    // Phase 1: lock spot row with SELECT FOR UPDATE, set RESERVING atomically
+    await prisma.$transaction(async (tx) => {
+      const rows = await tx.$queryRaw<Array<{ id: string; status: string }>>`
+        SELECT id, status FROM "parking_spots" WHERE id = ${spotId} FOR UPDATE
+      `;
+      const spot = rows[0];
+      if (!spot) throw new Error('Spot not found');
+      if (spot.status === 'RESERVING') throw new Error('Место только что забрали, выберите другое');
+      if (spot.status !== 'FREE') throw new Error('Spot is not available');
+      await tx.parkingSpot.update({ where: { id: spotId }, data: { status: 'RESERVING' } });
+    });
+
+    // 15-second safety net: if server crashes before booking completes, reset to FREE
+    await reservingCleanupQueue.add('reserving-cleanup', { spotId }, {
+      delay: 15 * 1000,
+      jobId: `res-${spotId}`,
+    }).catch(() => {});
+
     try {
       const user = await prisma.user.findUnique({ where: { id: userId } });
       if (!user) throw new Error('User not found');
@@ -100,9 +118,21 @@ export class BookingService {
       await overstayQueue.add('overstay-start', { ...jobBase, phase: 'overstay-start' },
         { delay: msToEnd + 5 * 60 * 1000, jobId: `os-${booking.id}` }).catch(() => {});
 
+      // Booking succeeded — remove the 15s safety-net cleanup job
+      const cleanupJob = await reservingCleanupQueue.getJob(`res-${spotId}`);
+      if (cleanupJob) await cleanupJob.remove().catch(() => {});
+
       logger.info(`✅ Short-term booking created & paid: ${booking.id}, -${totalCost}₸`);
       return booking;
     } catch (error) {
+      // Reset spot to FREE and remove cleanup job so user can retry
+      await prisma.parkingSpot.update({
+        where: { id: spotId },
+        data: { status: 'FREE', currentUserPlate: null, currentUserId: null },
+      }).catch(() => {});
+      const cleanupJob = await reservingCleanupQueue.getJob(`res-${spotId}`);
+      if (cleanupJob) await cleanupJob.remove().catch(() => {});
+
       logger.error('❌ Error creating booking:', error);
       throw error;
     }

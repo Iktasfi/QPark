@@ -204,6 +204,7 @@ enum SpotStatus {
   BOOKED
   OCCUPIED
   RESERVED
+  RESERVING
   REPAIR
 }
 

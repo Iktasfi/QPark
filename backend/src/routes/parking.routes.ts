@@ -50,6 +50,7 @@ router.get('/spots', async (req: Request, res: Response) => {
         'BOOKED': '🟡',
         'OCCUPIED': '🔴',
         'RESERVED': '🟠',
+        'RESERVING': '🟡',
         'REPAIR': '🔧'
       };
 
@@ -58,6 +59,7 @@ router.get('/spots', async (req: Request, res: Response) => {
         'BOOKED': 'Забронировано',
         'OCCUPIED': 'Занято',
         'RESERVED': 'Резерв',
+        'RESERVING': 'Резервируется',
         'REPAIR': 'Ремонт'
       };
 
@@ -87,7 +89,7 @@ router.get('/spots', async (req: Request, res: Response) => {
     const emptyTable: ReturnType<typeof createTable> = [];
 
     const freeCount     = spots.filter(s => s.status === 'FREE').length;
-    const bookedCount   = spots.filter(s => s.status === 'BOOKED').length;
+    const bookedCount   = spots.filter(s => s.status === 'BOOKED' || s.status === 'RESERVING').length;
     const occupiedCount = spots.filter(s => s.status === 'OCCUPIED').length;
     const repairCount   = spots.filter(s => s.status === 'REPAIR').length;
 

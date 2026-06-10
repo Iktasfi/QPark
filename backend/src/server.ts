@@ -21,6 +21,7 @@ import { prisma } from './lib/prisma';
 import { startNoShowWorker } from './jobs/noshow.worker';
 import { startRentalExpiryWorker } from './jobs/rental-expiry.worker';
 import { startOverstayWorker } from './jobs/overstay.worker';
+import { startReservingWorker } from './jobs/reserving.worker';
 
 
 dotenv.config();
@@ -158,6 +159,7 @@ httpServer.listen(PORT, async () => {
   startNoShowWorker(io);
   startRentalExpiryWorker(io);
   startOverstayWorker(io);
+  startReservingWorker(io);
 });
 
 

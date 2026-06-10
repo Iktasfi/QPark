@@ -34,3 +34,6 @@ export const rentalExpiryQueue = new Queue('rental-expiry', { connection: redisC
 
 // Overstay queue: fires at booking estimatedEndTime / rental endDate
 export const overstayQueue = new Queue('overstay', { connection: redisConnection });
+
+// Reserving cleanup: resets spot from RESERVING → FREE after 15s if booking didn't complete
+export const reservingCleanupQueue = new Queue('reserving-cleanup', { connection: redisConnection });

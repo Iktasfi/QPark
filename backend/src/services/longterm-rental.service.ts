@@ -1,22 +1,36 @@
 import { getLongTermPrice } from '../utils/pricing';
 import { logger } from '../server';
 import { prisma } from '../lib/prisma';
+import { reservingCleanupQueue } from '../jobs/queues';
 
 export class LongTermRentalService {
 
   async createLongTermRental(userId: string, spotId: string, rentalDays: number, plateNumber: string = '') {
+    // Phase 1: lock spot row with SELECT FOR UPDATE, set RESERVING atomically
+    await prisma.$transaction(async (tx) => {
+      const rows = await tx.$queryRaw<Array<{ id: string; status: string }>>`
+        SELECT id, status FROM "parking_spots" WHERE id = ${spotId} FOR UPDATE
+      `;
+      const spot = rows[0];
+      if (!spot) throw new Error('Spot not found');
+      if (spot.status === 'RESERVING') throw new Error('Место только что забрали, выберите другое');
+      if (spot.status !== 'FREE') throw new Error('Spot is not available');
+      await tx.parkingSpot.update({ where: { id: spotId }, data: { status: 'RESERVING' } });
+    });
+
+    await reservingCleanupQueue.add('reserving-cleanup', { spotId }, {
+      delay: 15 * 1000,
+      jobId: `res-${spotId}`,
+    }).catch(() => {});
+
     try {
       const now = new Date();
       const totalCost = getLongTermPrice(rentalDays);
       const endDate = new Date(now.getTime() + rentalDays * 24 * 60 * 60 * 1000);
 
-      const [user, spot] = await Promise.all([
-        prisma.user.findUnique({ where: { id: userId } }),
-        prisma.parkingSpot.findUnique({ where: { id: spotId } }),
-      ]);
+      const user = await prisma.user.findUnique({ where: { id: userId } });
 
       if (!user) throw new Error('User not found');
-      if (!spot || spot.status !== 'FREE') throw new Error('Spot is not available');
       if (user.walletBalance < 0) {
         throw new Error(`Debt: balance is ${user.walletBalance}₸. Please top up your wallet to clear the debt before booking.`);
       }
@@ -67,9 +81,20 @@ export class LongTermRentalService {
         include: { spot: true, user: true },
       });
 
+      // Rental succeeded — remove the 15s safety-net cleanup job
+      const cleanupJob = await reservingCleanupQueue.getJob(`res-${spotId}`);
+      if (cleanupJob) await cleanupJob.remove().catch(() => {});
+
       logger.info(`✅ Long-term rental created & paid: ${rental.id}, ${rentalDays} days, -${totalCost}₸`);
       return rentalWithRelations!;
     } catch (error) {
+      await prisma.parkingSpot.update({
+        where: { id: spotId },
+        data: { status: 'FREE', currentUserPlate: null, currentUserId: null },
+      }).catch(() => {});
+      const cleanupJob = await reservingCleanupQueue.getJob(`res-${spotId}`);
+      if (cleanupJob) await cleanupJob.remove().catch(() => {});
+
       logger.error('❌ Error creating long-term rental:', error);
       throw error;
     }
