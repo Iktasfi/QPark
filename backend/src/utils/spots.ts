@@ -59,3 +59,19 @@ export async function findFreeSpotNearby(excludeSpotNumber: string) {
 
   return null;
 }
+
+/**
+ * Finds the first FREE spot within the same parking lot (same prefix), excluding specified spot IDs.
+ * Used for complaint reassignment — keeps victim in same lot.
+ */
+export async function findFreeSpotSameLot(spotNumber: string, excludeIds: string[] = []) {
+  const prefix = extractPrefix(spotNumber);
+  return prisma.parkingSpot.findFirst({
+    where: {
+      status: 'FREE',
+      spotNumber: { startsWith: `${prefix}-`, not: spotNumber },
+      ...(excludeIds.length > 0 ? { id: { notIn: excludeIds } } : {}),
+    },
+    orderBy: { spotNumber: 'asc' },
+  });
+}
