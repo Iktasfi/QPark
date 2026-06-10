@@ -144,7 +144,11 @@ export function SpotDetailsScreen() {
         type: bookingType,
         status: "active" as const,
         // Use server's startTime so the no-show timer stays consistent across restores
-        startTime: data.booking?.startTime ? new Date(data.booking.startTime) : new Date(),
+        startTime: data.booking?.startTime
+          ? new Date(data.booking.startTime)
+          : data.booking?.startDate
+          ? new Date(data.booking.startDate)
+          : new Date(),
         isPaid: true, // always paid upfront (short-term charges at booking, long-term charges at booking)
         waitingFee: 0,
         rentalDays: selectedRentalDays || undefined,

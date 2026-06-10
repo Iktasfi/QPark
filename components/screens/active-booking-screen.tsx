@@ -55,6 +55,17 @@ export function ActiveBookingScreen() {
   const ltInsideSpot    = isLongTerm && selectedSpot?.status === "OCCUPIED"
   const endDateMs       = activeBooking?.endDate ? new Date(activeBooking.endDate).getTime() : null
   const isLtExpired     = isLongTerm && endDateMs !== null && now > endDateMs
+
+  // Long-term: 30-min arrival grace period countdown (uses server startTime)
+  const LT_NOSHOW_MS = 30 * 60 * 1000
+  const ltBookingStartMs = isLongTerm && activeBooking?.startTime
+    ? new Date(activeBooking.startTime).getTime() : null
+  const ltArrivalDeadlineMs = ltBookingStartMs !== null ? ltBookingStartMs + LT_NOSHOW_MS : null
+  const ltArrivalSecsLeft = ltArrivalDeadlineMs !== null
+    ? Math.max(0, Math.floor((ltArrivalDeadlineMs - now) / 1000)) : 0
+  const ltArrivalExpired  = ltArrivalDeadlineMs !== null && now >= ltArrivalDeadlineMs
+  const ltArrivalWarning  = !ltArrivalExpired && ltArrivalSecsLeft <= 5 * 60
+  const showLtArrivalTimer = isLongTerm && !ltInsideSpot && ltArrivalDeadlineMs !== null
   const isLtOverstay    = ltInsideSpot && isLtExpired
   const ltOverstayMinutes = isLtOverstay && endDateMs ? Math.floor((now - endDateMs) / 60000) : 0
   // Live debt for expired rental (even if car is outside)
@@ -730,6 +741,42 @@ export function ActiveBookingScreen() {
         </div>
       </div>
       
+      {/* Long-term: 30-min arrival countdown — hidden once car is inside (OCCUPIED) */}
+      {showLtArrivalTimer && (
+        <div className={cn(
+          "rounded-xl px-4 py-3 flex items-center gap-3 border",
+          ltArrivalExpired
+            ? "bg-red-500/10 border-red-500/40"
+            : ltArrivalWarning
+            ? "bg-yellow-400/10 border-yellow-400/40"
+            : "bg-blue-500/10 border-blue-500/20"
+        )}>
+          <Clock className={cn(
+            "h-5 w-5 shrink-0",
+            ltArrivalExpired ? "text-red-500" : ltArrivalWarning ? "text-yellow-500" : "text-blue-500"
+          )} />
+          <div className="flex-1">
+            {ltArrivalExpired ? (
+              <p className="text-sm font-semibold text-red-600">Time expired. Booking will be cancelled.</p>
+            ) : ltArrivalWarning ? (
+              <>
+                <p className="text-sm font-semibold text-yellow-600">Hurry up! 5 minutes to arrive</p>
+                <p className="text-xl font-mono font-bold text-yellow-600">
+                  {String(Math.floor(ltArrivalSecsLeft / 60)).padStart(2, '0')}:{String(ltArrivalSecsLeft % 60).padStart(2, '0')}
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="text-xs text-blue-500 font-medium">Time to arrive</p>
+                <p className="text-2xl font-mono font-bold text-blue-700 dark:text-blue-300">
+                  {String(Math.floor(ltArrivalSecsLeft / 60)).padStart(2, '0')}:{String(ltArrivalSecsLeft % 60).padStart(2, '0')}
+                </p>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* 5-min overstay grace: paid time expired, grace countdown running.
           Hidden if exit grace is already started (don't show two timers at once). */}
       {isOverstayGrace && !exitGraceStarted && (
