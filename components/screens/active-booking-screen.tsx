@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { MapPin, Car, Clock, AlertTriangle, Camera, Calendar, Check, X, Wallet } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { Camera as CapCamera, CameraResultType, CameraSource } from "@capacitor/camera"
 
 const extendOptions = [
   { days: 1,  price: 900,  perDay: 900 },
@@ -405,24 +406,23 @@ export function ActiveBookingScreen() {
     }
   }, [activeBooking, user, selectedSpot, updateSpot, setActiveBooking, setCurrentScreen])
   
-  const handleComplaintPhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    const reader = new FileReader()
-    reader.onload = (ev) => {
-      const img = new Image()
-      img.onload = () => {
-        const canvas = document.createElement("canvas")
-        const MAX = 800
-        const ratio = Math.min(MAX / img.width, MAX / img.height, 1)
-        canvas.width = img.width * ratio
-        canvas.height = img.height * ratio
-        canvas.getContext("2d")!.drawImage(img, 0, 0, canvas.width, canvas.height)
-        setComplaintPhotoUrl(canvas.toDataURL("image/jpeg", 0.7))
+  const handleTakeComplaintPhoto = async () => {
+    try {
+      const photo = await CapCamera.getPhoto({
+        quality: 70,
+        allowEditing: false,
+        resultType: CameraResultType.DataUrl,
+        source: CameraSource.Camera,
+        width: 800,
+      })
+      if (photo.dataUrl) {
+        setComplaintPhotoUrl(photo.dataUrl)
       }
-      img.src = ev.target?.result as string
+    } catch (err: any) {
+      if (!String(err).includes("cancelled") && !String(err).includes("canceled")) {
+        console.error("Camera error:", err)
+      }
     }
-    reader.readAsDataURL(file)
   }
 
   const handleSendComplaint = async () => {
@@ -1482,7 +1482,11 @@ export function ActiveBookingScreen() {
                 className="w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 px-4 py-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-orange-400 font-mono tracking-wider uppercase"
               />
             </div>
-            <label className={`flex flex-col items-center justify-center gap-2 w-full py-4 rounded-xl border-2 text-sm font-medium cursor-pointer mb-2 transition-all ${complaintPhotoUrl ? "border-green-400 bg-green-50 dark:bg-green-900/20 text-green-700" : "border-dashed border-orange-300 bg-orange-50/50 text-orange-600 hover:border-orange-400"}`}>
+            <button
+              type="button"
+              onClick={handleTakeComplaintPhoto}
+              className={`flex flex-col items-center justify-center gap-2 w-full py-4 rounded-xl border-2 text-sm font-medium cursor-pointer mb-2 transition-all ${complaintPhotoUrl ? "border-green-400 bg-green-50 dark:bg-green-900/20 text-green-700" : "border-dashed border-orange-300 bg-orange-50/50 text-orange-600 hover:border-orange-400"}`}
+            >
               {complaintPhotoUrl ? (
                 <>
                   <Camera className="h-5 w-5 text-green-600" />
@@ -1496,8 +1500,7 @@ export function ActiveBookingScreen() {
                   <span className="text-xs text-orange-500/80">Убедитесь, что видна машина нарушителя и место — система определит номер</span>
                 </>
               )}
-              <input type="file" accept="image/*" capture="environment" className="hidden" onChange={handleComplaintPhotoUpload} />
-            </label>
+            </button>
             {!complaintPhotoUrl && (
               <p className="text-xs text-orange-500 text-center mb-3">Фото обязательно — это доказательство нарушения</p>
             )}

@@ -49,5 +49,9 @@
 	<true/>
 	<key>NSUserNotificationUsageDescription</key>
 	<string>QPark отправляет уведомления о статусе парковки, времени истечения и штрафах</string>
+	<key>NSCameraUsageDescription</key>
+	<string>QPark использует камеру для фотографирования нарушений на парковочном месте</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>QPark сохраняет фото нарушений для жалоб</string>
 </dict>
 </plist>
