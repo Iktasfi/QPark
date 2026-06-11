@@ -419,9 +419,21 @@ export function ActiveBookingScreen() {
         setComplaintPhotoUrl(photo.dataUrl)
       }
     } catch (err: any) {
-      if (!String(err).includes("cancelled") && !String(err).includes("canceled")) {
-        console.error("Camera error:", err)
+      const msg = String(err).toLowerCase()
+      if (msg.includes("cancel") || msg.includes("dismissed")) return
+      // Browser fallback
+      const input = document.createElement("input")
+      input.type = "file"
+      input.accept = "image/*"
+      input.capture = "environment"
+      input.onchange = (e) => {
+        const file = (e.target as HTMLInputElement).files?.[0]
+        if (!file) return
+        const reader = new FileReader()
+        reader.onload = () => setComplaintPhotoUrl(reader.result as string)
+        reader.readAsDataURL(file)
       }
+      input.click()
     }
   }
 
